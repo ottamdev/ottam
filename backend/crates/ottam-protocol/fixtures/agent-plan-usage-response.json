@@ -1,0 +1,35 @@
+{
+  "id": 458,
+  "result": {
+    "usage": {
+      "agentID": "claude",
+      "windows": [
+        {
+          "kind": "fiveHour",
+          "label": "5h",
+          "usedPercent": 12.0,
+          "resetsAt": 1793946600,
+          "model": null
+        },
+        {
+          "kind": "weekly",
+          "label": "wk",
+          "usedPercent": 15.0,
+          "resetsAt": 1794042000,
+          "model": null
+        },
+        {
+          "kind": "weekly",
+          "label": "Fable",
+          "usedPercent": 2.0,
+          "resetsAt": 1794041999,
+          "model": "Fable"
+        }
+      ],
+      "limitStatus": "allowed",
+      "source": "probe",
+      "observedAt": 1793935258763,
+      "error": null
+    }
+  }
+}

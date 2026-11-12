@@ -1,0 +1,119 @@
+name: full-tests
+
+on:
+  pull_request:
+  # Pushes have no PR base, so changes.py selects every gate for main.
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# New commits cancel the previous run for this PR, including its macOS job.
+# Runs on main are never cancelled so every merge keeps a result.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  linux:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    outputs:
+      swift: ${{ steps.changes.outputs.swift }}
+      docs: ${{ steps.changes.outputs.docs }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Select affected checks
+        id: changes
+        env:
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          if [[ -n "$PR_BASE" ]]; then
+            git diff --check "$PR_BASE...$PR_HEAD"
+            ./scripts/check-migrations.sh "$PR_BASE" "$PR_HEAD"
+            python3 scripts/ci/changes.py --base "$PR_BASE" --head "$PR_HEAD" >> "$GITHUB_OUTPUT"
+          else
+            python3 scripts/ci/changes.py >> "$GITHUB_OUTPUT"
+          fi
+      - name: Hook, wrapper, CI, and analyzer contracts
+        run: ./scripts/test-scripts.sh agent-workflows performance
+      - uses: dtolnay/rust-toolchain@stable
+        if: steps.changes.outputs.rust == 'true'
+      - uses: Swatinem/rust-cache@v2
+        if: steps.changes.outputs.rust == 'true'
+        with:
+          workspaces: backend
+      - name: Install Linux test prerequisites
+        if: steps.changes.outputs.rust == 'true'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends libssl-dev pkg-config sqlite3 zsh lsof
+      - uses: actions/cache@v4
+        if: steps.changes.outputs.rust == 'true'
+        id: diesel
+        with:
+          path: .build/tools
+          key: diesel-${{ runner.os }}-${{ runner.arch }}-2.3.10
+      - name: Install pinned Diesel CLI
+        if: steps.changes.outputs.rust == 'true' && steps.diesel.outputs.cache-hit != 'true'
+        run: cargo install diesel_cli --version 2.3.10 --locked --root .build/tools --no-default-features --features sqlite-bundled
+      - name: Rust tests, protocol artifacts, schema checks, and Clippy
+        if: steps.changes.outputs.rust == 'true'
+        run: ./scripts/test-rust-core.sh --rust-only
+
+  macos:
+    needs: linux
+    if: needs.linux.outputs.swift == 'true' || needs.linux.outputs.docs == 'true'
+    runs-on: macos-26
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      # /usr/bin first: scripts must run on the system bash 3.2 and Python 3.9.
+      - name: Documentation checks (Apple Markdown parser)
+        if: needs.linux.outputs.docs == 'true'
+        run: PATH=/usr/bin:/bin:$PATH ./scripts/check-docs.sh
+      - name: Script contracts, including the app data reset, on the system floor
+        if: needs.linux.outputs.swift == 'true'
+        run: PATH=/usr/bin:/bin:$PATH ./scripts/test-scripts.sh
+      - name: Identify Xcode toolchain
+        if: needs.linux.outputs.swift == 'true'
+        id: xcode
+        run: |
+          echo "DEVELOPER_DIR=$(xcode-select -p)" >> "$GITHUB_ENV"
+          echo "version=$(xcodebuild -version | tr '\n' '-')" >> "$GITHUB_OUTPUT"
+      - uses: dtolnay/rust-toolchain@stable
+        if: needs.linux.outputs.swift == 'true'
+      - uses: Swatinem/rust-cache@v2
+        if: needs.linux.outputs.swift == 'true'
+        with:
+          workspaces: backend
+      - uses: actions/cache@v4
+        if: needs.linux.outputs.swift == 'true'
+        with:
+          path: app/Vendor/ottam-ghostty
+          key: ottam-ghostty-${{ hashFiles('scripts/fetch-ghosttykit.sh') }}
+      - name: Fetch GhosttyKit
+        if: needs.linux.outputs.swift == 'true'
+        run: ./scripts/fetch-ghosttykit.sh
+      - uses: actions/cache@v4
+        if: needs.linux.outputs.swift == 'true'
+        with:
+          path: .build/swift-tests
+          key: swift-${{ runner.os }}-${{ runner.arch }}-${{ steps.xcode.outputs.version }}-${{ hashFiles('app/Package.swift', 'app/Package.resolved', 'scripts/fetch-ghosttykit.sh') }}-${{ github.sha }}
+          restore-keys: |
+            swift-${{ runner.os }}-${{ runner.arch }}-${{ steps.xcode.outputs.version }}-${{ hashFiles('app/Package.swift', 'app/Package.resolved', 'scripts/fetch-ghosttykit.sh') }}-
+      - name: Protocol alignment, app build, real-core integration, and Swift tests
+        if: needs.linux.outputs.swift == 'true'
+        run: ./scripts/check-protocol-alignment.sh --skip-protocol-tests
+      - name: Upload Swift failure log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: swift-test-failure
+          path: .build/test-app-last.log
+          if-no-files-found: ignore

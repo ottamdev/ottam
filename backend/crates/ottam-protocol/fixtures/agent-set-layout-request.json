@@ -1,0 +1,8 @@
+{
+  "id": 422,
+  "method": "agent.setLayout",
+  "params": {
+    "agentID": "codex",
+    "layout": "existing"
+  }
+}

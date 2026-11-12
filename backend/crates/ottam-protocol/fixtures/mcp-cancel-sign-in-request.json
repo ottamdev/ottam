@@ -1,0 +1,7 @@
+{
+  "id": 467,
+  "method": "mcp.cancelSignIn",
+  "params": {
+    "serverID": "019b0000-0000-7000-8000-0000000000a2"
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "id": 121,
+  "method": "namedAgent.create",
+  "params": {
+    "config": {
+      "name": "review-bot",
+      "engineID": "codex",
+      "modelID": "gpt-6.1-sol",
+      "modeID": "read-only",
+      "instructions": "Review for correctness. Report findings, most severe first.",
+      "avatarSeed": 2654435769
+    }
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "id": 80,
+  "result": {
+    "cacheBytes": 1024,
+    "limitGb": 5,
+    "databaseBytes": 32768,
+    "walBytes": 0
+  }
+}

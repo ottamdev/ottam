@@ -1,0 +1,7 @@
+{
+  "id": 466,
+  "result": {
+    "authorizationURL": "https://mcp.linear.app/authorize?response_type=code&client_id=ottam-desktop&state=abc",
+    "redirectURI": "http://127.0.0.1:47391/oauth/callback"
+  }
+}

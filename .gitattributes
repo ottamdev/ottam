@@ -1,0 +1,7 @@
+ui-testing/OttamUITesting.xcodeproj/project.pbxproj linguist-generated=true
+ui-testing/OttamUITesting.xcodeproj/project.xcworkspace/** linguist-generated=true
+ui-testing/OttamUITesting.xcodeproj/xcshareddata/xcschemes/** linguist-generated=true
+app/Sources/OttamBackendClient/ProtocolTypes.generated.swift linguist-generated=true
+backend/crates/ottam-protocol/fixtures/*.json linguist-generated=true
+# PDF xref entries end in a required space.
+app/Resources/AppResources/*.pdf binary

@@ -1,0 +1,60 @@
+{
+  "id": 40,
+  "result": {
+    "engines": [
+      {
+        "engineID": "codex",
+        "displayName": "Codex",
+        "brand": "openai",
+        "authState": "ready",
+        "installState": "ready",
+        "capabilities": [
+          "streaming",
+          "cancel"
+        ],
+        "models": [
+          {
+            "modelID": "gpt-5",
+            "displayName": "GPT-5",
+            "thoughtLevels": [
+              {
+                "id": "high",
+                "displayName": "High"
+              }
+            ],
+            "defaultThoughtLevelID": "high"
+          }
+        ],
+        "defaultModelID": "gpt-5",
+        "modes": [
+          {
+            "id": "auto",
+            "displayName": "Auto"
+          }
+        ],
+        "defaultModeID": "auto",
+        "thoughtLevels": [
+          {
+            "id": "medium",
+            "displayName": "Medium"
+          }
+        ],
+        "defaultThoughtLevelID": "medium",
+        "steeringCapability": "interruptThenPrompt",
+        "authMethods": [
+          {
+            "methodID": "chat-gpt",
+            "name": "Sign in with ChatGPT",
+            "kind": "agent"
+          }
+        ],
+        "runtime": {
+          "availability": "ready",
+          "source": "system",
+          "nodeVersion": "v22.12.0",
+          "npxVersion": "10.9.0"
+        }
+      }
+    ]
+  }
+}

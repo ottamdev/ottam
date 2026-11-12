@@ -1,0 +1,35 @@
+{
+  "id": 44,
+  "result": {
+    "message": {
+      "messageID": "message_user_fixture",
+      "conversationID": "conversation_fixture",
+      "role": "user",
+      "body": "Add the UI workbench wiring.",
+      "position": 2,
+      "createdAt": "2026-07-03T22:00:02.000Z",
+      "attachments": [
+        {
+          "attachmentID": "attachment_fixture",
+          "kind": "image",
+          "mimeType": "image/png",
+          "byteCount": 20480,
+          "width": 1024,
+          "height": 640,
+          "path": "/Users/example/.ottam/workspaces/019b0000-0000-7000-8000-000000000003/attachments/attachment_fixture.png",
+          "sourceKind": "pasted",
+          "createdAt": "2026-07-03T22:00:02.000Z"
+        }
+      ],
+      "source": "user"
+    },
+    "input": {
+      "runInputID": "run_input_fixture",
+      "conversationID": "conversation_fixture",
+      "messageID": "message_user_fixture",
+      "kind": "initial",
+      "idempotencyKey": "client-key-1",
+      "status": "pending"
+    }
+  }
+}

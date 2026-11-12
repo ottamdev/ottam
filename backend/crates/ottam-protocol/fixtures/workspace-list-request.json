@@ -1,0 +1,7 @@
+{
+  "id": 20,
+  "method": "workspace.list",
+  "params": {
+    "includeArchived": true
+  }
+}

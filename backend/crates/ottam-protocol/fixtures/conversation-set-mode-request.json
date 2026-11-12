@@ -1,0 +1,10 @@
+{
+  "id": 454,
+  "method": "conversation.setMode",
+  "params": {
+    "workspaceID": "019b0000-0000-7000-8000-000000000003",
+    "conversationID": "conversation_fixture",
+    "agentSessionID": "agent_session_fixture",
+    "modeID": "acceptEdits"
+  }
+}

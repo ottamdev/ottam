@@ -1,0 +1,7 @@
+{
+  "id": 2,
+  "method": "project.openPath",
+  "params": {
+    "path": "/Users/example/Developer/ottam"
+  }
+}

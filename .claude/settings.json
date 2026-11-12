@@ -1,0 +1,21 @@
+{
+  "attribution": {
+    "commit": "",
+    "pr": "",
+    "sessionUrl": false
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "if [ -x \"$CLAUDE_PROJECT_DIR/scripts/setup-worktree.sh\" ]; then \"$CLAUDE_PROJECT_DIR/scripts/setup-worktree.sh\" --links-only; fi",
+            "timeout": 30
+          }
+        ]
+      }
+    ]
+  }
+}

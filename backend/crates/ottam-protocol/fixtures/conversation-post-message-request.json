@@ -1,0 +1,13 @@
+{
+  "id": 44,
+  "method": "conversation.postMessage",
+  "params": {
+    "workspaceID": "019b0000-0000-7000-8000-000000000003",
+    "conversationID": "conversation_fixture",
+    "message": "Add the UI workbench wiring.",
+    "idempotencyKey": "client-key-2",
+    "attachmentIDs": [
+      "attachment_fixture"
+    ]
+  }
+}

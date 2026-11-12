@@ -1,0 +1,6 @@
+{
+  "method": "$/cancelRequest",
+  "params": {
+    "id": "core/req/2"
+  }
+}

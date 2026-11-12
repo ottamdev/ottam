@@ -1,0 +1,8 @@
+{
+  "id": 43,
+  "method": "conversation.get",
+  "params": {
+    "workspaceID": "019b0000-0000-7000-8000-000000000003",
+    "conversationID": "conversation_fixture"
+  }
+}

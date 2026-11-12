@@ -1,0 +1,3 @@
+[print_schema]
+file = "src/storage/schema.rs"
+with_docs = true

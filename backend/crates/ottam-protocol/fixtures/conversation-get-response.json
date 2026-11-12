@@ -1,0 +1,145 @@
+{
+  "id": 43,
+  "result": {
+    "conversation": {
+      "conversation": {
+        "conversationID": "conversation_fixture",
+        "workspaceID": "019b0000-0000-7000-8000-000000000003",
+        "workingRoot": {
+          "kind": "project",
+          "displayName": "ottam",
+          "canonicalPath": "/Users/example/Developer/ottam",
+          "projectID": "019b0000-0000-7000-8000-000000000001",
+          "sourceID": "019b0000-0000-7000-8000-000000000002",
+          "availability": "available"
+        },
+        "title": "Chat engine routing",
+        "createdAt": "2026-07-03T22:00:00.000Z",
+        "updatedAt": "2026-07-03T22:00:01.000Z",
+        "alwaysAllowToolActions": false
+      },
+      "workspace": {
+        "workspaceID": "019b0000-0000-7000-8000-000000000003",
+        "displayName": "Ottam",
+        "createdAt": 1750636800000,
+        "updatedAt": 1750636800000,
+        "lastOpenedAt": 1750636800000
+      },
+      "projects": [
+        {
+          "projectID": "019b0000-0000-7000-8000-000000000001",
+          "projectSourceID": "019b0000-0000-7000-8000-000000000002",
+          "role": "primary"
+        }
+      ],
+      "latestMessagePage": {
+        "messages": [
+          {
+            "messageID": "message_system_fixture",
+            "conversationID": "conversation_fixture",
+            "role": "system",
+            "body": "review-bot finished.",
+            "position": 1,
+            "createdAt": "2026-07-03T22:00:01.000Z",
+            "attachments": [],
+            "source": "user",
+            "note": {
+              "childConversationID": "conversation_child_fixture",
+              "childName": "review-bot",
+              "kind": "report",
+              "state": "completed",
+              "excerpt": "No correctness issues in app/Package.swift.",
+              "waitsForUser": false,
+              "deferred": false
+            }
+          },
+          {
+            "messageID": "message_user_fixture",
+            "conversationID": "conversation_fixture",
+            "role": "user",
+            "body": "Discuss how engine routing should work.",
+            "position": 0,
+            "createdAt": "2026-07-03T22:00:00.000Z",
+            "attachments": [],
+            "source": "user"
+          }
+        ]
+      },
+      "latestRunPage": {
+        "runs": [
+          {
+            "runID": "conversation_run_fixture",
+            "conversationID": "conversation_fixture",
+            "engineID": "codex",
+            "modelID": "gpt-5",
+            "modeID": "default",
+            "thoughtLevelID": "medium",
+            "status": "completed",
+            "startedAt": "2026-07-03T22:00:00.500Z",
+            "completedAt": "2026-07-03T22:00:01.000Z",
+            "agentSessionID": "agent_session_fixture",
+            "sessionOrigin": "new",
+            "origin": "user",
+            "stopReason": "endTurn",
+            "cost": {},
+            "usage": {
+              "scope": "lastRequest",
+              "inputTokens": 21400,
+              "outputTokens": 980,
+              "totalTokens": 26832,
+              "thoughtTokens": 452,
+              "cachedReadTokens": 4000,
+              "adapter": "@agentclientprotocol/codex-acp",
+              "adapterVersion": "2.1.1"
+            },
+            "usageUnavailable": false,
+            "historyReplay": {
+              "entries": 12,
+              "truncated": false
+            },
+            "error": {}
+          }
+        ]
+      },
+      "latestRunInputPage": {
+        "runInputs": [
+          {
+            "runInputID": "run_input_fixture",
+            "conversationID": "conversation_fixture",
+            "messageID": "message_user_fixture",
+            "targetRunID": "conversation_run_fixture",
+            "kind": "initial",
+            "idempotencyKey": "client-key-1",
+            "status": "delivered",
+            "deliveryEvidence": "adapterConfirmed"
+          }
+        ]
+      },
+      "latestAgentSessionPage": {
+        "sessions": [
+          {
+            "agentSessionID": "agent_session_fixture",
+            "conversationID": "conversation_fixture",
+            "engineID": "codex",
+            "state": "active",
+            "sourceScopeFingerprint": "c3140d13b064c644aad268b97c03c362a1a19d4591d115f4c51453016bc54b18",
+            "createdAt": "2026-07-03T22:00:00.400Z",
+            "lastUsedAt": "2026-07-03T22:00:01.000Z",
+            "currentModeID": "workspace-write",
+            "commands": [
+              {
+                "name": "review",
+                "description": "Review my current changes",
+                "inputHint": "what to review"
+              }
+            ],
+            "contextUsage": {
+              "used": 26832,
+              "size": 258400
+            }
+          }
+        ]
+      }
+    }
+  }
+}

@@ -1,0 +1,20 @@
+# cargo-about configuration for the Rust section of THIRD_PARTY_NOTICES.md.
+# Regenerate with scripts/generate-third-party-notices.sh.
+accepted = [
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "BSL-1.0",
+    "CDLA-Permissive-2.0",
+    "ISC",
+    "MIT",
+    "MPL-2.0",
+    "Unicode-3.0",
+    "Unlicense",
+    "Zlib",
+]
+# Only what ships in the macOS bundle's ottam-core.
+targets = ["aarch64-apple-darwin", "x86_64-apple-darwin"]
+ignore-dev-dependencies = true
+private = { ignore = true }

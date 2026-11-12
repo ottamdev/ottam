@@ -1,0 +1,19 @@
+{
+  "_source": "Hand-built, not recorded: oh-my-pi's ACP Subagent Sessions as can1357/oh-my-pi#15043 (open, 2026-10-15) emits them, following that PR's acp-subagents tests. Child ids are <root>/<agent id>; the assignment arrives as the child's first incoming session_message. Replace with a recording once a release ships it.",
+  "ompNativeTurn": [
+    {"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"ompRoot","update":{"sessionUpdate":"tool_call","toolCallId":"task-1","title":"Launching two scouts","kind":"other","status":"pending","rawInput":{"agent":"scout","tasks":[{"id":"RustBackend","assignment":"Map the Rust backend"},{"id":"SwiftApp","assignment":"Map the Swift app"}]}}}},
+    {"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"ompRoot","update":{"sessionUpdate":"subagent_update","sessionId":"ompRoot/RustBackend","title":"RustBackend","state":{"state":"running"}}}},
+    {"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"ompRoot","update":{"sessionUpdate":"subagent_update","sessionId":"ompRoot/SwiftApp","title":"SwiftApp","state":{"state":"running"}}}},
+    {"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"ompRoot/RustBackend","update":{"sessionUpdate":"session_message","messageId":"assignment-RustBackend","senderSessionId":"ompRoot","recipientSessionId":"ompRoot/RustBackend","content":[{"type":"text","text":"Map the Rust backend"}]}}},
+    {"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"ompRoot/SwiftApp","update":{"sessionUpdate":"session_message","messageId":"assignment-SwiftApp","senderSessionId":"ompRoot","recipientSessionId":"ompRoot/SwiftApp","content":[{"type":"text","text":"Map the Swift app"}]}}},
+    {"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"ompRoot/RustBackend","update":{"sessionUpdate":"tool_call","toolCallId":"tc-1","title":"Read Cargo.toml","kind":"read","status":"in_progress","rawInput":{"path":"Cargo.toml"}}}},
+    {"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"ompRoot/SwiftApp","update":{"sessionUpdate":"tool_call","toolCallId":"tc-1","title":"Read Package.swift","kind":"read","status":"in_progress","rawInput":{"path":"Package.swift"}}}},
+    {"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"ompRoot/RustBackend","update":{"sessionUpdate":"tool_call_update","toolCallId":"tc-1","status":"completed","content":[{"type":"content","content":{"type":"text","text":"[workspace]"}}]}}},
+    {"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"ompRoot/RustBackend","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"The backend is one Cargo workspace."}}}},
+    {"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"ompRoot","update":{"sessionUpdate":"subagent_update","sessionId":"ompRoot/RustBackend","state":{"state":"idle","stopReason":"end_turn"}}}},
+    {"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"ompRoot/SwiftApp","update":{"sessionUpdate":"tool_call_update","toolCallId":"tc-1","status":"failed"}}},
+    {"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"ompRoot","update":{"sessionUpdate":"subagent_update","sessionId":"ompRoot/SwiftApp","state":{"state":"idle","stopReason":"error"}}}},
+    {"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"ompRoot","update":{"sessionUpdate":"tool_call_update","toolCallId":"task-1","status":"completed","content":[{"type":"content","content":{"type":"text","text":"2 agents finished."}}]}}},
+    {"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"ompRoot","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"Both scouts reported."}}}}
+  ]
+}

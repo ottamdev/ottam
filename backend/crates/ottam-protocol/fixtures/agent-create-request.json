@@ -1,0 +1,8 @@
+{
+  "id": 421,
+  "method": "agent.create",
+  "params": {
+    "harnessID": "codex",
+    "layout": "existing"
+  }
+}

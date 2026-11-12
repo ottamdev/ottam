@@ -1,0 +1,19 @@
+{
+  "id": 41,
+  "method": "conversation.create",
+  "params": {
+    "workspaceID": "019b0000-0000-7000-8000-000000000003",
+    "workingRoot": {
+      "kind": "project",
+      "projectID": "019b0000-0000-7000-8000-000000000001",
+      "sourceID": "019b0000-0000-7000-8000-000000000002"
+    },
+    "contextProjectIDs": [],
+    "title": "Chat engine routing",
+    "message": {
+      "body": "Discuss how engine routing should work.",
+      "idempotencyKey": "client-key-1",
+      "attachmentIDs": []
+    }
+  }
+}

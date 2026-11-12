@@ -1,0 +1,20 @@
+{
+  "id": 57,
+  "result": {
+    "events": [
+      {
+        "eventID": "conversation_event_fixture",
+        "workspaceID": "019b0000-0000-7000-8000-000000000003",
+        "projectID": "019b0000-0000-7000-8000-000000000001",
+        "conversationID": "conversation_fixture",
+        "runID": "conversation_run_fixture",
+        "sequence": 1,
+        "eventKind": "runStatus",
+        "payload": {
+          "status": "running"
+        },
+        "createdAt": "2026-07-03T22:00:01.000Z"
+      }
+    ]
+  }
+}

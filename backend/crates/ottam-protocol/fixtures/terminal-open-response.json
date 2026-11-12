@@ -1,0 +1,20 @@
+{
+  "id": 4,
+  "result": {
+    "terminalID": "019b0000-0000-7000-8000-000000000004",
+    "sessionID": "terminal_local_fixture",
+    "workspaceID": "019b0000-0000-7000-8000-000000000003",
+    "workingRoot": {
+      "kind": "project",
+      "displayName": "ottam",
+      "canonicalPath": "/Users/example/Developer/ottam",
+      "projectID": "019b0000-0000-7000-8000-000000000001",
+      "sourceID": "019b0000-0000-7000-8000-000000000002",
+      "availability": "available"
+    },
+    "cwd": "/Users/example/Developer/ottam",
+    "shell": "/bin/zsh",
+    "rows": 24,
+    "cols": 80
+  }
+}

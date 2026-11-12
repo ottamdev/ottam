@@ -1,0 +1,7 @@
+{
+  "id": 81,
+  "method": "storage.update",
+  "params": {
+    "limitGb": 5
+  }
+}

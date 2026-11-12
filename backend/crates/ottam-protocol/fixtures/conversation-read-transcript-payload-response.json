@@ -1,0 +1,15 @@
+{
+  "id": 92,
+  "result": {
+    "payloadID": "019b0000-0000-7000-8000-000000000092",
+    "revision": 1,
+    "part": 0,
+    "offset": 0,
+    "data": "b3V0cHV0",
+    "nextOffset": null,
+    "readableLength": 6,
+    "availability": "pending",
+    "reason": null,
+    "unsaved": true
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "id": 468,
+  "result": {
+    "server": {
+      "serverID": "019b0000-0000-7000-8000-0000000000a2",
+      "config": {
+        "name": "linear",
+        "transport": {
+          "kind": "http",
+          "url": "https://mcp.linear.app/mcp",
+          "headers": []
+        }
+      },
+      "disabledWorkspaceIDs": [],
+      "state": {
+        "status": "signedOut"
+      },
+      "signedIn": false
+    }
+  }
+}

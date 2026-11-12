@@ -1,0 +1,19 @@
+{
+  "id": 28,
+  "result": {
+    "workspace": {
+      "workspaceID": "019b0000-0000-7000-8000-000000000003",
+      "displayName": "Ottam",
+      "createdAt": 1750636800000,
+      "updatedAt": 1750636800000,
+      "lastOpenedAt": 1750636800000
+    },
+    "workspaceFiles": {
+      "kind": "workspaceFiles",
+      "displayName": "Workspace files",
+      "canonicalPath": "/Users/example/.ottam/workspaces/019b0000-0000-7000-8000-000000000003/files",
+      "availability": "available"
+    },
+    "projects": []
+  }
+}

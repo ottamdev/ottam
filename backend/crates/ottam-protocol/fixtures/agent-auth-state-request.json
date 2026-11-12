@@ -1,0 +1,7 @@
+{
+  "id": 42,
+  "method": "agent.authState",
+  "params": {
+    "agentID": "codex"
+  }
+}

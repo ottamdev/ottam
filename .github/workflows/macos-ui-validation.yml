@@ -1,0 +1,79 @@
+name: macos-ui-validation
+
+# Native UI tests and real-window inventory are manual; full-tests owns PR SwiftPM checks.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ui-validation:
+    runs-on: macos-26
+    timeout-minutes: 45
+    env:
+      OTTAM_UI_TEST_DRIVER_TOPOLOGY: direct
+      XCODEGEN_VERSION: 2.46.0
+      XCODEGEN_ZIP_SHA256: 4d9e34b62172d645eed6457cac13fc222569974098ef4ee9c3368bedf0196806
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: backend
+      - uses: actions/cache@v4
+        with:
+          path: app/Vendor/ottam-ghostty
+          key: ottam-ghostty-${{ hashFiles('scripts/fetch-ghosttykit.sh') }}
+      - name: Fetch GhosttyKit
+        run: ./scripts/fetch-ghosttykit.sh
+      - name: Install XcodeGen 2.46.0
+        run: |
+          archive="$RUNNER_TEMP/xcodegen-$XCODEGEN_VERSION.zip"
+          install_root="$RUNNER_TEMP/xcodegen-$XCODEGEN_VERSION"
+          curl -fsSL \
+            "https://github.com/yonaskolb/XcodeGen/releases/download/$XCODEGEN_VERSION/xcodegen.zip" \
+            -o "$archive"
+          echo "$XCODEGEN_ZIP_SHA256  $archive" | shasum -a 256 -c -
+          ditto -x -k "$archive" "$install_root"
+          echo "$install_root/xcodegen/bin" >> "$GITHUB_PATH"
+          "$install_root/xcodegen/bin/xcodegen" version
+      - name: Verify generated UI-testing project
+        run: |
+          (
+            cd ui-testing
+            xcodegen generate --spec project.yml
+          )
+          git diff --exit-code -- ui-testing/OttamUITesting.xcodeproj
+      - name: Test app presentation and state
+        run: ./scripts/test-app.sh
+      - name: Test native UI harness contracts
+        run: ./scripts/ui-test.sh native
+      - name: Build, verify, and capture the page inventory once
+        run: ./scripts/smoke-app-bundle.sh
+      - name: Create screenshot contact sheet
+        if: always()
+        run: |
+          if find .build/ui-tests/current/screenshots -name '*.png' -print -quit 2>/dev/null | grep -q .; then
+            DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcrun swift \
+              scripts/create-ui-contact-sheet.swift \
+              .build/ui-tests/current/screenshots \
+              .build/ui-tests/current/contact-sheet.png
+          fi
+      - name: Upload directly inspectable UI evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-ui-validation-${{ github.run_id }}
+          path: |
+            .build/ui-tests/current/screenshots
+            .build/ui-tests/current/accessibility
+            .build/ui-tests/current/contact-sheet.png
+            .build/ui-tests/current/manifest.json
+            .build/ui-tests/current/result.json
+            .build/ui-tests/current/scenario.json
+            .build/ui-tests/current/actions.jsonl
+            .build/ui-tests/current/logs
+            .build/ui-tests/current/diagnostics
+          if-no-files-found: warn
+          retention-days: 14

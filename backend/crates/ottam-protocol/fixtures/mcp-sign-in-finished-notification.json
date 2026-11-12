@@ -1,0 +1,8 @@
+{
+  "method": "mcp.signInFinished",
+  "params": {
+    "serverID": "019b0000-0000-7000-8000-0000000000a2",
+    "outcome": "failed",
+    "error": "The sign-in was denied in the browser"
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "id": 458,
+  "method": "agent.planUsage",
+  "params": {
+    "agentID": "claude",
+    "refresh": true
+  }
+}

@@ -1,0 +1,25 @@
+{
+  "id": "core/req/1",
+  "method": "agent.requestPermission",
+  "params": {
+    "agentID": "codex",
+    "sessionID": "session_fixture",
+    "workspaceID": "019b0000-0000-7000-8000-000000000003",
+    "projectID": "019b0000-0000-7000-8000-000000000001",
+    "conversationID": "conversation_fixture",
+    "runID": "conversation_run_fixture",
+    "subagentThreadID": "subagent:child_session_fixture",
+    "subagentName": "Reviewer",
+    "toolCall": {
+      "toolCallID": "tool_fixture",
+      "title": "Write file"
+    },
+    "options": [
+      {
+        "optionID": "allow_once",
+        "name": "Allow once",
+        "kind": "allowOnce"
+      }
+    ]
+  }
+}

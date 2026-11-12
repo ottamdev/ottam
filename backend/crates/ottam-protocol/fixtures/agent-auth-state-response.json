@@ -1,0 +1,49 @@
+{
+  "id": 42,
+  "result": {
+    "agentID": "codex",
+    "adapter": {
+      "lifecycle": "ready",
+      "authState": "ready",
+      "authMethods": [
+        {
+          "methodID": "chatgpt",
+          "name": "Sign in with ChatGPT",
+          "kind": "agent"
+        }
+      ],
+      "agentName": "codex-acp",
+      "agentVersion": "1.0.0",
+      "steeringCapability": "interruptThenPrompt",
+      "supportsImageInput": true,
+      "compatibility": [
+        {
+          "feature": "loadSession",
+          "group": "agentCapability",
+          "sdkStatus": "stable",
+          "agentAdvertises": true,
+          "clientSupport": "supported",
+          "verdict": "works"
+        },
+        {
+          "feature": "usage_update",
+          "group": "updateKind",
+          "sdkStatus": "stable",
+          "clientSupport": "partial",
+          "clientDetail": "persisted as session metadata; not surfaced",
+          "verdict": "unknown"
+        },
+        {
+          "feature": "session.compaction",
+          "group": "clientCapability",
+          "sdkStatus": "unstableOff",
+          "sdkDetail": "unstable_session_compaction",
+          "clientSupport": "unsupported",
+          "verdict": "unknown"
+        }
+      ],
+      "credentialsSeen": true,
+      "generation": 1
+    }
+  }
+}

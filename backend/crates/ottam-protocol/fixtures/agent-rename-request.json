@@ -1,0 +1,8 @@
+{
+  "id": 428,
+  "method": "agent.rename",
+  "params": {
+    "agentID": "claude.profile",
+    "label": "Office"
+  }
+}

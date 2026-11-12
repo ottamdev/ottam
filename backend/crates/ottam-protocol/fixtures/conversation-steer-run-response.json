@@ -1,0 +1,46 @@
+{
+  "id": 51,
+  "result": {
+    "input": {
+      "runInputID": "run_input_fixture",
+      "conversationID": "conversation_fixture",
+      "messageID": "message_user_fixture",
+      "requestedAgainstRunID": "conversation_run_fixture",
+      "targetRunID": "conversation_run_fixture",
+      "kind": "steer",
+      "idempotencyKey": "client-key-1",
+      "status": "delivered",
+      "deliveryEvidence": "adapterConfirmed"
+    },
+    "run": {
+      "runID": "conversation_run_fixture",
+      "conversationID": "conversation_fixture",
+      "engineID": "codex",
+      "modelID": "gpt-5",
+      "modeID": "default",
+      "thoughtLevelID": "medium",
+      "status": "running",
+      "startedAt": "2026-07-03T22:00:00.500Z",
+      "agentSessionID": "agent_session_fixture",
+      "sessionOrigin": "new",
+      "origin": "user",
+      "cost": {},
+      "usage": {
+        "scope": "lastRequest",
+        "inputTokens": 21400,
+        "outputTokens": 980,
+        "totalTokens": 26832,
+        "thoughtTokens": 452,
+        "cachedReadTokens": 4000,
+        "adapter": "@agentclientprotocol/codex-acp",
+        "adapterVersion": "2.1.1"
+      },
+      "usageUnavailable": false,
+      "historyReplay": {
+        "entries": 12,
+        "truncated": false
+      },
+      "error": {}
+    }
+  }
+}

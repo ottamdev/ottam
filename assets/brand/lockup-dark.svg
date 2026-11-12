@@ -1,0 +1,14 @@
+<svg width="116" height="128" viewBox="0 0 194.4 215.02" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="thread" gradientUnits="userSpaceOnUse" x1="15.6" y1="0" x2="178.8" y2="0">
+      <stop offset="0" stop-color="#FF9500"/>
+      <stop offset="1" stop-color="#FF4D0F"/>
+    </linearGradient>
+  </defs>
+  <!-- Mark: mark.svg's thread at 2.4x -->
+  <path d="M15.6 130.8L97.2 130.8A57.6 57.6 0 0 0 97.2 15.6A57.6 57.6 0 0 0 97.2 130.8L178.8 130.8" fill="none" stroke="url(#thread)" stroke-width="19.2" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- Wordmark: "ottam" drawn in the thread's stroke (8 on a 24 radius), not set in a font; centred under the mark -->
+  <g transform="translate(17.65 206.54) scale(0.62)">
+    <path d="M24 0A24 24 0 1 0 24 -48A24 24 0 1 0 24 0ZM69.08 -67.2L69.08 -12A12 12 0 0 0 81.08 0L83 0M59 -48L83 -48M105.08 -67.2L105.08 -12A12 12 0 0 0 117.08 0L119 0M95 -48L119 -48M157 0A24 24 0 1 0 157 -48A24 24 0 1 0 157 0ZM181 -48L181 0M199 -48L199 0M199 -33.6A14.4 14.4 0 0 1 227.8 -33.6L227.8 0M227.8 -33.6A14.4 14.4 0 0 1 256.6 -33.6L256.6 0" fill="none" stroke="#FFFFFF" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+</svg>

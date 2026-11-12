@@ -1,0 +1,9 @@
+{
+  "id": 427,
+  "method": "agent.create",
+  "params": {
+    "harnessID": "claude",
+    "layout": "managed",
+    "label": "Work"
+  }
+}

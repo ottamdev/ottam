@@ -1,0 +1,10 @@
+[package]
+name = "ottam-test-acp"
+edition.workspace = true
+license.workspace = true
+version.workspace = true
+publish = false
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"

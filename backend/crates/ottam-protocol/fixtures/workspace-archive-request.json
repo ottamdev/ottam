@@ -1,0 +1,7 @@
+{
+  "id": 25,
+  "method": "workspace.archive",
+  "params": {
+    "workspaceID": "019b0000-0000-7000-8000-000000000003"
+  }
+}

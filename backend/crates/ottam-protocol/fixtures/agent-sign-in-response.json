@@ -1,0 +1,9 @@
+{
+  "id": 430,
+  "result": {
+    "agentID": "codex",
+    "authSessionID": "agent_auth_fixture",
+    "delivery": "adapterBrowser",
+    "phase": "starting"
+  }
+}

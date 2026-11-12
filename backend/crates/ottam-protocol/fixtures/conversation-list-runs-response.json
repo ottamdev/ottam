@@ -1,0 +1,72 @@
+{
+  "id": 54,
+  "result": {
+    "page": {
+      "runs": [
+        {
+          "runID": "conversation_run_fixture",
+          "conversationID": "conversation_fixture",
+          "engineID": "codex",
+          "modelID": "gpt-5",
+          "modeID": "default",
+          "thoughtLevelID": "medium",
+          "status": "completed",
+          "startedAt": "2026-07-03T22:00:00.500Z",
+          "completedAt": "2026-07-03T22:00:01.000Z",
+          "agentSessionID": "agent_session_fixture",
+          "sessionOrigin": "new",
+          "origin": "user",
+          "stopReason": "endTurn",
+          "cost": {},
+          "usage": {
+            "scope": "lastRequest",
+            "inputTokens": 21400,
+            "outputTokens": 980,
+            "totalTokens": 26832,
+            "thoughtTokens": 452,
+            "cachedReadTokens": 4000,
+            "adapter": "@agentclientprotocol/codex-acp",
+            "adapterVersion": "2.1.1"
+          },
+          "usageUnavailable": false,
+          "historyReplay": {
+            "entries": 12,
+            "truncated": false
+          },
+          "error": {}
+        },
+        {
+          "runID": "conversation_run_autonomous_fixture",
+          "conversationID": "conversation_fixture",
+          "engineID": "codex",
+          "modelID": "gpt-5",
+          "modeID": "default",
+          "thoughtLevelID": "medium",
+          "status": "completed",
+          "startedAt": "2026-07-03T22:00:05.000Z",
+          "completedAt": "2026-07-03T22:00:09.000Z",
+          "agentSessionID": "agent_session_fixture",
+          "sessionOrigin": "continued",
+          "origin": "autonomous",
+          "cost": {},
+          "usage": {
+            "scope": "lastRequest",
+            "inputTokens": 21400,
+            "outputTokens": 980,
+            "totalTokens": 26832,
+            "thoughtTokens": 452,
+            "cachedReadTokens": 4000,
+            "adapter": "@agentclientprotocol/codex-acp",
+            "adapterVersion": "2.1.1"
+          },
+          "usageUnavailable": false,
+          "historyReplay": {
+            "entries": 12,
+            "truncated": false
+          },
+          "error": {}
+        }
+      ]
+    }
+  }
+}

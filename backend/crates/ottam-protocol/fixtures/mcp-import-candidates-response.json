@@ -1,0 +1,50 @@
+{
+  "id": 465,
+  "result": {
+    "path": "/Users/example/.claude.json",
+    "candidates": [
+      {
+        "config": {
+          "name": "docs_search",
+          "transport": {
+            "kind": "stdio",
+            "command": "uvx",
+            "args": [
+              "docs-mcp"
+            ],
+            "env": [
+              {
+                "name": "DOCS_API_KEY",
+                "value": "${DOCS_API_KEY}",
+                "secret": true
+              }
+            ]
+          }
+        },
+        "sourceName": "docs search",
+        "notes": [
+          "DOCS_API_KEY uses ${…}, which Ottam does not expand; replace it with the value"
+        ]
+      },
+      {
+        "config": {
+          "name": "github",
+          "transport": {
+            "kind": "http",
+            "url": "https://api.githubcopilot.com/mcp/",
+            "headers": []
+          }
+        },
+        "existingServerID": "019b0000-0000-7000-8000-0000000000a1",
+        "notes": [],
+        "disabledInSource": true
+      }
+    ],
+    "skipped": [
+      {
+        "name": "legacy",
+        "reason": "It uses SSE, which Ottam does not support"
+      }
+    ]
+  }
+}

@@ -1,0 +1,10 @@
+<svg width="1024" height="1024" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="thread" gradientUnits="userSpaceOnUse" x1="16" y1="0" x2="84" y2="0">
+      <stop offset="0" stop-color="#FF9500"/>
+      <stop offset="1" stop-color="#FF4D0F"/>
+    </linearGradient>
+  </defs>
+  <path fill="url(#thread)" fill-rule="evenodd" d="M50 22a28 28 0 1 0 0 56a28 28 0 1 0 0-56zM50 30a20 20 0 1 1 0 40a20 20 0 1 1 0-40z"/>
+  <rect x="12" y="70" width="76" height="8" rx="4" fill="url(#thread)"/>
+</svg>

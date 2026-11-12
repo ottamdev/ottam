@@ -1,0 +1,14 @@
+{
+  "method": "terminal.outputDelta",
+  "params": {
+    "sessionID": "terminal_local_fixture",
+    "workspaceID": "019b0000-0000-7000-8000-000000000003",
+    "terminalID": "terminal_record_fixture",
+    "sequence": 1,
+    "byteStart": 0,
+    "byteEnd": 5,
+    "dataBase64": "aGVsbG8=",
+    "capReached": false,
+    "replay": false
+  }
+}

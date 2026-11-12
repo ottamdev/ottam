@@ -1,0 +1,21 @@
+{
+  "source": "Derived from adapter source, not recorded: neither pinned adapter sends async_task_* until the client advertises AIR asyncTasks (bg:3). Claude 0.85.1 dist/async-tasks.js (announce, publishProgress, publishState) and dist/tool-calls/background.js; Codex 2.1.1 dist/index.js (publishSpawn, publishTerminalState). Each list is in adapter send order.",
+  "claude": [
+    {"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"bc95c6e0-f66e-48d3-94ad-a1fa27b8e768","update":{"sessionUpdate":"tool_call","toolCallId":"toolu_01BackgroundDevServer","name":"Bash","status":"pending","title":"npm run dev","kind":"execute","rawInput":{"command":"npm run dev","run_in_background":true},"_meta":{"claudeCode":{"toolName":"Bash"}}}}},
+    {"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"bc95c6e0-f66e-48d3-94ad-a1fa27b8e768","update":{"sessionUpdate":"async_task_spawned","asyncTaskId":"b7x1k2","name":"npm run dev","taskType":"shell","description":"Start the dev server","showInTranscript":true,"canStop":true,"outputFilePath":"/tmp/claude/tasks/b7x1k2.output","toolCallId":"toolu_01BackgroundDevServer"}}},
+    {"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"bc95c6e0-f66e-48d3-94ad-a1fa27b8e768","update":{"sessionUpdate":"tool_call_update","toolCallId":"toolu_01BackgroundDevServer","status":"completed","_meta":{"claudeCode":{"toolName":"Bash"},"jetbrains":{"air":{"version":1,"asyncTasks":{"backgrounded":true}}}}}}},
+    {"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"bc95c6e0-f66e-48d3-94ad-a1fa27b8e768","update":{"sessionUpdate":"async_task_progress","asyncTaskId":"b7x1k2","summary":"Compiled 12 modules","lastToolName":"Bash","usage":{"totalTokens":1200,"toolUses":3,"durationMs":4500}}}},
+    {"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"bc95c6e0-f66e-48d3-94ad-a1fa27b8e768","update":{"sessionUpdate":"async_task_state_update","asyncTaskId":"b7x1k2","state":"completed","summary":"Exited with code 0"}}}
+  ],
+  "claudeHeld": [
+    {"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"bc95c6e0-f66e-48d3-94ad-a1fa27b8e768","update":{"sessionUpdate":"async_task_spawned","asyncTaskId":"h3ld9q","name":"sleep 1","taskType":"shell","description":"Wait briefly","showInTranscript":true,"canStop":true}}},
+    {"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"bc95c6e0-f66e-48d3-94ad-a1fa27b8e768","update":{"sessionUpdate":"async_task_state_update","asyncTaskId":"h3ld9q","state":"completed"}}},
+    {"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"bc95c6e0-f66e-48d3-94ad-a1fa27b8e768","update":{"sessionUpdate":"async_task_state_update","asyncTaskId":"h3ld9q","state":"completed","toolCallId":"toolu_01HeldSleep"}}}
+  ],
+  "codex": [
+    {"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"01a0fe4e-204e-7d90-8508-baf380dd2009","update":{"sessionUpdate":"tool_call","toolCallId":"call_background_dev","name":"exec_command","kind":"execute","title":"npm run dev","status":"in_progress","rawInput":{"command":["npm","run","dev"]}}}},
+    {"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"01a0fe4e-204e-7d90-8508-baf380dd2009","update":{"sessionUpdate":"tool_call_update","toolCallId":"call_background_dev","_meta":{"jetbrains":{"air":{"asyncTasks":{"backgrounded":true}}}}}}},
+    {"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"01a0fe4e-204e-7d90-8508-baf380dd2009","update":{"sessionUpdate":"async_task_spawned","asyncTaskId":"call_background_dev","name":"npm run dev","taskType":"shell","showInTranscript":false,"canStop":true,"toolCallId":"call_background_dev"}}},
+    {"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"01a0fe4e-204e-7d90-8508-baf380dd2009","update":{"sessionUpdate":"async_task_state_update","asyncTaskId":"call_background_dev","state":"stopped","toolCallId":"call_background_dev"}}}
+  ]
+}

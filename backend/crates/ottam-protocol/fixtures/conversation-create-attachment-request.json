@@ -1,0 +1,13 @@
+{
+  "id": 52,
+  "method": "conversation.createAttachment",
+  "params": {
+    "workspaceID": "019b0000-0000-7000-8000-000000000003",
+    "sourcePath": "/var/folders/tmp/ottam-attachment-1.png",
+    "mimeType": "image/png",
+    "width": 1024,
+    "height": 640,
+    "sourceKind": "pasted",
+    "idempotencyKey": "client-key-attachment-1"
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "id": 51,
+  "method": "conversation.steerRun",
+  "params": {
+    "workspaceID": "019b0000-0000-7000-8000-000000000003",
+    "conversationID": "conversation_fixture",
+    "runID": "conversation_run_fixture",
+    "message": "Focus on the adapter boundary first.",
+    "idempotencyKey": "client-key-3",
+    "attachmentIDs": []
+  }
+}

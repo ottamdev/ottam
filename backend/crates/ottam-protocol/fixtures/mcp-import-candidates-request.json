@@ -1,0 +1,10 @@
+{
+  "id": 465,
+  "method": "mcp.importCandidates",
+  "params": {
+    "source": {
+      "kind": "setup",
+      "harnessID": "claude"
+    }
+  }
+}

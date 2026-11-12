@@ -1,0 +1,16 @@
+{
+  "id": 1,
+  "method": "initialize",
+  "params": {
+    "clientInfo": {
+      "name": "OttamApp",
+      "version": "0.1.0"
+    },
+    "capabilities": {
+      "experimentalMethods": [
+        "agent.requestPermission",
+        "agent.askQuestion"
+      ]
+    }
+  }
+}

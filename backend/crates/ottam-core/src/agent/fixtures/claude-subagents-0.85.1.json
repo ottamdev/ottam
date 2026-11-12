@@ -1,0 +1,2028 @@
+{
+ "source": "Recorded 2026-10-10 from claude-agent-acp 0.85.1 through Ottam (AIR v1 with sessionFailure and asyncTasks; no native subagents, no subagent-transcript). Paths are rewritten to /work/repo and /tmp/claude, rate-limit metadata is removed, and the product's former name is rewritten to Ottam (2026-11-07), in recorded text too; nothing else is edited.",
+ "claudeAsyncParallel": [
+  {
+   "jsonrpc": "2.0",
+   "method": "session/update",
+   "params": {
+    "sessionId": "ab6219e3-9149-4e0e-840a-4c0cea4619b8",
+    "update": {
+     "sessionUpdate": "agent_message_chunk",
+     "content": {
+      "type": "text",
+      "text": "I'll launch both"
+     },
+     "messageId": "msg_011CfsroPokXJmarWSAzjK9R"
+    }
+   }
+  },
+  {
+   "jsonrpc": "2.0",
+   "method": "session/update",
+   "params": {
+    "sessionId": "ab6219e3-9149-4e0e-840a-4c0cea4619b8",
+    "update": {
+     "sessionUpdate": "agent_message_chunk",
+     "content": {
+      "type": "text",
+      "text": " subagents in parallel now"
+     },
+     "messageId": "msg_011CfsroPokXJmarWSAzjK9R"
+    }
+   }
+  },
+  {
+   "jsonrpc": "2.0",
+   "method": "session/update",
+   "params": {
+    "sessionId": "ab6219e3-9149-4e0e-840a-4c0cea4619b8",
+    "update": {
+     "sessionUpdate": "agent_message_chunk",
+     "content": {
+      "type": "text",
+      "text": "."
+     },
+     "messageId": "msg_011CfsroPokXJmarWSAzjK9R"
+    }
+   }
+  },
+  {
+   "jsonrpc": "2.0",
+   "method": "session/update",
+   "params": {
+    "sessionId": "ab6219e3-9149-4e0e-840a-4c0cea4619b8",
+    "update": {
+     "_meta": {
+      "claudeCode": {
+       "toolName": "Agent"
+      },
+      "jetbrains": {
+       "air": {
+        "version": 1,
+        "subagent": true
+       }
+      }
+     },
+     "toolCallId": "toolu_01B7bGspZr9HB4ctXRrxemcW",
+     "sessionUpdate": "tool_call",
+     "name": "Agent",
+     "status": "pending",
+     "title": "Task",
+     "kind": "think",
+     "content": []
+    }
+   }
+  },
+  {
+   "jsonrpc": "2.0",
+   "method": "session/update",
+   "params": {
+    "sessionId": "ab6219e3-9149-4e0e-840a-4c0cea4619b8",
+    "update": {
+     "toolCallId": "toolu_01B7bGspZr9HB4ctXRrxemcW",
+     "sessionUpdate": "tool_call_update",
+     "title": "Find transcript_metadata definition"
+    }
+   }
+  },
+  {
+   "jsonrpc": "2.0",
+   "method": "session/update",
+   "params": {
+    "sessionId": "ab6219e3-9149-4e0e-840a-4c0cea4619b8",
+    "update": {
+     "toolCallId": "toolu_01B7bGspZr9HB4ctXRrxemcW",
+     "sessionUpdate": "tool_call_update",
+     "rawInput": {
+      "description": "Find transcript_metadata definition",
+      "subagent_type": "general-purpose",
+      "prompt": "Read-only task, do not modify any files. (1) Find where the Rust function `transcript_metadata` is defined under /work/repo/backend/ (give file path and line number). (2) You MUST launch exactly one nested Explore subagent (via the Agent tool with subagent_type \"Explore\") to list the callers of `transcript_metadata` under /work/repo/backend/ (file:line for each). If you cannot launch a nested subagent, say so explicitly rather than doing the search yourself. Report: the definition location, the callers returned by the nested Explore agent, and whether the nested launch succeeded."
+     },
+     "content": [
+      {
+       "type": "content",
+       "content": {
+        "type": "text",
+        "text": "Read-only task, do not modify any files. (1) Find where the Rust function `transcript_metadata` is defined under /work/repo/backend/ (give file path and line number). (2) You MUST launch exactly one nested Explore subagent (via the Agent tool with subagent_type \"Explore\") to list the callers of `transcript_metadata` under /work/repo/backend/ (file:line for each). If you cannot launch a nested subagent, say so explicitly rather than doing the search yourself. Report: the definition location, the callers returned by the nested Explore agent, and whether the nested launch succeeded."
+       }
+      }
+     ]
+    }
+   }
+  },
+  {
+   "jsonrpc": "2.0",
+   "method": "session/update",
+   "params": {
+    "sessionId": "ab6219e3-9149-4e0e-840a-4c0cea4619b8",
+    "update": {
+     "_meta": {
+      "claudeCode": {
+       "toolResponse": {
+        "status": "async_launched",
+        "isAsync": true
+       }
+      }
+     },
+     "toolCallId": "toolu_01B7bGspZr9HB4ctXRrxemcW",
+     "sessionUpdate": "tool_call_update"
+    }
+   }
+  },
+  {
+   "jsonrpc": "2.0",
+   "method": "session/update",
+   "params": {
+    "sessionId": "ab6219e3-9149-4e0e-840a-4c0cea4619b8",
+    "update": {
+     "_meta": {
+      "claudeCode": {
+       "toolName": "Agent"
+      },
+      "jetbrains": {
+       "air": {
+        "version": 1,
+        "subagent": true
+       }
+      }
+     },
+     "toolCallId": "toolu_018oDuABh8ft9pADCzi9jv5H",
+     "sessionUpdate": "tool_call",
+     "name": "Agent",
+     "status": "pending",
+     "title": "Task",
+     "kind": "think",
+     "content": []
+    }
+   }
+  },
+  {
+   "jsonrpc": "2.0",
+   "method": "session/update",
+   "params": {
+    "sessionId": "ab6219e3-9149-4e0e-840a-4c0cea4619b8",
+    "update": {
+     "toolCallId": "toolu_01B7bGspZr9HB4ctXRrxemcW",
+     "sessionUpdate": "tool_call_update",
+     "status": "completed",
+     "content": [
+      {
+       "type": "content",
+       "content": {
+        "type": "text",
+        "text": "Async agent launched successfully. (This tool result is internal metadata \u2014 never quote or paste any part of it, including the agentId below, into a user-facing reply.)\nagentId: a2fb6a18efb8a8a1d (internal ID - do not mention to user. Use SendMessage with to: 'a2fb6a18efb8a8a1d', summary: '<5-10 word recap>' to continue this agent.)\nThe agent is working in the background. You will be notified automatically when it completes. You know nothing about its results until that notification arrives \u2014 do not report, assume, or predict them; continue other work or respond to the user in the meantime.\nDo not duplicate this agent's work \u2014 avoid working with the same files or topics it is using.\noutput_file: /tmp/claude/ab6219e3-9149-4e0e-840a-4c0cea4619b8/tasks/a2fb6a18efb8a8a1d.output\nDo NOT Read or tail this file via the shell tool \u2014 it is the full subagent JSONL transcript and reading it will overflow your context. If the user asks for progress, say the agent is still running; you'll get a completion notification."
+       }
+      }
+     ]
+    }
+   }
+  },
+  {
+   "jsonrpc": "2.0",
+   "method": "session/update",
+   "params": {
+    "sessionId": "ab6219e3-9149-4e0e-840a-4c0cea4619b8",
+    "update": {
+     "toolCallId": "toolu_018oDuABh8ft9pADCzi9jv5H",
+     "sessionUpdate": "tool_call_update",
+     "title": "Count .rs files under backend"
+    }
+   }
+  },
+  {
+   "jsonrpc": "2.0",
+   "method": "session/update",
+   "params": {
+    "sessionId": "ab6219e3-9149-4e0e-840a-4c0cea4619b8",
+    "update": {
+     "toolCallId": "toolu_018oDuABh8ft9pADCzi9jv5H",
+     "sessionUpdate": "tool_call_update",
+     "rawInput": {
+      "description": "Count .rs files under backend",
+      "subagent_type": "nonexistent-type",
+      "prompt": "Read-only task, do not modify any files. Count the .rs files under /work/repo/backend/ and report the number."
+     },
+     "content": [
+      {
+       "type": "content",
+       "content": {
+        "type": "text",
+        "text": "Read-only task, do not modify any files. Count the .rs files under /work/repo/backend/ and report the number."
+       }
+      }
+     ]
+    }
+   }
+  },
+  {
+   "jsonrpc": "2.0",
+   "method": "session/update",
+   "params": {
+    "sessionId": "ab6219e3-9149-4e0e-840a-4c0cea4619b8",
+    "update": {
+     "toolCallId": "toolu_018oDuABh8ft9pADCzi9jv5H",
+     "sessionUpdate": "tool_call_update",
+     "status": "failed",
+     "content": [
+      {
+       "type": "content",
+       "content": {
+        "type": "text",
+        "text": "```\nAgent type 'nonexistent-type' not found. Available agents: claude, claude-code-guide, Explore, general-purpose, Plan, statusline-setup\n```"
+       }
+      }
+     ]
+    }
+   }
+  },
+  {
+   "jsonrpc": "2.0",
+   "method": "session/update",
+   "params": {
+    "sessionId": "ab6219e3-9149-4e0e-840a-4c0cea4619b8",
+    "update": {
+     "sessionUpdate": "usage_update",
+     "used": 40383,
+     "size": 1000000,
+     "_meta": {
+      "_claude/model": "claude-sonnet-5-5"
+     }
+    }
+   }
+  },
+  {
+   "jsonrpc": "2.0",
+   "method": "session/update",
+   "params": {
+    "sessionId": "ab6219e3-9149-4e0e-840a-4c0cea4619b8",
+    "update": {
+     "sessionUpdate": "usage_update",
+     "used": 40383,
+     "size": 1000000,
+     "_meta": {
+      "_claude/model": "claude-sonnet-5-5"
+     }
+    }
+   }
+  },
+  {
+   "jsonrpc": "2.0",
+   "method": "session/update",
+   "params": {
+    "sessionId": "ab6219e3-9149-4e0e-840a-4c0cea4619b8",
+    "update": {
+     "_meta": {
+      "claudeCode": {
+       "toolName": "Bash",
+       "parentToolUseId": "toolu_01B7bGspZr9HB4ctXRrxemcW"
+      },
+      "terminal_info": {
+       "terminal_id": "toolu_01A4DDTTFWYS2xT1XJEW6T24"
+      }
+     },
+     "toolCallId": "toolu_01A4DDTTFWYS2xT1XJEW6T24",
+     "sessionUpdate": "tool_call",
+     "name": "Bash",
+     "rawInput": {
+      "command": "grep -rn \"fn transcript_metadata\" /work/repo/backend/ --include=*.rs"
+     },
+     "status": "pending",
+     "title": "grep -rn \"fn transcript_metadata\" /work/repo/backend/ --include=*.rs",
+     "kind": "execute",
+     "content": [
+      {
+       "type": "terminal",
+       "terminalId": "toolu_01A4DDTTFWYS2xT1XJEW6T24"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "jsonrpc": "2.0",
+   "method": "session/update",
+   "params": {
+    "sessionId": "ab6219e3-9149-4e0e-840a-4c0cea4619b8",
+    "update": {
+     "_meta": {
+      "terminal_output": {
+       "terminal_id": "toolu_01A4DDTTFWYS2xT1XJEW6T24",
+       "data": "(eval):1: no matches found: --include=*.rs"
+      }
+     },
+     "toolCallId": "toolu_01A4DDTTFWYS2xT1XJEW6T24",
+     "sessionUpdate": "tool_call_update"
+    }
+   }
+  },
+  {
+   "jsonrpc": "2.0",
+   "method": "session/update",
+   "params": {
+    "sessionId": "ab6219e3-9149-4e0e-840a-4c0cea4619b8",
+    "update": {
+     "_meta": {
+      "terminal_exit": {
+       "terminal_id": "toolu_01A4DDTTFWYS2xT1XJEW6T24",
+       "exit_code": 0,
+       "signal": null
+      }
+     },
+     "toolCallId": "toolu_01A4DDTTFWYS2xT1XJEW6T24",
+     "sessionUpdate": "tool_call_update",
+     "status": "completed"
+    }
+   }
+  },
+  {
+   "jsonrpc": "2.0",
+   "method": "session/update",
+   "params": {
+    "sessionId": "ab6219e3-9149-4e0e-840a-4c0cea4619b8",
+    "update": {
+     "sessionUpdate": "usage_update",
+     "used": 40953,
+     "size": 1000000,
+     "_meta": {
+      "_claude/model": "claude-sonnet-5-5"
+     }
+    }
+   }
+  },
+  {
+   "jsonrpc": "2.0",
+   "method": "session/update",
+   "params": {
+    "sessionId": "ab6219e3-9149-4e0e-840a-4c0cea4619b8",
+    "update": {
+     "sessionUpdate": "agent_message_chunk",
+     "content": {
+      "type": "text",
+      "text": "The first"
+     },
+     "messageId": "msg_011CfsroeeDjerorKTHKub3p"
+    }
+   }
+  },
+  {
+   "jsonrpc": "2.0",
+   "method": "session/update",
+   "params": {
+    "sessionId": "ab6219e3-9149-4e0e-840a-4c0cea4619b8",
+    "update": {
+     "sessionUpdate": "agent_message_chunk",
+     "content": {
+      "type": "text",
+      "text": " subagent is"
+     },
+     "messageId": "msg_011CfsroeeDjerorKTHKub3p"
+    }
+   }
+  },
+  {
+   "jsonrpc": "2.0",
+   "method": "session/update",
+   "params": {
+    "sessionId": "ab6219e3-9149-4e0e-840a-4c0cea4619b8",
+    "update": {
+     "sessionUpdate": "agent_message_chunk",
+     "content": {
+      "type": "text",
+      "text": " still running,"
+     },
+     "messageId": "msg_011CfsroeeDjerorKTHKub3p"
+    }
+   }
+  },
+  {
+   "jsonrpc": "2.0",
+   "method": "session/update",
+   "params": {
+    "sessionId": "ab6219e3-9149-4e0e-840a-4c0cea4619b8",
+    "update": {
+     "sessionUpdate": "agent_message_chunk",
+     "content": {
+      "type": "text",
+      "text": " and the second fail"
+     },
+     "messageId": "msg_011CfsroeeDjerorKTHKub3p"
+    }
+   }
+  },
+  {
+   "jsonrpc": "2.0",
+   "method": "session/update",
+   "params": {
+    "sessionId": "ab6219e3-9149-4e0e-840a-4c0cea4619b8",
+    "update": {
+     "sessionUpdate": "agent_message_chunk",
+     "content": {
+      "type": "text",
+      "text": "ed to"
+     },
+     "messageId": "msg_011CfsroeeDjerorKTHKub3p"
+    }
+   }
+  },
+  {
+   "jsonrpc": "2.0",
+   "method": "session/update",
+   "params": {
+    "sessionId": "ab6219e3-9149-4e0e-840a-4c0cea4619b8",
+    "update": {
+     "sessionUpdate": "agent_message_chunk",
+     "content": {
+      "type": "text",
+      "text": " launch because `nonexist"
+     },
+     "messageId": "msg_011CfsroeeDjerorKTHKub3p"
+    }
+   }
+  },
+  {
+   "jsonrpc": "2.0",
+   "method": "session/update",
+   "params": {
+    "sessionId": "ab6219e3-9149-4e0e-840a-4c0cea4619b8",
+    "update": {
+     "sessionUpdate": "agent_message_chunk",
+     "content": {
+      "type": "text",
+      "text": "ent-type` is"
+     },
+     "messageId": "msg_011CfsroeeDjerorKTHKub3p"
+    }
+   }
+  },
+  {
+   "jsonrpc": "2.0",
+   "method": "session/update",
+   "params": {
+    "sessionId": "ab6219e3-9149-4e0e-840a-4c0cea4619b8",
+    "update": {
+     "sessionUpdate": "agent_message_chunk",
+     "content": {
+      "type": "text",
+      "text": "n't a"
+     },
+     "messageId": "msg_011CfsroeeDjerorKTHKub3p"
+    }
+   }
+  },
+  {
+   "jsonrpc": "2.0",
+   "method": "session/update",
+   "params": {
+    "sessionId": "ab6219e3-9149-4e0e-840a-4c0cea4619b8",
+    "update": {
+     "sessionUpdate": "agent_message_chunk",
+     "content": {
+      "type": "text",
+      "text": " val"
+     },
+     "messageId": "msg_011CfsroeeDjerorKTHKub3p"
+    }
+   }
+  },
+  {
+   "jsonrpc": "2.0",
+   "method": "session/update",
+   "params": {
+    "sessionId": "ab6219e3-9149-4e0e-840a-4c0cea4619b8",
+    "update": {
+     "sessionUpdate": "agent_message_chunk",
+     "content": {
+      "type": "text",
+      "text": "id agent type."
+     },
+     "messageId": "msg_011CfsroeeDjerorKTHKub3p"
+    }
+   }
+  },
+  {
+   "jsonrpc": "2.0",
+   "method": "session/update",
+   "params": {
+    "sessionId": "ab6219e3-9149-4e0e-840a-4c0cea4619b8",
+    "update": {
+     "sessionUpdate": "agent_message_chunk",
+     "content": {
+      "type": "text",
+      "text": " I'll write"
+     },
+     "messageId": "msg_011CfsroeeDjerorKTHKub3p"
+    }
+   }
+  },
+  {
+   "jsonrpc": "2.0",
+   "method": "session/update",
+   "params": {
+    "sessionId": "ab6219e3-9149-4e0e-840a-4c0cea4619b8",
+    "update": {
+     "sessionUpdate": "agent_message_chunk",
+     "content": {
+      "type": "text",
+      "text": " the summary once the first one"
+     },
+     "messageId": "msg_011CfsroeeDjerorKTHKub3p"
+    }
+   }
+  },
+  {
+   "jsonrpc": "2.0",
+   "method": "session/update",
+   "params": {
+    "sessionId": "ab6219e3-9149-4e0e-840a-4c0cea4619b8",
+    "update": {
+     "sessionUpdate": "agent_message_chunk",
+     "content": {
+      "type": "text",
+      "text": " reports back"
+     },
+     "messageId": "msg_011CfsroeeDjerorKTHKub3p"
+    }
+   }
+  },
+  {
+   "jsonrpc": "2.0",
+   "method": "session/update",
+   "params": {
+    "sessionId": "ab6219e3-9149-4e0e-840a-4c0cea4619b8",
+    "update": {
+     "sessionUpdate": "agent_message_chunk",
+     "content": {
+      "type": "text",
+      "text": "."
+     },
+     "messageId": "msg_011CfsroeeDjerorKTHKub3p"
+    }
+   }
+  },
+  {
+   "jsonrpc": "2.0",
+   "method": "session/update",
+   "params": {
+    "sessionId": "ab6219e3-9149-4e0e-840a-4c0cea4619b8",
+    "update": {
+     "sessionUpdate": "usage_update",
+     "used": 40953,
+     "size": 1000000,
+     "_meta": {
+      "_claude/model": "claude-sonnet-5-5"
+     }
+    }
+   }
+  },
+  {
+   "jsonrpc": "2.0",
+   "method": "session/update",
+   "params": {
+    "sessionId": "ab6219e3-9149-4e0e-840a-4c0cea4619b8",
+    "update": {
+     "sessionUpdate": "usage_update",
+     "used": 40953,
+     "size": 1000000,
+     "cost": {
+      "amount": 0.08778259999999999,
+      "currency": "USD"
+     },
+     "_meta": {
+      "_claude/origin": {
+       "kind": "human"
+      },
+      "_claude/model": "claude-sonnet-5-5"
+     }
+    }
+   }
+  },
+  {
+   "jsonrpc": "2.0",
+   "method": "session/update",
+   "params": {
+    "sessionId": "ab6219e3-9149-4e0e-840a-4c0cea4619b8",
+    "update": {
+     "_meta": {
+      "claudeCode": {
+       "toolName": "Agent",
+       "parentToolUseId": "toolu_01B7bGspZr9HB4ctXRrxemcW"
+      },
+      "jetbrains": {
+       "air": {
+        "version": 1,
+        "subagent": true
+       }
+      }
+     },
+     "toolCallId": "toolu_01SvuHrKZ1tbgaM9bUsFEoMT",
+     "sessionUpdate": "tool_call",
+     "name": "Agent",
+     "rawInput": {
+      "description": "Find transcript_metadata callers",
+      "subagent_type": "Explore",
+      "prompt": "Read-only. List all callers of the Rust function `transcript_metadata` under /work/repo/backend/ . Report each call site as file:line (absolute paths), excluding the definition itself. Be concise.",
+      "run_in_background": false
+     },
+     "status": "pending",
+     "title": "Find transcript_metadata callers",
+     "kind": "think",
+     "content": [
+      {
+       "type": "content",
+       "content": {
+        "type": "text",
+        "text": "Read-only. List all callers of the Rust function `transcript_metadata` under /work/repo/backend/ . Report each call site as file:line (absolute paths), excluding the definition itself. Be concise."
+       }
+      }
+     ]
+    }
+   }
+  },
+  {
+   "jsonrpc": "2.0",
+   "method": "session/update",
+   "params": {
+    "sessionId": "ab6219e3-9149-4e0e-840a-4c0cea4619b8",
+    "update": {
+     "_meta": {
+      "claudeCode": {
+       "toolResponse": {
+        "status": "completed"
+       }
+      }
+     },
+     "toolCallId": "toolu_01SvuHrKZ1tbgaM9bUsFEoMT",
+     "sessionUpdate": "tool_call_update"
+    }
+   }
+  },
+  {
+   "jsonrpc": "2.0",
+   "method": "session/update",
+   "params": {
+    "sessionId": "ab6219e3-9149-4e0e-840a-4c0cea4619b8",
+    "update": {
+     "toolCallId": "toolu_01SvuHrKZ1tbgaM9bUsFEoMT",
+     "sessionUpdate": "tool_call_update",
+     "status": "completed",
+     "content": [
+      {
+       "type": "content",
+       "content": {
+        "type": "text",
+        "text": "Callers of `transcript_metadata` (the definition is at `metadata.rs:68`):\n\nNon-test callers:\n- `/work/repo/backend/crates/ottam-core/src/server/chat/transcript/assembly.rs:184`\n- `/work/repo/backend/crates/ottam-core/src/agent/acp/protocol.rs:195`\n\nCallers in `metadata.rs`, which look like unit tests:\n- `/work/repo/backend/crates/ottam-core/src/agent/metadata.rs:179`\n- `/work/repo/backend/crates/ottam-core/src/agent/metadata.rs:183`\n- `/work/repo/backend/crates/ottam-core/src/agent/metadata.rs:219`\n- `/work/repo/backend/crates/ottam-core/src/agent/metadata.rs:226`\n\nI didn't open the file, so the test classification is inferred from the line numbers (after the definition at line 68, within a fixtures-based block)."
+       }
+      }
+     ]
+    }
+   }
+  },
+  {
+   "jsonrpc": "2.0",
+   "method": "session/update",
+   "params": {
+    "sessionId": "ab6219e3-9149-4e0e-840a-4c0cea4619b8",
+    "update": {
+     "_meta": {
+      "claudeCode": {
+       "toolName": "Bash",
+       "parentToolUseId": "toolu_01B7bGspZr9HB4ctXRrxemcW"
+      },
+      "terminal_info": {
+       "terminal_id": "toolu_011b6nPYQhF8afdkNSuhU6Ra"
+      }
+     },
+     "toolCallId": "toolu_011b6nPYQhF8afdkNSuhU6Ra",
+     "sessionUpdate": "tool_call",
+     "name": "Bash",
+     "rawInput": {
+      "command": "grep -rn \"fn transcript_metadata\" /work/repo/backend/ --include='*.rs'"
+     },
+     "status": "pending",
+     "title": "grep -rn \"fn transcript_metadata\" /work/repo/backend/ --include='*.rs'",
+     "kind": "execute",
+     "content": [
+      {
+       "type": "terminal",
+       "terminalId": "toolu_011b6nPYQhF8afdkNSuhU6Ra"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "jsonrpc": "2.0",
+   "method": "session/update",
+   "params": {
+    "sessionId": "ab6219e3-9149-4e0e-840a-4c0cea4619b8",
+    "update": {
+     "_meta": {
+      "terminal_output": {
+       "terminal_id": "toolu_011b6nPYQhF8afdkNSuhU6Ra",
+       "data": "/work/repo/backend/crates/ottam-core/src/server/chat/transcript.rs:1695:    async fn transcript_metadata_survives_checkpoint_and_offline_reload() {\n/work/repo/backend/crates/ottam-core/src/server/chat/transcript/assembly.rs:506:    fn transcript_metadata_revises_without_reordering_or_empty_rows() {\n/work/repo/backend/crates/ottam-core/src/agent/metadata.rs:68:pub(crate) fn transcript_metadata(value: &Value) -> TranscriptAdapterMetadata {"
+      }
+     },
+     "toolCallId": "toolu_011b6nPYQhF8afdkNSuhU6Ra",
+     "sessionUpdate": "tool_call_update"
+    }
+   }
+  },
+  {
+   "jsonrpc": "2.0",
+   "method": "session/update",
+   "params": {
+    "sessionId": "ab6219e3-9149-4e0e-840a-4c0cea4619b8",
+    "update": {
+     "_meta": {
+      "terminal_exit": {
+       "terminal_id": "toolu_011b6nPYQhF8afdkNSuhU6Ra",
+       "exit_code": 0,
+       "signal": null
+      }
+     },
+     "toolCallId": "toolu_011b6nPYQhF8afdkNSuhU6Ra",
+     "sessionUpdate": "tool_call_update",
+     "status": "completed"
+    }
+   }
+  },
+  {
+   "jsonrpc": "2.0",
+   "method": "session/update",
+   "params": {
+    "sessionId": "ab6219e3-9149-4e0e-840a-4c0cea4619b8",
+    "update": {
+     "sessionUpdate": "usage_update",
+     "used": 42015,
+     "size": 1000000,
+     "_meta": {
+      "_claude/model": "claude-sonnet-5-5"
+     }
+    }
+   }
+  },
+  {
+   "jsonrpc": "2.0",
+   "method": "session/update",
+   "params": {
+    "sessionId": "ab6219e3-9149-4e0e-840a-4c0cea4619b8",
+    "update": {
+     "sessionUpdate": "agent_message_chunk",
+     "content": {
+      "type": "text",
+      "text": "`transcript_metadata"
+     },
+     "messageId": "msg_011CfsrpcRJYDCFV8uxLmebc"
+    }
+   }
+  },
+  {
+   "jsonrpc": "2.0",
+   "method": "session/update",
+   "params": {
+    "sessionId": "ab6219e3-9149-4e0e-840a-4c0cea4619b8",
+    "update": {
+     "sessionUpdate": "agent_message_chunk",
+     "content": {
+      "type": "text",
+      "text": "` is defined at `backend"
+     },
+     "messageId": "msg_011CfsrpcRJYDCFV8uxLmebc"
+    }
+   }
+  },
+  {
+   "jsonrpc": "2.0",
+   "method": "session/update",
+   "params": {
+    "sessionId": "ab6219e3-9149-4e0e-840a-4c0cea4619b8",
+    "update": {
+     "sessionUpdate": "agent_message_chunk",
+     "content": {
+      "type": "text",
+      "text": "/crates/ottam"
+     },
+     "messageId": "msg_011CfsrpcRJYDCFV8uxLmebc"
+    }
+   }
+  },
+  {
+   "jsonrpc": "2.0",
+   "method": "session/update",
+   "params": {
+    "sessionId": "ab6219e3-9149-4e0e-840a-4c0cea4619b8",
+    "update": {
+     "sessionUpdate": "agent_message_chunk",
+     "content": {
+      "type": "text",
+      "text": "-core/src/agent/"
+     },
+     "messageId": "msg_011CfsrpcRJYDCFV8uxLmebc"
+    }
+   }
+  },
+  {
+   "jsonrpc": "2.0",
+   "method": "session/update",
+   "params": {
+    "sessionId": "ab6219e3-9149-4e0e-840a-4c0cea4619b8",
+    "update": {
+     "sessionUpdate": "agent_message_chunk",
+     "content": {
+      "type": "text",
+      "text": "metadata.rs:68"
+     },
+     "messageId": "msg_011CfsrpcRJYDCFV8uxLmebc"
+    }
+   }
+  },
+  {
+   "jsonrpc": "2.0",
+   "method": "session/update",
+   "params": {
+    "sessionId": "ab6219e3-9149-4e0e-840a-4c0cea4619b8",
+    "update": {
+     "sessionUpdate": "agent_message_chunk",
+     "content": {
+      "type": "text",
+      "text": "`."
+     },
+     "messageId": "msg_011CfsrpcRJYDCFV8uxLmebc"
+    }
+   }
+  },
+  {
+   "jsonrpc": "2.0",
+   "method": "session/update",
+   "params": {
+    "sessionId": "ab6219e3-9149-4e0e-840a-4c0cea4619b8",
+    "update": {
+     "sessionUpdate": "agent_message_chunk",
+     "content": {
+      "type": "text",
+      "text": " The nested Explore agent"
+     },
+     "messageId": "msg_011CfsrpcRJYDCFV8uxLmebc"
+    }
+   }
+  },
+  {
+   "jsonrpc": "2.0",
+   "method": "session/update",
+   "params": {
+    "sessionId": "ab6219e3-9149-4e0e-840a-4c0cea4619b8",
+    "update": {
+     "sessionUpdate": "agent_message_chunk",
+     "content": {
+      "type": "text",
+      "text": " found two non-test callers,"
+     },
+     "messageId": "msg_011CfsrpcRJYDCFV8uxLmebc"
+    }
+   }
+  },
+  {
+   "jsonrpc": "2.0",
+   "method": "session/update",
+   "params": {
+    "sessionId": "ab6219e3-9149-4e0e-840a-4c0cea4619b8",
+    "update": {
+     "sessionUpdate": "agent_message_chunk",
+     "content": {
+      "type": "text",
+      "text": " `server"
+     },
+     "messageId": "msg_011CfsrpcRJYDCFV8uxLmebc"
+    }
+   }
+  },
+  {
+   "jsonrpc": "2.0",
+   "method": "session/update",
+   "params": {
+    "sessionId": "ab6219e3-9149-4e0e-840a-4c0cea4619b8",
+    "update": {
+     "sessionUpdate": "agent_message_chunk",
+     "content": {
+      "type": "text",
+      "text": "/chat/transcript/"
+     },
+     "messageId": "msg_011CfsrpcRJYDCFV8uxLmebc"
+    }
+   }
+  },
+  {
+   "jsonrpc": "2.0",
+   "method": "session/update",
+   "params": {
+    "sessionId": "ab6219e3-9149-4e0e-840a-4c0cea4619b8",
+    "update": {
+     "sessionUpdate": "agent_message_chunk",
+     "content": {
+      "type": "text",
+      "text": "assembly.rs:184"
+     },
+     "messageId": "msg_011CfsrpcRJYDCFV8uxLmebc"
+    }
+   }
+  },
+  {
+   "jsonrpc": "2.0",
+   "method": "session/update",
+   "params": {
+    "sessionId": "ab6219e3-9149-4e0e-840a-4c0cea4619b8",
+    "update": {
+     "sessionUpdate": "agent_message_chunk",
+     "content": {
+      "type": "text",
+      "text": "` and `agent/acp"
+     },
+     "messageId": "msg_011CfsrpcRJYDCFV8uxLmebc"
+    }
+   }
+  },
+  {
+   "jsonrpc": "2.0",
+   "method": "session/update",
+   "params": {
+    "sessionId": "ab6219e3-9149-4e0e-840a-4c0cea4619b8",
+    "update": {
+     "sessionUpdate": "agent_message_chunk",
+     "content": {
+      "type": "text",
+      "text": "/protocol.rs:"
+     },
+     "messageId": "msg_011CfsrpcRJYDCFV8uxLmebc"
+    }
+   }
+  },
+  {
+   "jsonrpc": "2.0",
+   "method": "session/update",
+   "params": {
+    "sessionId": "ab6219e3-9149-4e0e-840a-4c0cea4619b8",
+    "update": {
+     "sessionUpdate": "agent_message_chunk",
+     "content": {
+      "type": "text",
+      "text": "195`, pl"
+     },
+     "messageId": "msg_011CfsrpcRJYDCFV8uxLmebc"
+    }
+   }
+  },
+  {
+   "jsonrpc": "2.0",
+   "method": "session/update",
+   "params": {
+    "sessionId": "ab6219e3-9149-4e0e-840a-4c0cea4619b8",
+    "update": {
+     "sessionUpdate": "agent_message_chunk",
+     "content": {
+      "type": "text",
+      "text": "us four more cal"
+     },
+     "messageId": "msg_011CfsrpcRJYDCFV8uxLmebc"
+    }
+   }
+  },
+  {
+   "jsonrpc": "2.0",
+   "method": "session/update",
+   "params": {
+    "sessionId": "ab6219e3-9149-4e0e-840a-4c0cea4619b8",
+    "update": {
+     "sessionUpdate": "agent_message_chunk",
+     "content": {
+      "type": "text",
+      "text": "ls in"
+     },
+     "messageId": "msg_011CfsrpcRJYDCFV8uxLmebc"
+    }
+   }
+  },
+  {
+   "jsonrpc": "2.0",
+   "method": "session/update",
+   "params": {
+    "sessionId": "ab6219e3-9149-4e0e-840a-4c0cea4619b8",
+    "update": {
+     "sessionUpdate": "agent_message_chunk",
+     "content": {
+      "type": "text",
+      "text": "side `metadata.rs"
+     },
+     "messageId": "msg_011CfsrpcRJYDCFV8uxLmebc"
+    }
+   }
+  },
+  {
+   "jsonrpc": "2.0",
+   "method": "session/update",
+   "params": {
+    "sessionId": "ab6219e3-9149-4e0e-840a-4c0cea4619b8",
+    "update": {
+     "sessionUpdate": "agent_message_chunk",
+     "content": {
+      "type": "text",
+      "text": "`"
+     },
+     "messageId": "msg_011CfsrpcRJYDCFV8uxLmebc"
+    }
+   }
+  },
+  {
+   "jsonrpc": "2.0",
+   "method": "session/update",
+   "params": {
+    "sessionId": "ab6219e3-9149-4e0e-840a-4c0cea4619b8",
+    "update": {
+     "sessionUpdate": "agent_message_chunk",
+     "content": {
+      "type": "text",
+      "text": " that are prob"
+     },
+     "messageId": "msg_011CfsrpcRJYDCFV8uxLmebc"
+    }
+   }
+  },
+  {
+   "jsonrpc": "2.0",
+   "method": "session/update",
+   "params": {
+    "sessionId": "ab6219e3-9149-4e0e-840a-4c0cea4619b8",
+    "update": {
+     "sessionUpdate": "agent_message_chunk",
+     "content": {
+      "type": "text",
+      "text": "ably un"
+     },
+     "messageId": "msg_011CfsrpcRJYDCFV8uxLmebc"
+    }
+   }
+  },
+  {
+   "jsonrpc": "2.0",
+   "method": "session/update",
+   "params": {
+    "sessionId": "ab6219e3-9149-4e0e-840a-4c0cea4619b8",
+    "update": {
+     "sessionUpdate": "agent_message_chunk",
+     "content": {
+      "type": "text",
+      "text": "it tests (inferred from"
+     },
+     "messageId": "msg_011CfsrpcRJYDCFV8uxLmebc"
+    }
+   }
+  },
+  {
+   "jsonrpc": "2.0",
+   "method": "session/update",
+   "params": {
+    "sessionId": "ab6219e3-9149-4e0e-840a-4c0cea4619b8",
+    "update": {
+     "sessionUpdate": "agent_message_chunk",
+     "content": {
+      "type": "text",
+      "text": " line numbers, not chec"
+     },
+     "messageId": "msg_011CfsrpcRJYDCFV8uxLmebc"
+    }
+   }
+  },
+  {
+   "jsonrpc": "2.0",
+   "method": "session/update",
+   "params": {
+    "sessionId": "ab6219e3-9149-4e0e-840a-4c0cea4619b8",
+    "update": {
+     "sessionUpdate": "agent_message_chunk",
+     "content": {
+      "type": "text",
+      "text": "ked). The `"
+     },
+     "messageId": "msg_011CfsrpcRJYDCFV8uxLmebc"
+    }
+   }
+  },
+  {
+   "jsonrpc": "2.0",
+   "method": "session/update",
+   "params": {
+    "sessionId": "ab6219e3-9149-4e0e-840a-4c0cea4619b8",
+    "update": {
+     "sessionUpdate": "agent_message_chunk",
+     "content": {
+      "type": "text",
+      "text": "."
+     },
+     "messageId": "msg_011CfsrpcRJYDCFV8uxLmebc"
+    }
+   }
+  },
+  {
+   "jsonrpc": "2.0",
+   "method": "session/update",
+   "params": {
+    "sessionId": "ab6219e3-9149-4e0e-840a-4c0cea4619b8",
+    "update": {
+     "sessionUpdate": "agent_message_chunk",
+     "content": {
+      "type": "text",
+      "text": "rs` file count"
+     },
+     "messageId": "msg_011CfsrpcRJYDCFV8uxLmebc"
+    }
+   }
+  },
+  {
+   "jsonrpc": "2.0",
+   "method": "session/update",
+   "params": {
+    "sessionId": "ab6219e3-9149-4e0e-840a-4c0cea4619b8",
+    "update": {
+     "sessionUpdate": "agent_message_chunk",
+     "content": {
+      "type": "text",
+      "text": " w"
+     },
+     "messageId": "msg_011CfsrpcRJYDCFV8uxLmebc"
+    }
+   }
+  },
+  {
+   "jsonrpc": "2.0",
+   "method": "session/update",
+   "params": {
+    "sessionId": "ab6219e3-9149-4e0e-840a-4c0cea4619b8",
+    "update": {
+     "sessionUpdate": "agent_message_chunk",
+     "content": {
+      "type": "text",
+      "text": "asn't produ"
+     },
+     "messageId": "msg_011CfsrpcRJYDCFV8uxLmebc"
+    }
+   }
+  },
+  {
+   "jsonrpc": "2.0",
+   "method": "session/update",
+   "params": {
+    "sessionId": "ab6219e3-9149-4e0e-840a-4c0cea4619b8",
+    "update": {
+     "sessionUpdate": "agent_message_chunk",
+     "content": {
+      "type": "text",
+      "text": "ced, because the `"
+     },
+     "messageId": "msg_011CfsrpcRJYDCFV8uxLmebc"
+    }
+   }
+  },
+  {
+   "jsonrpc": "2.0",
+   "method": "session/update",
+   "params": {
+    "sessionId": "ab6219e3-9149-4e0e-840a-4c0cea4619b8",
+    "update": {
+     "sessionUpdate": "agent_message_chunk",
+     "content": {
+      "type": "text",
+      "text": "nonexistent-type`"
+     },
+     "messageId": "msg_011CfsrpcRJYDCFV8uxLmebc"
+    }
+   }
+  },
+  {
+   "jsonrpc": "2.0",
+   "method": "session/update",
+   "params": {
+    "sessionId": "ab6219e3-9149-4e0e-840a-4c0cea4619b8",
+    "update": {
+     "sessionUpdate": "agent_message_chunk",
+     "content": {
+      "type": "text",
+      "text": " subagent fail"
+     },
+     "messageId": "msg_011CfsrpcRJYDCFV8uxLmebc"
+    }
+   }
+  },
+  {
+   "jsonrpc": "2.0",
+   "method": "session/update",
+   "params": {
+    "sessionId": "ab6219e3-9149-4e0e-840a-4c0cea4619b8",
+    "update": {
+     "sessionUpdate": "agent_message_chunk",
+     "content": {
+      "type": "text",
+      "text": "ed to launch ("
+     },
+     "messageId": "msg_011CfsrpcRJYDCFV8uxLmebc"
+    }
+   }
+  },
+  {
+   "jsonrpc": "2.0",
+   "method": "session/update",
+   "params": {
+    "sessionId": "ab6219e3-9149-4e0e-840a-4c0cea4619b8",
+    "update": {
+     "sessionUpdate": "agent_message_chunk",
+     "content": {
+      "type": "text",
+      "text": "that"
+     },
+     "messageId": "msg_011CfsrpcRJYDCFV8uxLmebc"
+    }
+   }
+  },
+  {
+   "jsonrpc": "2.0",
+   "method": "session/update",
+   "params": {
+    "sessionId": "ab6219e3-9149-4e0e-840a-4c0cea4619b8",
+    "update": {
+     "sessionUpdate": "agent_message_chunk",
+     "content": {
+      "type": "text",
+      "text": " agent type do"
+     },
+     "messageId": "msg_011CfsrpcRJYDCFV8uxLmebc"
+    }
+   }
+  },
+  {
+   "jsonrpc": "2.0",
+   "method": "session/update",
+   "params": {
+    "sessionId": "ab6219e3-9149-4e0e-840a-4c0cea4619b8",
+    "update": {
+     "sessionUpdate": "agent_message_chunk",
+     "content": {
+      "type": "text",
+      "text": "esn't exist)."
+     },
+     "messageId": "msg_011CfsrpcRJYDCFV8uxLmebc"
+    }
+   }
+  },
+  {
+   "jsonrpc": "2.0",
+   "method": "session/update",
+   "params": {
+    "sessionId": "ab6219e3-9149-4e0e-840a-4c0cea4619b8",
+    "update": {
+     "sessionUpdate": "usage_update",
+     "used": 42188,
+     "size": 1000000,
+     "_meta": {
+      "_claude/model": "claude-sonnet-5-5"
+     }
+    }
+   }
+  },
+  {
+   "jsonrpc": "2.0",
+   "method": "session/update",
+   "params": {
+    "sessionId": "ab6219e3-9149-4e0e-840a-4c0cea4619b8",
+    "update": {
+     "sessionUpdate": "usage_update",
+     "used": 42188,
+     "size": 1000000,
+     "cost": {
+      "amount": 0.26266500000000004,
+      "currency": "USD"
+     },
+     "_meta": {
+      "_claude/origin": {
+       "kind": "task-notification",
+       "producer": "session-task"
+      },
+      "_claude/model": "claude-sonnet-5-5"
+     }
+    }
+   }
+  },
+  {
+   "jsonrpc": "2.0",
+   "id": "da67b8a7-53ae-42c7-8010-8828b8a880a0",
+   "result": {
+    "stopReason": "end_turn",
+    "usage": {
+     "inputTokens": 4,
+     "outputTokens": 544,
+     "cachedReadTokens": 63373,
+     "cachedWriteTokens": 17415,
+     "totalTokens": 81336
+    },
+    "_meta": {
+     "quota": {
+      "token_count": {
+       "totalTokens": 81336,
+       "inputTokens": 4,
+       "cachedInputTokens": 63373,
+       "cachedWriteTokens": 17415,
+       "outputTokens": 544,
+       "reasoningOutputTokens": 0
+      },
+      "model_usage": [
+       {
+        "model": "claude-sonnet-5-5",
+        "token_count": {
+         "totalTokens": 81336,
+         "inputTokens": 4,
+         "cachedInputTokens": 63373,
+         "cachedWriteTokens": 17415,
+         "outputTokens": 544,
+         "reasoningOutputTokens": 0
+        }
+       }
+      ]
+     }
+    }
+   }
+  }
+ ],
+ "claudeSyncCancelled": [
+  {
+   "jsonrpc": "2.0",
+   "method": "session/update",
+   "params": {
+    "sessionId": "ab6219e3-9149-4e0e-840a-4c0cea4619b8",
+    "update": {
+     "sessionUpdate": "usage_update",
+     "used": 42320,
+     "size": 1000000,
+     "_meta": {
+      "_claude/model": "claude-sonnet-5-5"
+     }
+    }
+   }
+  },
+  {
+   "jsonrpc": "2.0",
+   "method": "session/update",
+   "params": {
+    "sessionId": "ab6219e3-9149-4e0e-840a-4c0cea4619b8",
+    "update": {
+     "_meta": {
+      "claudeCode": {
+       "toolName": "Agent"
+      },
+      "jetbrains": {
+       "air": {
+        "version": 1,
+        "subagent": true
+       }
+      }
+     },
+     "toolCallId": "toolu_01BGNedJuiMVrGUsmRegzkKY",
+     "sessionUpdate": "tool_call",
+     "name": "Agent",
+     "status": "pending",
+     "title": "Task",
+     "kind": "think",
+     "content": []
+    }
+   }
+  },
+  {
+   "jsonrpc": "2.0",
+   "method": "session/update",
+   "params": {
+    "sessionId": "ab6219e3-9149-4e0e-840a-4c0cea4619b8",
+    "update": {
+     "toolCallId": "toolu_01BGNedJuiMVrGUsmRegzkKY",
+     "sessionUpdate": "tool_call_update",
+     "title": "List backend crates after sleep"
+    }
+   }
+  },
+  {
+   "jsonrpc": "2.0",
+   "method": "session/update",
+   "params": {
+    "sessionId": "ab6219e3-9149-4e0e-840a-4c0cea4619b8",
+    "update": {
+     "toolCallId": "toolu_01BGNedJuiMVrGUsmRegzkKY",
+     "sessionUpdate": "tool_call_update",
+     "rawInput": {
+      "description": "List backend crates after sleep",
+      "subagent_type": "general-purpose",
+      "run_in_background": false,
+      "prompt": "Read-only task, do not modify any files. Using Bash, in /work/repo: first run `ls backend/crates`, then run `sleep 45` (set the Bash timeout to at least 120000 ms), then report the crate names that ls printed."
+     },
+     "content": [
+      {
+       "type": "content",
+       "content": {
+        "type": "text",
+        "text": "Read-only task, do not modify any files. Using Bash, in /work/repo: first run `ls backend/crates`, then run `sleep 45` (set the Bash timeout to at least 120000 ms), then report the crate names that ls printed."
+       }
+      }
+     ]
+    }
+   }
+  },
+  {
+   "jsonrpc": "2.0",
+   "method": "session/update",
+   "params": {
+    "sessionId": "ab6219e3-9149-4e0e-840a-4c0cea4619b8",
+    "update": {
+     "sessionUpdate": "usage_update",
+     "used": 42523,
+     "size": 1000000,
+     "_meta": {
+      "_claude/model": "claude-sonnet-5-5"
+     }
+    }
+   }
+  },
+  {
+   "jsonrpc": "2.0",
+   "method": "session/update",
+   "params": {
+    "sessionId": "ab6219e3-9149-4e0e-840a-4c0cea4619b8",
+    "update": {
+     "sessionUpdate": "usage_update",
+     "used": 42523,
+     "size": 1000000,
+     "_meta": {
+      "_claude/model": "claude-sonnet-5-5"
+     }
+    }
+   }
+  },
+  {
+   "jsonrpc": "2.0",
+   "method": "session/update",
+   "params": {
+    "sessionId": "ab6219e3-9149-4e0e-840a-4c0cea4619b8",
+    "update": {
+     "_meta": {
+      "claudeCode": {
+       "toolName": "Bash",
+       "parentToolUseId": "toolu_01BGNedJuiMVrGUsmRegzkKY"
+      },
+      "jetbrains": {
+       "air": {
+        "version": 1,
+        "commandTitle": "List backend crates"
+       }
+      },
+      "terminal_info": {
+       "terminal_id": "toolu_01PPS7ffscgDo2Ub6NCBtYsx"
+      }
+     },
+     "toolCallId": "toolu_01PPS7ffscgDo2Ub6NCBtYsx",
+     "sessionUpdate": "tool_call",
+     "name": "Bash",
+     "rawInput": {
+      "command": "ls backend/crates",
+      "description": "List backend crates"
+     },
+     "status": "pending",
+     "title": "ls backend/crates",
+     "kind": "execute",
+     "content": [
+      {
+       "type": "terminal",
+       "terminalId": "toolu_01PPS7ffscgDo2Ub6NCBtYsx"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "jsonrpc": "2.0",
+   "method": "session/update",
+   "params": {
+    "sessionId": "ab6219e3-9149-4e0e-840a-4c0cea4619b8",
+    "update": {
+     "_meta": {
+      "terminal_output": {
+       "terminal_id": "toolu_01PPS7ffscgDo2Ub6NCBtYsx",
+       "data": "ottam-core\nottam-inspect\nottam-protocol\nottam-test-acp"
+      }
+     },
+     "toolCallId": "toolu_01PPS7ffscgDo2Ub6NCBtYsx",
+     "sessionUpdate": "tool_call_update"
+    }
+   }
+  },
+  {
+   "jsonrpc": "2.0",
+   "method": "session/update",
+   "params": {
+    "sessionId": "ab6219e3-9149-4e0e-840a-4c0cea4619b8",
+    "update": {
+     "_meta": {
+      "terminal_exit": {
+       "terminal_id": "toolu_01PPS7ffscgDo2Ub6NCBtYsx",
+       "exit_code": 0,
+       "signal": null
+      }
+     },
+     "toolCallId": "toolu_01PPS7ffscgDo2Ub6NCBtYsx",
+     "sessionUpdate": "tool_call_update",
+     "status": "completed"
+    }
+   }
+  },
+  {
+   "jsonrpc": "2.0",
+   "method": "session/update",
+   "params": {
+    "sessionId": "ab6219e3-9149-4e0e-840a-4c0cea4619b8",
+    "update": {
+     "_meta": {
+      "claudeCode": {
+       "toolName": "Bash",
+       "parentToolUseId": "toolu_01BGNedJuiMVrGUsmRegzkKY"
+      },
+      "jetbrains": {
+       "air": {
+        "version": 1,
+        "commandTitle": "Wait 45 seconds"
+       }
+      },
+      "terminal_info": {
+       "terminal_id": "toolu_01KAqNH49oqaPZEAaLhiopgU"
+      }
+     },
+     "toolCallId": "toolu_01KAqNH49oqaPZEAaLhiopgU",
+     "sessionUpdate": "tool_call",
+     "name": "Bash",
+     "rawInput": {
+      "command": "sleep 45",
+      "description": "Wait 45 seconds",
+      "timeout": 120000
+     },
+     "status": "pending",
+     "title": "sleep 45",
+     "kind": "execute",
+     "content": [
+      {
+       "type": "terminal",
+       "terminalId": "toolu_01KAqNH49oqaPZEAaLhiopgU"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "jsonrpc": "2.0",
+   "method": "session/update",
+   "params": {
+    "sessionId": "ab6219e3-9149-4e0e-840a-4c0cea4619b8",
+    "update": {
+     "_meta": {
+      "terminal_output": {
+       "terminal_id": "toolu_01KAqNH49oqaPZEAaLhiopgU",
+       "data": "<tool_use_error>Blocked: standalone sleep 45. To wait for a condition, use Monitor with an until-loop (e.g. `until <check>; do sleep 2; done`). To wait for a command you started, use run_in_background: true. Do not chain shorter sleeps to work around this block.</tool_use_error>"
+      }
+     },
+     "toolCallId": "toolu_01KAqNH49oqaPZEAaLhiopgU",
+     "sessionUpdate": "tool_call_update"
+    }
+   }
+  },
+  {
+   "jsonrpc": "2.0",
+   "method": "session/update",
+   "params": {
+    "sessionId": "ab6219e3-9149-4e0e-840a-4c0cea4619b8",
+    "update": {
+     "_meta": {
+      "terminal_exit": {
+       "terminal_id": "toolu_01KAqNH49oqaPZEAaLhiopgU",
+       "exit_code": 1,
+       "signal": null
+      }
+     },
+     "toolCallId": "toolu_01KAqNH49oqaPZEAaLhiopgU",
+     "sessionUpdate": "tool_call_update",
+     "status": "failed"
+    }
+   }
+  },
+  {
+   "jsonrpc": "2.0",
+   "method": "session/update",
+   "params": {
+    "sessionId": "ab6219e3-9149-4e0e-840a-4c0cea4619b8",
+    "update": {
+     "_meta": {
+      "claudeCode": {
+       "toolResponse": {
+        "status": "completed"
+       }
+      }
+     },
+     "toolCallId": "toolu_01BGNedJuiMVrGUsmRegzkKY",
+     "sessionUpdate": "tool_call_update"
+    }
+   }
+  },
+  {
+   "jsonrpc": "2.0",
+   "method": "session/update",
+   "params": {
+    "sessionId": "ab6219e3-9149-4e0e-840a-4c0cea4619b8",
+    "update": {
+     "toolCallId": "toolu_01BGNedJuiMVrGUsmRegzkKY",
+     "sessionUpdate": "tool_call_update",
+     "status": "completed",
+     "content": [
+      {
+       "type": "content",
+       "content": {
+        "type": "text",
+        "text": "`ls backend/crates` printed four crates:\n\n- `ottam-core`\n- `ottam-inspect`\n- `ottam-protocol`\n- `ottam-test-acp`\n\nI didn't do the 45-second wait. The Bash tool blocked `sleep 45` as a standalone command and said to use Monitor with an until-loop or a background run instead. I didn't try to get around the block, so the wait never happened. Nothing was modified."
+       }
+      }
+     ]
+    }
+   }
+  },
+  {
+   "jsonrpc": "2.0",
+   "method": "session/update",
+   "params": {
+    "sessionId": "ab6219e3-9149-4e0e-840a-4c0cea4619b8",
+    "update": {
+     "sessionUpdate": "usage_update",
+     "used": 43059,
+     "size": 1000000,
+     "_meta": {
+      "_claude/model": "claude-sonnet-5-5"
+     }
+    }
+   }
+  },
+  {
+   "jsonrpc": "2.0",
+   "method": "session/update",
+   "params": {
+    "sessionId": "ab6219e3-9149-4e0e-840a-4c0cea4619b8",
+    "update": {
+     "sessionUpdate": "agent_message_chunk",
+     "content": {
+      "type": "text",
+      "text": "`backend/crates`"
+     },
+     "messageId": "msg_011Cfsru2DPw9dX9uNePQS9G"
+    }
+   }
+  },
+  {
+   "jsonrpc": "2.0",
+   "method": "session/update",
+   "params": {
+    "sessionId": "ab6219e3-9149-4e0e-840a-4c0cea4619b8",
+    "update": {
+     "sessionUpdate": "agent_message_chunk",
+     "content": {
+      "type": "text",
+      "text": " contains four crates: `cr"
+     },
+     "messageId": "msg_011Cfsru2DPw9dX9uNePQS9G"
+    }
+   }
+  },
+  {
+   "jsonrpc": "2.0",
+   "method": "session/update",
+   "params": {
+    "sessionId": "ab6219e3-9149-4e0e-840a-4c0cea4619b8",
+    "update": {
+     "sessionUpdate": "agent_message_chunk",
+     "content": {
+      "type": "text",
+      "text": "ossdock-core`, `"
+     },
+     "messageId": "msg_011Cfsru2DPw9dX9uNePQS9G"
+    }
+   }
+  },
+  {
+   "jsonrpc": "2.0",
+   "method": "session/update",
+   "params": {
+    "sessionId": "ab6219e3-9149-4e0e-840a-4c0cea4619b8",
+    "update": {
+     "sessionUpdate": "agent_message_chunk",
+     "content": {
+      "type": "text",
+      "text": "ottam-inspect"
+     },
+     "messageId": "msg_011Cfsru2DPw9dX9uNePQS9G"
+    }
+   }
+  },
+  {
+   "jsonrpc": "2.0",
+   "method": "session/update",
+   "params": {
+    "sessionId": "ab6219e3-9149-4e0e-840a-4c0cea4619b8",
+    "update": {
+     "sessionUpdate": "agent_message_chunk",
+     "content": {
+      "type": "text",
+      "text": "`, `ottam-"
+     },
+     "messageId": "msg_011Cfsru2DPw9dX9uNePQS9G"
+    }
+   }
+  },
+  {
+   "jsonrpc": "2.0",
+   "method": "session/update",
+   "params": {
+    "sessionId": "ab6219e3-9149-4e0e-840a-4c0cea4619b8",
+    "update": {
+     "sessionUpdate": "agent_message_chunk",
+     "content": {
+      "type": "text",
+      "text": "protocol`"
+     },
+     "messageId": "msg_011Cfsru2DPw9dX9uNePQS9G"
+    }
+   }
+  },
+  {
+   "jsonrpc": "2.0",
+   "method": "session/update",
+   "params": {
+    "sessionId": "ab6219e3-9149-4e0e-840a-4c0cea4619b8",
+    "update": {
+     "sessionUpdate": "agent_message_chunk",
+     "content": {
+      "type": "text",
+      "text": " and `ottam-test"
+     },
+     "messageId": "msg_011Cfsru2DPw9dX9uNePQS9G"
+    }
+   }
+  },
+  {
+   "jsonrpc": "2.0",
+   "method": "session/update",
+   "params": {
+    "sessionId": "ab6219e3-9149-4e0e-840a-4c0cea4619b8",
+    "update": {
+     "sessionUpdate": "agent_message_chunk",
+     "content": {
+      "type": "text",
+      "text": "-acp`. The `s"
+     },
+     "messageId": "msg_011Cfsru2DPw9dX9uNePQS9G"
+    }
+   }
+  },
+  {
+   "jsonrpc": "2.0",
+   "method": "session/update",
+   "params": {
+    "sessionId": "ab6219e3-9149-4e0e-840a-4c0cea4619b8",
+    "update": {
+     "sessionUpdate": "agent_message_chunk",
+     "content": {
+      "type": "text",
+      "text": "leep 45` step did"
+     },
+     "messageId": "msg_011Cfsru2DPw9dX9uNePQS9G"
+    }
+   }
+  },
+  {
+   "jsonrpc": "2.0",
+   "method": "session/update",
+   "params": {
+    "sessionId": "ab6219e3-9149-4e0e-840a-4c0cea4619b8",
+    "update": {
+     "sessionUpdate": "agent_message_chunk",
+     "content": {
+      "type": "text",
+      "text": "n't run."
+     },
+     "messageId": "msg_011Cfsru2DPw9dX9uNePQS9G"
+    }
+   }
+  },
+  {
+   "jsonrpc": "2.0",
+   "method": "session/update",
+   "params": {
+    "sessionId": "ab6219e3-9149-4e0e-840a-4c0cea4619b8",
+    "update": {
+     "sessionUpdate": "agent_message_chunk",
+     "content": {
+      "type": "text",
+      "text": " The Bash tool bloc"
+     },
+     "messageId": "msg_011Cfsru2DPw9dX9uNePQS9G"
+    }
+   }
+  },
+  {
+   "jsonrpc": "2.0",
+   "method": "session/update",
+   "params": {
+    "sessionId": "ab6219e3-9149-4e0e-840a-4c0cea4619b8",
+    "update": {
+     "sessionUpdate": "agent_message_chunk",
+     "content": {
+      "type": "text",
+      "text": "ked it"
+     },
+     "messageId": "msg_011Cfsru2DPw9dX9uNePQS9G"
+    }
+   }
+  },
+  {
+   "jsonrpc": "2.0",
+   "method": "session/update",
+   "params": {
+    "sessionId": "ab6219e3-9149-4e0e-840a-4c0cea4619b8",
+    "update": {
+     "sessionUpdate": "agent_message_chunk",
+     "content": {
+      "type": "text",
+      "text": " as a standalone fo"
+     },
+     "messageId": "msg_011Cfsru2DPw9dX9uNePQS9G"
+    }
+   }
+  },
+  {
+   "jsonrpc": "2.0",
+   "method": "session/update",
+   "params": {
+    "sessionId": "ab6219e3-9149-4e0e-840a-4c0cea4619b8",
+    "update": {
+     "sessionUpdate": "agent_message_chunk",
+     "content": {
+      "type": "text",
+      "text": "reground command, and the subag"
+     },
+     "messageId": "msg_011Cfsru2DPw9dX9uNePQS9G"
+    }
+   }
+  },
+  {
+   "jsonrpc": "2.0",
+   "method": "session/update",
+   "params": {
+    "sessionId": "ab6219e3-9149-4e0e-840a-4c0cea4619b8",
+    "update": {
+     "sessionUpdate": "agent_message_chunk",
+     "content": {
+      "type": "text",
+      "text": "ent did"
+     },
+     "messageId": "msg_011Cfsru2DPw9dX9uNePQS9G"
+    }
+   }
+  },
+  {
+   "jsonrpc": "2.0",
+   "method": "session/update",
+   "params": {
+    "sessionId": "ab6219e3-9149-4e0e-840a-4c0cea4619b8",
+    "update": {
+     "sessionUpdate": "agent_message_chunk",
+     "content": {
+      "type": "text",
+      "text": "n't try to get"
+     },
+     "messageId": "msg_011Cfsru2DPw9dX9uNePQS9G"
+    }
+   }
+  },
+  {
+   "jsonrpc": "2.0",
+   "method": "session/update",
+   "params": {
+    "sessionId": "ab6219e3-9149-4e0e-840a-4c0cea4619b8",
+    "update": {
+     "sessionUpdate": "agent_message_chunk",
+     "content": {
+      "type": "text",
+      "text": " around the"
+     },
+     "messageId": "msg_011Cfsru2DPw9dX9uNePQS9G"
+    }
+   }
+  },
+  {
+   "jsonrpc": "2.0",
+   "method": "session/update",
+   "params": {
+    "sessionId": "ab6219e3-9149-4e0e-840a-4c0cea4619b8",
+    "update": {
+     "sessionUpdate": "agent_message_chunk",
+     "content": {
+      "type": "text",
+      "text": " block. Nothing was mod"
+     },
+     "messageId": "msg_011Cfsru2DPw9dX9uNePQS9G"
+    }
+   }
+  },
+  {
+   "jsonrpc": "2.0",
+   "method": "session/update",
+   "params": {
+    "sessionId": "ab6219e3-9149-4e0e-840a-4c0cea4619b8",
+    "update": {
+     "sessionUpdate": "agent_message_chunk",
+     "content": {
+      "type": "text",
+      "text": "ified."
+     },
+     "messageId": "msg_011Cfsru2DPw9dX9uNePQS9G"
+    }
+   }
+  },
+  {
+   "jsonrpc": "2.0",
+   "method": "session/update",
+   "params": {
+    "sessionId": "ab6219e3-9149-4e0e-840a-4c0cea4619b8",
+    "update": {
+     "sessionUpdate": "usage_update",
+     "used": 43059,
+     "size": 1000000,
+     "cost": {
+      "amount": 0.39320540000000004,
+      "currency": "USD"
+     },
+     "_meta": {
+      "_claude/origin": {
+       "kind": "human"
+      },
+      "_claude/model": "claude-sonnet-5-5"
+     }
+    }
+   }
+  },
+  {
+   "jsonrpc": "2.0",
+   "id": "6978e322-6b81-48a1-bb4a-2b295a5e1bc1",
+   "result": {
+    "stopReason": "cancelled",
+    "usage": {
+     "inputTokens": 4,
+     "outputTokens": 334,
+     "cachedReadTokens": 84305,
+     "cachedWriteTokens": 939,
+     "totalTokens": 85582
+    },
+    "_meta": {
+     "quota": {
+      "token_count": {
+       "totalTokens": 85582,
+       "inputTokens": 4,
+       "cachedInputTokens": 84305,
+       "cachedWriteTokens": 939,
+       "outputTokens": 334,
+       "reasoningOutputTokens": 0
+      },
+      "model_usage": [
+       {
+        "model": "claude-sonnet-5-5",
+        "token_count": {
+         "totalTokens": 188381,
+         "inputTokens": 10,
+         "cachedInputTokens": 151742,
+         "cachedWriteTokens": 35835,
+         "outputTokens": 794,
+         "reasoningOutputTokens": 0
+        }
+       },
+       {
+        "model": "claude-haiku-4-5-20251001",
+        "token_count": {
+         "totalTokens": 1168,
+         "inputTokens": 1151,
+         "cachedInputTokens": 0,
+         "cachedWriteTokens": 0,
+         "outputTokens": 17,
+         "reasoningOutputTokens": 0
+        }
+       }
+      ]
+     }
+    }
+   }
+  }
+ ]
+}

@@ -1,0 +1,8 @@
+{
+  "method": "mcp.signInNeeded",
+  "params": {
+    "serverID": "019b0000-0000-7000-8000-0000000000a2",
+    "serverName": "linear",
+    "conversationID": "019b0000-0000-7000-8000-000000000010"
+  }
+}

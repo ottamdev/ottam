@@ -1,0 +1,37 @@
+{
+  "id": 462,
+  "result": {
+    "server": {
+      "serverID": "019b0000-0000-7000-8000-0000000000a1",
+      "config": {
+        "name": "github",
+        "transport": {
+          "kind": "stdio",
+          "command": "npx",
+          "args": [
+            "-y",
+            "@modelcontextprotocol/server-github"
+          ],
+          "env": [
+            {
+              "name": "GITHUB_TOKEN",
+              "secret": true
+            },
+            {
+              "name": "GITHUB_HOST",
+              "value": "github.com",
+              "secret": false
+            }
+          ]
+        }
+      },
+      "disabledWorkspaceIDs": [
+        "019b0000-0000-7000-8000-000000000003"
+      ],
+      "state": {
+        "status": "notStarted"
+      },
+      "signedIn": false
+    }
+  }
+}

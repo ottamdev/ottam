@@ -1,0 +1,13 @@
+{
+  "id": 50,
+  "result": {
+    "conversationID": "conversation_fixture",
+    "harnessSessionCleanup": [
+      {
+        "engineID": "codex",
+        "agentSessionID": "session_fixture",
+        "status": "deleted"
+      }
+    ]
+  }
+}

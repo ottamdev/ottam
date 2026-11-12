@@ -1,0 +1,8 @@
+{
+  "method": "core.exitError",
+  "params": {
+    "kind": "storageMigrationFailed",
+    "message": "This database contains migrations newer than this binary.",
+    "details": "Open this database with a newer Ottam binary. No data was reset."
+  }
+}

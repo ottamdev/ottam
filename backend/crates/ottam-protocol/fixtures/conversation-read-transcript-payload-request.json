@@ -1,0 +1,13 @@
+{
+  "id": 92,
+  "method": "conversation.readTranscriptPayload",
+  "params": {
+    "workspaceID": "019b0000-0000-7000-8000-000000000003",
+    "conversationID": "conversation_fixture",
+    "payloadID": "019b0000-0000-7000-8000-000000000092",
+    "revision": 1,
+    "part": 0,
+    "offset": 0,
+    "length": 65536
+  }
+}

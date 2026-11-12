@@ -1,0 +1,88 @@
+[package]
+name = "ottam-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[features]
+# Keeps the test seams in an optimized build (see `build.rs`); debug builds
+# always have them. Never enabled for a release bundle.
+test-seams = []
+
+[dependencies]
+agent-client-protocol = { version = "3.5", features = ["process", "unstable_session_fork", "unstable_end_turn_token_usage"] }
+async-process = "2"
+async-trait = "0.1"
+# The MCP proxy's HTTP routing: one rmcp service per `/mcp/<server>` path on
+# the loopback listener. Only HTTP/1 on Tokio; agents connect over loopback.
+axum = { version = "=0.8.9", default-features = false, features = ["http1", "tokio"] }
+base64 = "0.22"
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+ottam-protocol = { path = "../ottam-protocol" }
+diesel = { version = "=2.3.12", features = ["sqlite", "r2d2"] }
+diesel_migrations = "=2.3.2"
+fs2 = "0.4"
+futures = "0.3"
+getrandom = "0.2"
+hex = "0.4"
+libc = "0.2"
+libsqlite3-sys = { version = "=0.38.2", features = ["bundled"] }
+portable-pty = "0.9"
+# `default-tls` is native-tls, which on macOS is Security.framework: downloads
+# trust the system keychain, so corporate roots and user-installed certs work,
+# and the build stays plain `cargo` with no C/cmake step from a Rust crypto
+# backend. `macos-system-configuration` picks up the system proxy settings for
+# the same reason. No `stream` feature — `Response::chunk` covers streaming
+# without pulling futures-util in for a `StreamExt` import.
+reqwest = { version = "0.12", default-features = false, features = [
+    "charset",
+    "default-tls",
+    "http2",
+    "json",
+    "macos-system-configuration",
+] }
+# Pinned exactly: core is the MCP server every agent session reaches over
+# Streamable HTTP, and the client of every configured upstream server: local
+# processes over their stdio (core spawns them in their own process group) and
+# remote ones over Streamable HTTP. The HTTP client is rmcp's reqwest 0.13
+# backend on native-tls, beside core's own reqwest 0.12; `auth` signs in to
+# remote servers with OAuth. `reqwest013` names that same reqwest, so core
+# can build the client rmcp's OAuth wraps.
+rmcp = { version = "=3.7.0", default-features = false, features = [
+    "auth",
+    "client",
+    "reqwest-native-tls",
+    "server",
+    "transport-streamable-http-client-reqwest",
+    "transport-streamable-http-server",
+] }
+reqwest013 = { package = "reqwest", version = "0.13", default-features = false, features = ["native-tls"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }
+sha2 = "0.10"
+# The SSE event type rmcp's HTTP client trait names, for core's wrapper of it.
+sse-stream = "0.2"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "io-util", "io-std", "sync", "time", "net", "fs", "process", "signal"] }
+tokio-util = { version = "0.7", features = ["rt"] }
+toml = "0.9"
+tower-service = "0.3"
+tracing = "0.1"
+tracing-appender = "0.2"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+uuid = { version = "=1.26.0", features = ["v7"] }
+zstd = "0.13"
+
+# MCP server secrets and OAuth tokens go in the login Keychain. Already in the
+# lock file through native-tls; other platforms keep them in memory.
+[target.'cfg(target_os = "macos")'.dependencies]
+security-framework = "3"
+
+[dev-dependencies]
+# Turns off SQLite's memory statistics before the unit-test binary's first
+# connection; see `storage::test_home`.
+ctor = "=1.0.13"
+tempfile = "3"
+# `start_paused` — the sign-in reveal and lifetime timers are minutes long, so
+# the flow tests run them on Tokio's clock rather than the wall.
+tokio = { version = "1", features = ["test-util"] }

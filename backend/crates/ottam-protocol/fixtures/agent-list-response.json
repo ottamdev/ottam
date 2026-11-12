@@ -1,0 +1,80 @@
+{
+  "id": 41,
+  "result": {
+    "agents": [
+      {
+        "canSetLayout": true,
+        "harnessID": "codex",
+        "label": "Codex",
+        "homeKind": "managed",
+        "agentID": "codex",
+        "displayName": "Codex",
+        "vendorName": "OpenAI",
+        "vendorHome": "~/.codex",
+        "brand": "openai",
+        "accountLabel": "ChatGPT account",
+        "accountKind": "subscription",
+        "runtime": {
+          "availability": "ready",
+          "source": "system",
+          "nodeVersion": "v22.12.0",
+          "npxVersion": "10.9.0"
+        },
+        "adapter": {
+          "lifecycle": "ready",
+          "authState": "ready",
+          "authMethods": [
+            {
+              "methodID": "chatgpt",
+              "name": "Sign in with ChatGPT",
+              "kind": "agent"
+            }
+          ],
+          "agentName": "codex-acp",
+          "agentVersion": "1.0.0",
+          "steeringCapability": "interruptThenPrompt",
+          "supportsImageInput": true,
+          "compatibility": [
+            {
+              "feature": "loadSession",
+              "group": "agentCapability",
+              "sdkStatus": "stable",
+              "agentAdvertises": true,
+              "clientSupport": "supported",
+              "verdict": "works"
+            },
+            {
+              "feature": "usage_update",
+              "group": "updateKind",
+              "sdkStatus": "stable",
+              "clientSupport": "partial",
+              "clientDetail": "persisted as session metadata; not surfaced",
+              "verdict": "unknown"
+            },
+            {
+              "feature": "session.compaction",
+              "group": "clientCapability",
+              "sdkStatus": "unstableOff",
+              "sdkDetail": "unstable_session_compaction",
+              "clientSupport": "unsupported",
+              "verdict": "unknown"
+            }
+          ],
+          "credentialsSeen": true,
+          "generation": 1
+        },
+        "adapterPackage": {
+          "name": "@agentclientprotocol/codex-acp",
+          "version": "1.1.9",
+          "source": "npm",
+          "installState": "installed",
+          "installedVersion": "1.1.8",
+          "update": {
+            "version": "1.1.9",
+            "state": "updating"
+          }
+        }
+      }
+    ]
+  }
+}

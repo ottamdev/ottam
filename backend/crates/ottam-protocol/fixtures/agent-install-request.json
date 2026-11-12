@@ -1,0 +1,7 @@
+{
+  "id": 450,
+  "method": "agent.install",
+  "params": {
+    "agentID": "codex"
+  }
+}

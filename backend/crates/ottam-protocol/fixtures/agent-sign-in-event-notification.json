@@ -1,0 +1,16 @@
+{
+  "method": "agent.signInEvent",
+  "params": {
+    "agentID": "claude",
+    "authSessionID": "agent_auth_fixture",
+    "delivery": "clientTerminal",
+    "phase": "needsInput",
+    "revealTerminal": true,
+    "terminal": {
+      "sessionID": "terminal_local_fixture",
+      "terminalID": "019b0000-0000-7000-8000-000000000004",
+      "rows": 24,
+      "cols": 80
+    }
+  }
+}

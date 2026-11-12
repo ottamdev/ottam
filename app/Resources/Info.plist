@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>ATSApplicationFontsPath</key>
+  <string>Fonts</string>
+  <key>CFBundleDevelopmentRegion</key>
+  <string>en</string>
+  <key>CFBundleExecutable</key>
+  <string>Ottam</string>
+  <key>CFBundleIconFile</key>
+  <string>Ottam.icns</string>
+  <key>CFBundleIconName</key>
+  <string>Ottam</string>
+  <key>CFBundleIdentifier</key>
+  <string>dev.ottam.Ottam</string>
+  <key>CFBundleInfoDictionaryVersion</key>
+  <string>6.0</string>
+  <key>CFBundleName</key>
+  <string>Ottam</string>
+  <key>CFBundlePackageType</key>
+  <string>APPL</string>
+  <key>CFBundleShortVersionString</key>
+  <string>0.1.0</string>
+  <key>CFBundleVersion</key>
+  <string>1</string>
+  <key>LSMinimumSystemVersion</key>
+  <string>26.0</string>
+  <key>LSMultipleInstancesProhibited</key>
+  <true/>
+  <key>NSAppleEventsUsageDescription</key>
+  <string>A program running in Ottam wants to control another app.</string>
+  <key>NSCalendarsFullAccessUsageDescription</key>
+  <string>A program running in Ottam wants to access your calendars.</string>
+  <key>NSCalendarsUsageDescription</key>
+  <string>A program running in Ottam wants to access your calendars.</string>
+  <key>NSCameraUsageDescription</key>
+  <string>A program running in Ottam wants to use the camera.</string>
+  <key>NSContactsUsageDescription</key>
+  <string>A program running in Ottam wants to access your contacts.</string>
+  <key>NSDesktopFolderUsageDescription</key>
+  <string>A program running in Ottam wants to access files on your Desktop.</string>
+  <key>NSDocumentsFolderUsageDescription</key>
+  <string>A program running in Ottam wants to access files in your Documents folder.</string>
+  <key>NSDownloadsFolderUsageDescription</key>
+  <string>A program running in Ottam wants to access files in your Downloads folder.</string>
+  <key>NSHighResolutionCapable</key>
+  <true/>
+  <key>NSHumanReadableCopyright</key>
+  <string>© 2026 Ottam contributors</string>
+  <key>NSLocationUsageDescription</key>
+  <string>A program running in Ottam wants to use your location.</string>
+  <key>NSMicrophoneUsageDescription</key>
+  <string>A program running in Ottam wants to use the microphone.</string>
+  <key>NSPhotoLibraryUsageDescription</key>
+  <string>A program running in Ottam wants to access your photos.</string>
+  <key>NSRemindersFullAccessUsageDescription</key>
+  <string>A program running in Ottam wants to access your reminders.</string>
+  <key>NSRemindersUsageDescription</key>
+  <string>A program running in Ottam wants to access your reminders.</string>
+</dict>
+</plist>

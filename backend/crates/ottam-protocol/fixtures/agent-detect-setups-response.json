@@ -1,0 +1,16 @@
+{
+  "id": 420,
+  "result": {
+    "setups": [
+      {
+        "harnessID": "codex",
+        "displayName": "Codex",
+        "path": "/fixture/.codex",
+        "available": true,
+        "cliVersion": "codex-cli fixture",
+        "skills": 2,
+        "mcpServers": 0
+      }
+    ]
+  }
+}

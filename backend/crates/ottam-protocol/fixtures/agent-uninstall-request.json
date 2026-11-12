@@ -1,0 +1,8 @@
+{
+  "id": 452,
+  "method": "agent.uninstall",
+  "params": {
+    "agentID": "codex",
+    "removeHome": true
+  }
+}

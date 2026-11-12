@@ -1,0 +1,5 @@
+{
+  "id": 423,
+  "method": "agent.shutdownReadiness",
+  "params": {}
+}

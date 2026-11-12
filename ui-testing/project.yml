@@ -1,0 +1,207 @@
+name: OttamUITesting
+
+options:
+  bundleIdPrefix: dev.ottam
+  createIntermediateGroups: true
+  deploymentTarget:
+    macOS: "26.0"
+  xcodeVersion: "27.0"
+
+settings:
+  base:
+    CLANG_ENABLE_MODULES: true
+    CODE_SIGN_IDENTITY: "-"
+    CODE_SIGN_STYLE: Manual
+    MACOSX_DEPLOYMENT_TARGET: "26.0"
+    SWIFT_VERSION: "5.0"
+
+packages:
+  OttamAppPackage:
+    path: ../app
+
+targets:
+  UIHarnessCore:
+    type: library.static
+    platform: macOS
+    sources:
+      - Sources/UIHarnessCore
+    dependencies:
+      - sdk: AppKit.framework
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.ottam.UIHarnessCore
+        PRODUCT_NAME: UIHarnessCore
+
+  MacAutomationKit:
+    type: library.static
+    platform: macOS
+    sources:
+      - Sources/MacAutomationKit
+    dependencies:
+      - target: UIHarnessCore
+      - sdk: AppKit.framework
+      - sdk: ApplicationServices.framework
+      - sdk: ScreenCaptureKit.framework
+      - sdk: UniformTypeIdentifiers.framework
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.ottam.MacAutomationKit
+        PRODUCT_NAME: MacAutomationKit
+
+  ScenarioKit:
+    type: library.static
+    platform: macOS
+    sources:
+      - Sources/ScenarioKit
+    dependencies:
+      - target: UIHarnessCore
+      - target: MacAutomationKit
+      - package: OttamAppPackage
+        product: OttamAccessibility
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.ottam.ScenarioKit
+        PRODUCT_NAME: ScenarioKit
+
+  OttamUIScenarios:
+    type: library.static
+    platform: macOS
+    sources:
+      - Sources/OttamUIScenarios
+    dependencies:
+      - target: ScenarioKit
+      - target: MacAutomationKit
+      - package: OttamAppPackage
+        product: OttamAccessibility
+      - package: OttamAppPackage
+        product: OttamTranscriptFixtures
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.ottam.OttamUIScenarios
+        PRODUCT_NAME: OttamUIScenarios
+
+  OttamUITestDriver:
+    type: application
+    platform: macOS
+    configFiles:
+      Debug: Configuration/CaptureSigning.xcconfig
+      Release: Configuration/CaptureSigning.xcconfig
+    sources:
+      - Sources/OttamUITestDriver
+    dependencies:
+      - target: UIHarnessCore
+      - target: MacAutomationKit
+      - sdk: AppKit.framework
+      - sdk: ApplicationServices.framework
+      - sdk: ScreenCaptureKit.framework
+    info:
+      path: Supporting/OttamUITestDriver-Info.plist
+      properties:
+        CFBundleDisplayName: Ottam UI Test Driver
+        CFBundleExecutable: $(EXECUTABLE_NAME)
+        CFBundleIdentifier: $(PRODUCT_BUNDLE_IDENTIFIER)
+        CFBundleName: OttamUITestDriver
+        CFBundlePackageType: APPL
+        LSMinimumSystemVersion: "26.0"
+        NSScreenCaptureUsageDescription: Captures isolated Ottam test windows for local UI validation.
+        NSUIElement: true
+    settings:
+      base:
+        CODE_SIGN_IDENTITY: $(OTTAM_UI_TEST_SIGNING_IDENTITY)
+        CODE_SIGN_STYLE: Manual
+        DEVELOPMENT_TEAM: $(OTTAM_UI_TEST_DEVELOPMENT_TEAM)
+        PRODUCT_BUNDLE_IDENTIFIER: dev.ottam.OttamUITestDriver
+        PRODUCT_NAME: OttamUITestDriver
+
+  OttamUIScenarioRunner:
+    type: tool
+    platform: macOS
+    sources:
+      - Sources/OttamUIScenarioRunner
+    dependencies:
+      - target: UIHarnessCore
+      - target: OttamUIScenarios
+      - target: ScenarioKit
+      - target: MacAutomationKit
+      - package: OttamAppPackage
+        product: OttamAccessibility
+      - package: OttamAppPackage
+        product: OttamTranscriptFixtures
+      - sdk: AppKit.framework
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.ottam.OttamUIScenarioRunner
+        PRODUCT_NAME: OttamUIScenarioRunner
+
+  CoordinatorKit:
+    type: library.static
+    platform: macOS
+    sources:
+      - Sources/CoordinatorKit
+    dependencies:
+      - target: UIHarnessCore
+      - sdk: libsqlite3.tbd
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.ottam.CoordinatorKit
+        PRODUCT_NAME: CoordinatorKit
+
+  OttamUITestCoordinator:
+    type: tool
+    platform: macOS
+    sources:
+      - Sources/OttamUITestCoordinator
+    dependencies:
+      - target: CoordinatorKit
+      - target: UIHarnessCore
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.ottam.OttamUITestCoordinator
+        PRODUCT_NAME: OttamUITestCoordinator
+
+  OttamUINativeTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - Tests/ScenarioKitTests
+      - Tests/MacAutomationKitTests
+      - Tests/CoordinatorKitTests
+    dependencies:
+      - target: CoordinatorKit
+      - target: UIHarnessCore
+      - target: OttamUIScenarios
+      - target: ScenarioKit
+      - target: MacAutomationKit
+      - package: OttamAppPackage
+        product: OttamAccessibility
+      - package: OttamAppPackage
+        product: OttamTranscriptFixtures
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: true
+        PRODUCT_BUNDLE_IDENTIFIER: dev.ottam.OttamUINativeTests
+        PRODUCT_NAME: OttamUINativeTests
+
+schemes:
+  OttamUITestTools:
+    build:
+      targets:
+        OttamUITestCoordinator: all
+        OttamUIScenarioRunner: all
+
+  OttamUITesting:
+    build:
+      targets:
+        OttamUITestCoordinator: all
+        OttamUITestDriver: all
+        OttamUIScenarioRunner: all
+
+  OttamUINativeTests:
+    build:
+      targets:
+        OttamUINativeTests: all
+    test:
+      config: Debug
+      parallelizeBuild: false
+      targets:
+        - OttamUINativeTests

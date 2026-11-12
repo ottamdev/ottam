@@ -1,0 +1,8 @@
+{
+  "id": 432,
+  "method": "agent.signInFinish",
+  "params": {
+    "agentID": "codex",
+    "authSessionID": "agent_auth_fixture"
+  }
+}

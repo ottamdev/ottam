@@ -1,0 +1,16 @@
+{
+  "id": 121,
+  "result": {
+    "namedAgent": {
+      "namedAgentID": "019b0000-0000-7000-8000-0000000000a1",
+      "name": "review-bot",
+      "engineID": "codex",
+      "modelID": "gpt-6.1-sol",
+      "modeID": "read-only",
+      "instructions": "Review for correctness. Report findings, most severe first.",
+      "avatarSeed": 2654435769,
+      "createdAt": "2026-10-27T10:00:00.000Z",
+      "updatedAt": "2026-10-27T10:00:00.000Z"
+    }
+  }
+}

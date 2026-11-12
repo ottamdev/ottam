@@ -1,0 +1,8 @@
+{
+  "id": 27,
+  "method": "workspace.addProject",
+  "params": {
+    "workspaceID": "019b0000-0000-7000-8000-000000000003",
+    "path": "/Users/example/Developer/ottam"
+  }
+}

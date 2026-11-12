@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+# Whitespace checks use the index; documentation checks read the working tree.
+set -euo pipefail
+cd "$(git rev-parse --show-toplevel)"
+git diff --cached --check
+./scripts/check-migrations.sh --staged
+check_docs=0
+while IFS= read -r -d '' path; do
+  case "$path" in
+    *.md|scripts/check-docs.sh|scripts/lib/check_docs.py) check_docs=1 ;;
+  esac
+done < <(git diff --cached --name-only --no-renames -z)
+if (( check_docs )); then
+  ./scripts/check-docs.sh
+fi

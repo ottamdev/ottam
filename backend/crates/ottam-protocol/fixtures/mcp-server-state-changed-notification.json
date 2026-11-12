@@ -1,0 +1,10 @@
+{
+  "method": "mcp.serverStateChanged",
+  "params": {
+    "serverID": "019b0000-0000-7000-8000-0000000000a1",
+    "state": {
+      "status": "failed",
+      "error": "exited with status 1"
+    }
+  }
+}

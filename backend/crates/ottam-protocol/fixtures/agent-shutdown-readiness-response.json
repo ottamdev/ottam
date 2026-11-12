@@ -1,0 +1,13 @@
+{
+  "id": 423,
+  "result": {
+    "ready": false,
+    "waitingOn": [
+      "Claude — Your setup"
+    ],
+    "refreshLockPaths": [
+      "/fixture/.claude/.oauth_refresh.lock"
+    ],
+    "hasSharedHomes": false
+  }
+}

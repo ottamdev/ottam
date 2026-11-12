@@ -1,0 +1,5 @@
+{
+  "id": 456,
+  "method": "toolPermissions.get",
+  "params": {}
+}

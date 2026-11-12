@@ -1,0 +1,10 @@
+{
+  "method": "runtime.installEvent",
+  "params": {
+    "installID": "runtime_install_fixture",
+    "version": "v24.22.1",
+    "phase": "downloading",
+    "bytesReceived": 12582912,
+    "bytesTotal": 52428800
+  }
+}

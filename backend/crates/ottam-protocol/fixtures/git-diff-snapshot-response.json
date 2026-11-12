@@ -1,0 +1,44 @@
+{
+  "id": 3,
+  "result": {
+    "repoPath": "/Users/example/Developer/ottam",
+    "branch": "main",
+    "ahead": 0,
+    "behind": 0,
+    "additions": 1,
+    "deletions": 1,
+    "files": [
+      {
+        "path": "README.md",
+        "oldPath": "README.md",
+        "status": "modified",
+        "additions": 1,
+        "deletions": 1,
+        "hunks": [
+          {
+            "kind": "diff",
+            "header": "@@ -1 +1 @@",
+            "oldStart": 1,
+            "oldLines": 1,
+            "newStart": 1,
+            "newLines": 1,
+            "lines": [
+              {
+                "kind": "deletion",
+                "oldLine": 1,
+                "content": "old"
+              },
+              {
+                "kind": "addition",
+                "newLine": 1,
+                "content": "new"
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "untrackedFiles": [],
+    "omittedFiles": []
+  }
+}

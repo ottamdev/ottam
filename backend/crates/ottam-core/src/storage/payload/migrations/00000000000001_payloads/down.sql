@@ -1,0 +1,10 @@
+DROP TABLE payload_cache;
+DROP TABLE payload_cache_settings;
+DROP TRIGGER payload_usage_revision_delete;
+DROP TRIGGER payload_usage_part_update;
+DROP TRIGGER payload_usage_part_insert;
+DROP TRIGGER payload_usage_revision_insert;
+DROP TABLE payload_usage;
+DROP TABLE payload_chunks;
+DROP TABLE payload_parts;
+DROP TABLE payload_revisions;

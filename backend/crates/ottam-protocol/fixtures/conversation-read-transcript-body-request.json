@@ -1,0 +1,11 @@
+{
+  "id": 91,
+  "method": "conversation.readTranscriptBody",
+  "params": {
+    "workspaceID": "019b0000-0000-7000-8000-000000000003",
+    "conversationID": "conversation_fixture",
+    "itemID": "local-text-1",
+    "revision": 2,
+    "offset": 0
+  }
+}

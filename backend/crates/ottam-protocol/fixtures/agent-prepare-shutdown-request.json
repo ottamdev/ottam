@@ -1,0 +1,7 @@
+{
+  "id": 424,
+  "method": "agent.prepareShutdown",
+  "params": {
+    "operationKey": "fixture-quit"
+  }
+}

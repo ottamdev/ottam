@@ -1,0 +1,38 @@
+{
+  "id": 2,
+  "result": {
+    "project": {
+      "projectID": "019b0000-0000-7000-8000-000000000001",
+      "displayName": "ottam",
+      "createdAt": 1750636800000,
+      "updatedAt": 1750636800000,
+      "lastOpenedAt": 1750636800000
+    },
+    "source": {
+      "projectSourceID": "019b0000-0000-7000-8000-000000000002",
+      "projectID": "019b0000-0000-7000-8000-000000000001",
+      "kind": "localGit",
+      "displayName": "ottam",
+      "canonicalPath": "/Users/example/Developer/ottam",
+      "createdAt": 1750636800000,
+      "updatedAt": 1750636800000,
+      "currentBranch": "main"
+    },
+    "workspaces": [
+      {
+        "workspaceID": "019b0000-0000-7000-8000-000000000003",
+        "displayName": "ottam",
+        "createdAt": 1750636800000,
+        "updatedAt": 1750636800000,
+        "lastOpenedAt": 1750636800000
+      }
+    ],
+    "createdWorkspace": {
+      "workspaceID": "019b0000-0000-7000-8000-000000000003",
+      "displayName": "ottam",
+      "createdAt": 1750636800000,
+      "updatedAt": 1750636800000,
+      "lastOpenedAt": 1750636800000
+    }
+  }
+}

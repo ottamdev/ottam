@@ -1,0 +1,7 @@
+{
+  "id": 21,
+  "method": "workspace.create",
+  "params": {
+    "displayName": "Ottam"
+  }
+}

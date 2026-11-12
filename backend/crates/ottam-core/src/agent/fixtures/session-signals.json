@@ -1,0 +1,8 @@
+[
+  {"sessionUpdate":"agent_message_chunk","messageId":"message-1","content":{"type":"text","text":"Visible answer"},"_meta":{"jetbrains":{"air":{"version":1,"phase":"commentary"}}}},
+  {"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"Child answer"},"_meta":{"claudeCode":{"parentToolUseId":"tool-1"}}},
+  {"sessionUpdate":"session_info_update","_meta":{"codex":{"threadStatus":{"type":"active","activeFlags":[]}}}},
+  {"sessionUpdate":"session_info_update","_meta":{"jetbrains":{"air":{"version":1,"sessionFailure":{"id":"incident-1","revision":1,"category":"connection","severity":"warning","title":"Reconnecting to the provider","actions":[]}}}}},
+  {"sessionUpdate":"usage_update","used":100,"size":200000,"_meta":{"_claude/rateLimit":{"status":"rejected","rateLimitType":"five_hour","resetsAt":2000000000}}},
+  {"sessionUpdate":"session_info_update","_meta":{"jetbrains":{"air":{"version":1,"sessionFailure":{"id":"incident-1","revision":2,"category":"service","severity":"error","title":"Provider temporarily unavailable","actions":["retry"]}}}}}
+]

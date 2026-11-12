@@ -1,0 +1,44 @@
+.DS_Store
+.build/
+.swiftpm/
+target/
+DerivedData/
+*.xcuserdata/
+*.xcuserstate
+__pycache__/
+
+# Agent worktrees inside a checkout.
+**/.claude/worktrees/
+
+# Commit only the shared SwiftPM scheme needed for Xcode Run backend setup.
+!app/.swiftpm/
+app/.swiftpm/*
+!app/.swiftpm/xcode/
+app/.swiftpm/xcode/*
+!app/.swiftpm/xcode/xcshareddata/
+app/.swiftpm/xcode/xcshareddata/*
+!app/.swiftpm/xcode/xcshareddata/xcschemes/
+app/.swiftpm/xcode/xcshareddata/xcschemes/*
+!app/.swiftpm/xcode/xcshareddata/xcschemes/OttamApp.xcscheme
+
+# Local-only upstream references. Clone with:
+#   git clone https://github.com/openai/codex references/codex
+#   git clone --depth 1 https://github.com/can1357/oh-my-pi references/oh-my-pi
+#   git clone --depth 1 --branch v2.0.27 https://github.com/anomalyco/opencode references/opencode
+references/
+
+# Maintainers' private checkout, never published. No trailing slash, so a
+# worktree's symlink to it is ignored too.
+/private
+
+# Machine-local Claude Code settings.
+**/.claude/settings.local.json
+
+# Machine-local UI-test signing identity and development team.
+ui-testing/Configuration/CaptureSigning.local.xcconfig
+
+# GhosttyKit and terminal resources from scripts/fetch-ghosttykit.sh — no
+# trailing slash, so the setup-worktree.sh symlink is ignored too.
+app/Vendor/ottam-ghostty
+# An earlier GhosttyKit location that older checkouts may still hold.
+app/Vendor/GhosttyKit.xcframework

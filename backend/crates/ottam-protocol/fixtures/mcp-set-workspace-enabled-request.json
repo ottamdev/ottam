@@ -1,0 +1,9 @@
+{
+  "id": 464,
+  "method": "mcp.setWorkspaceEnabled",
+  "params": {
+    "serverID": "019b0000-0000-7000-8000-0000000000a1",
+    "workspaceID": "019b0000-0000-7000-8000-000000000003",
+    "enabled": false
+  }
+}

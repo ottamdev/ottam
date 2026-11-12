@@ -1,0 +1,11 @@
+[package]
+name = "ottam-inspect"
+edition.workspace = true
+license.workspace = true
+version.workspace = true
+publish = false
+
+[dependencies]
+libc = "0.2"
+serde_json = "1"
+tempfile = "3"

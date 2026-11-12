@@ -1,0 +1,11 @@
+{
+  "method": "agent.installEvent",
+  "params": {
+    "installID": "agent_install_fixture",
+    "agentID": "codex",
+    "name": "@agentclientprotocol/codex-acp",
+    "version": "1.1.9",
+    "phase": "failed",
+    "error": "npm install exited with status 1"
+  }
+}

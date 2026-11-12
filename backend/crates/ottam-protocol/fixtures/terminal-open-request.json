@@ -1,0 +1,14 @@
+{
+  "id": 4,
+  "method": "terminal.open",
+  "params": {
+    "workspaceID": "019b0000-0000-7000-8000-000000000003",
+    "workingRoot": {
+      "kind": "project",
+      "projectID": "019b0000-0000-7000-8000-000000000001",
+      "sourceID": "019b0000-0000-7000-8000-000000000002"
+    },
+    "rows": 24,
+    "cols": 80
+  }
+}

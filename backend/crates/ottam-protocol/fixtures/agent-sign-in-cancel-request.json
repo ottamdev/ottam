@@ -1,0 +1,8 @@
+{
+  "id": 431,
+  "method": "agent.signInCancel",
+  "params": {
+    "agentID": "codex",
+    "authSessionID": "agent_auth_fixture"
+  }
+}

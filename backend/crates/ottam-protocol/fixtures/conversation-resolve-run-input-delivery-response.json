@@ -1,0 +1,23 @@
+{
+  "id": 52,
+  "result": {
+    "resolvedInput": {
+      "runInputID": "run_input_fixture",
+      "conversationID": "conversation_fixture",
+      "messageID": "message_user_fixture",
+      "targetRunID": "conversation_run_fixture",
+      "kind": "initial",
+      "idempotencyKey": "client-key-1",
+      "status": "superseded"
+    },
+    "retryInput": {
+      "runInputID": "run_input_retry_fixture",
+      "conversationID": "conversation_fixture",
+      "messageID": "message_user_fixture",
+      "kind": "retry",
+      "retryOfInputID": "run_input_fixture",
+      "idempotencyKey": "client-key-4",
+      "status": "pending"
+    }
+  }
+}

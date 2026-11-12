@@ -1,0 +1,23 @@
+{
+  "id": 42,
+  "result": {
+    "conversations": [
+      {
+        "conversationID": "conversation_fixture",
+        "workspaceID": "019b0000-0000-7000-8000-000000000003",
+        "workingRoot": {
+          "kind": "project",
+          "displayName": "ottam",
+          "canonicalPath": "/Users/example/Developer/ottam",
+          "projectID": "019b0000-0000-7000-8000-000000000001",
+          "sourceID": "019b0000-0000-7000-8000-000000000002",
+          "availability": "available"
+        },
+        "title": "Chat engine routing",
+        "createdAt": "2026-07-03T22:00:00.000Z",
+        "updatedAt": "2026-07-03T22:00:01.000Z",
+        "alwaysAllowToolActions": false
+      }
+    ]
+  }
+}

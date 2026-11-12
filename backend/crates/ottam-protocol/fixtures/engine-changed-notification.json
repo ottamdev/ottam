@@ -1,0 +1,6 @@
+{
+  "method": "engine.changed",
+  "params": {
+    "engineID": "codex"
+  }
+}

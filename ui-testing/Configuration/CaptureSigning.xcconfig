@@ -1,0 +1,4 @@
+// Keep developer-specific values out of the repository. The UI-test driver
+// supplies these build settings automatically; direct Xcode users may copy the
+// adjacent example to CaptureSigning.local.xcconfig.
+#include? "CaptureSigning.local.xcconfig"

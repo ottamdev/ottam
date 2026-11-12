@@ -1,0 +1,30 @@
+{
+  "id": 56,
+  "result": {
+    "page": {
+      "sessions": [
+        {
+          "agentSessionID": "agent_session_fixture",
+          "conversationID": "conversation_fixture",
+          "engineID": "codex",
+          "state": "active",
+          "sourceScopeFingerprint": "c3140d13b064c644aad268b97c03c362a1a19d4591d115f4c51453016bc54b18",
+          "createdAt": "2026-07-03T22:00:00.400Z",
+          "lastUsedAt": "2026-07-03T22:00:01.000Z",
+          "currentModeID": "workspace-write",
+          "commands": [
+            {
+              "name": "review",
+              "description": "Review my current changes",
+              "inputHint": "what to review"
+            }
+          ],
+          "contextUsage": {
+            "used": 26832,
+            "size": 258400
+          }
+        }
+      ]
+    }
+  }
+}

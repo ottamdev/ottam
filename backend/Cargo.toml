@@ -1,0 +1,27 @@
+[workspace]
+members = [
+    "crates/ottam-core",
+    "crates/ottam-inspect",
+    "crates/ottam-protocol",
+    "crates/ottam-test-acp",
+    "crates/ottam-test-mcp"
+]
+resolver = "2"
+
+[workspace.package]
+edition = "2021"
+license = "Apache-2.0"
+version = "0.1.0"
+
+[profile.dev]
+debug = 1
+incremental = true
+
+[profile.test]
+debug = 1
+incremental = true
+
+# `build-app.sh --profile`: release codegen with the `test-seams` feature, in
+# its own `target/profiling` so it never overwrites the seam-free release core.
+[profile.profiling]
+inherits = "release"

@@ -1,0 +1,9 @@
+{
+  "id": 429,
+  "method": "agent.delete",
+  "params": {
+    "agentID": "claude.profile",
+    "purge": false,
+    "operationKey": "delete-profile"
+  }
+}

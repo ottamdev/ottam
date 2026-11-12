@@ -1,0 +1,19 @@
+{
+  "id": 55,
+  "result": {
+    "page": {
+      "runInputs": [
+        {
+          "runInputID": "run_input_fixture",
+          "conversationID": "conversation_fixture",
+          "messageID": "message_user_fixture",
+          "targetRunID": "conversation_run_fixture",
+          "kind": "initial",
+          "idempotencyKey": "client-key-1",
+          "status": "delivered",
+          "deliveryEvidence": "adapterConfirmed"
+        }
+      ]
+    }
+  }
+}

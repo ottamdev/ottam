@@ -1,0 +1,260 @@
+{
+  "id": 90,
+  "result": {
+    "sessionStates": [],
+    "coreInstanceID": "core-fixture",
+    "sequence": 2,
+    "items": [
+      {
+        "itemID": "local-text-1",
+        "conversationID": "conversation_fixture",
+        "runID": "conversation_run_fixture",
+        "runStatus": null,
+        "position": 1,
+        "revision": 2,
+        "committedRevision": 1,
+        "kind": "reasoning",
+        "completion": "open",
+        "createdAt": "2026-09-07T10:00:00Z",
+        "updatedAt": "2026-09-07T10:00:01Z",
+        "providerMessageID": "provider-message-1",
+        "adapterMetadata": {
+          "sessionId": null,
+          "phase": null,
+          "parentMessageId": null,
+          "parentToolCallId": null
+        },
+        "bodyPreview": "Shared reasoning",
+        "bodyByteCount": 16,
+        "previewOmitted": false,
+        "message": null,
+        "tool": null,
+        "payloads": [],
+        "plan": null,
+        "permission": null,
+        "gap": null
+      },
+      {
+        "itemID": "local-tool-2",
+        "conversationID": "conversation_fixture",
+        "runID": "conversation_run_fixture",
+        "runStatus": null,
+        "position": 2,
+        "revision": 3,
+        "committedRevision": 3,
+        "kind": "tool",
+        "completion": "complete",
+        "createdAt": "2026-09-07T10:00:02Z",
+        "updatedAt": "2026-09-07T10:00:03Z",
+        "providerMessageID": null,
+        "adapterMetadata": {
+          "sessionId": null,
+          "phase": null,
+          "parentMessageId": null,
+          "parentToolCallId": null
+        },
+        "bodyPreview": "",
+        "bodyByteCount": 0,
+        "previewOmitted": false,
+        "message": null,
+        "tool": {
+          "providerToolCallID": "toolu_fixture",
+          "name": "Bash",
+          "kind": "execute",
+          "title": "npm run dev",
+          "status": "completed",
+          "arguments": {
+            "command": "npm run dev",
+            "run_in_background": true
+          },
+          "locations": [],
+          "startedAt": null,
+          "completedAt": null,
+          "exitCode": null,
+          "partialMetadata": false,
+          "payloads": [],
+          "backgroundTask": {
+            "id": "task_fixture",
+            "state": "running",
+            "outputFilePath": "/tmp/task_fixture.output"
+          }
+        },
+        "payloads": [],
+        "plan": null,
+        "permission": null,
+        "gap": null
+      },
+      {
+        "itemID": "local-tool-3",
+        "conversationID": "conversation_fixture",
+        "runID": "conversation_run_fixture",
+        "runStatus": null,
+        "position": 3,
+        "revision": 4,
+        "committedRevision": 2,
+        "kind": "tool",
+        "completion": "complete",
+        "createdAt": "2026-09-07T10:00:04Z",
+        "updatedAt": "2026-09-07T10:00:05Z",
+        "providerMessageID": null,
+        "adapterMetadata": {
+          "sessionId": null,
+          "phase": null,
+          "parentMessageId": null,
+          "parentToolCallId": null
+        },
+        "bodyPreview": "",
+        "bodyByteCount": 0,
+        "previewOmitted": false,
+        "message": null,
+        "tool": {
+          "providerToolCallID": "toolu_agent_fixture",
+          "name": "Agent",
+          "kind": "think",
+          "title": "Find the parser",
+          "status": "completed",
+          "arguments": null,
+          "locations": [],
+          "startedAt": null,
+          "completedAt": null,
+          "exitCode": null,
+          "partialMetadata": false,
+          "payloads": [],
+          "subagentThread": {
+            "id": "subagent:toolu_agent_fixture",
+            "name": "Explore",
+            "task": "Find the parser",
+            "state": "running",
+            "source": "legacyParentId",
+            "asynchronous": true
+          }
+        },
+        "payloads": [],
+        "plan": null,
+        "permission": null,
+        "gap": null
+      },
+      {
+        "itemID": "local-tool-4",
+        "conversationID": "conversation_fixture",
+        "runID": "conversation_run_fixture",
+        "runStatus": null,
+        "position": 4,
+        "revision": 2,
+        "committedRevision": 1,
+        "kind": "tool",
+        "completion": "complete",
+        "createdAt": "2026-09-07T10:00:06Z",
+        "updatedAt": "2026-09-07T10:00:07Z",
+        "providerMessageID": null,
+        "adapterMetadata": {
+          "sessionId": null,
+          "phase": null,
+          "parentMessageId": null,
+          "parentToolCallId": "toolu_agent_fixture"
+        },
+        "subagentThreadID": "subagent:toolu_agent_fixture",
+        "bodyPreview": "",
+        "bodyByteCount": 0,
+        "previewOmitted": false,
+        "message": null,
+        "tool": {
+          "providerToolCallID": "toolu_child_fixture",
+          "name": "Bash",
+          "kind": "execute",
+          "title": "grep -rn parse src",
+          "status": "completed",
+          "arguments": null,
+          "locations": [],
+          "startedAt": null,
+          "completedAt": null,
+          "exitCode": null,
+          "partialMetadata": false,
+          "payloads": []
+        },
+        "payloads": [],
+        "plan": null,
+        "permission": null,
+        "gap": null
+      },
+      {
+        "itemID": "local-tool-5",
+        "conversationID": "conversation_fixture",
+        "runID": "conversation_run_fixture",
+        "runStatus": null,
+        "position": 5,
+        "revision": 2,
+        "committedRevision": 2,
+        "kind": "tool",
+        "completion": "complete",
+        "createdAt": "2026-09-07T10:00:06Z",
+        "updatedAt": "2026-09-07T10:00:07Z",
+        "providerMessageID": null,
+        "adapterMetadata": {
+          "sessionId": null,
+          "phase": null,
+          "parentMessageId": null,
+          "parentToolCallId": null
+        },
+        "bodyPreview": "",
+        "bodyByteCount": 0,
+        "previewOmitted": false,
+        "message": null,
+        "tool": {
+          "providerToolCallID": "toolu_question_fixture",
+          "name": "AskUserQuestion",
+          "kind": "other",
+          "title": "Approach",
+          "status": "completed",
+          "arguments": {},
+          "locations": [],
+          "startedAt": null,
+          "completedAt": null,
+          "exitCode": null,
+          "partialMetadata": false,
+          "payloads": [],
+          "question": {
+            "requestID": "019b0000-0000-7000-8000-000000000010",
+            "state": "answered",
+            "answers": [
+              {
+                "prompt": "Which approach should I take?",
+                "values": [
+                  "Refactor"
+                ],
+                "secure": false
+              },
+              {
+                "prompt": "Token",
+                "values": [],
+                "secure": true
+              }
+            ]
+          }
+        },
+        "payloads": [],
+        "plan": null,
+        "permission": null,
+        "gap": null
+      }
+    ],
+    "nextCursor": "1",
+    "capture": [],
+    "coverage": {
+      "startPosition": 1,
+      "endPosition": 5
+    },
+    "backgroundTasks": [
+      {
+        "runID": "conversation_run_fixture",
+        "live": 1
+      }
+    ],
+    "subagentThreads": [
+      {
+        "runID": "conversation_run_fixture",
+        "live": 1
+      }
+    ]
+  }
+}

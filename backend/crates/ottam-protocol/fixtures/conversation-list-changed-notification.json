@@ -1,0 +1,6 @@
+{
+  "method": "conversation.listChanged",
+  "params": {
+    "workspaceID": "019b0000-0000-7000-8000-000000000003"
+  }
+}

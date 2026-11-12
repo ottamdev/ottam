@@ -1,0 +1,1739 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		04B1E47FEEA9F19A5B9F39E1 /* QueueDatabaseTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 433073221573F75219CF9F2F /* QueueDatabaseTests.swift */; };
+		06B0C5EF90D8D8F007BC720C /* ProcessLifecycle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10D2DE7EAEA374AC2CE40547 /* ProcessLifecycle.swift */; };
+		0BDEBC35E0B9CAB1B4A93D3B /* libUIHarnessCore.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 0A667281477E273A84962FFB /* libUIHarnessCore.a */; };
+		0E7B36C759F120DBC6B4E28A /* libCoordinatorKit.a in Frameworks */ = {isa = PBXBuildFile; fileRef = C66B8643D00A8340FCFB7DE6 /* libCoordinatorKit.a */; };
+		0FCF78DB65B5B43337DDECBB /* ScenarioContractsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 171DF0C96651BFA58F7EACF1 /* ScenarioContractsTests.swift */; };
+		16609379E35CABA99CFC4997 /* DriverApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = ACC8390281707D33B388F1A7 /* DriverApp.swift */; };
+		1EF27FA3ED8C0531D37EB82D /* libOttamUIScenarios.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 5DB6314AE2012F2AEF1DD20E /* libOttamUIScenarios.a */; };
+		246075D9E9B667D63857E066 /* ScenarioRunner.swift in Sources */ = {isa = PBXBuildFile; fileRef = E25522FE234E1EE41026F098 /* ScenarioRunner.swift */; };
+		2691D646AE258DF776F5406B /* ExistingAgentSetupScenarios.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5C57C6FA9992E1AF46893C39 /* ExistingAgentSetupScenarios.swift */; };
+		28009B9F74FB19598E4390D2 /* UIScenarioRegistry.swift in Sources */ = {isa = PBXBuildFile; fileRef = 26F3628C46D949ACBC3D87E0 /* UIScenarioRegistry.swift */; };
+		29F1CA03B5103853A420FB0C /* ScenarioCoordinatorLease.swift in Sources */ = {isa = PBXBuildFile; fileRef = 46D83678565B44B79A76ED85 /* ScenarioCoordinatorLease.swift */; };
+		2C7F2D8DBC5208A94D9BDDA8 /* Overlays.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7028E875469B279F01D7A93 /* Overlays.swift */; };
+		320744BF2414F734981910BA /* AgentProfilesScenario.swift in Sources */ = {isa = PBXBuildFile; fileRef = 03951553F88CA04BFCB197DA /* AgentProfilesScenario.swift */; };
+		343C7E94B517B4D2CAB22AEC /* libMacAutomationKit.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 15802884F31D8C8E028F6A96 /* libMacAutomationKit.a */; };
+		3A4E86AEE3068F378E19FE43 /* ChatUsageScenario.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEAA1F25D960F05D22027619 /* ChatUsageScenario.swift */; };
+		3DDA96C1C2CED7C3D9036597 /* ChatSubagentThreadsScenario.swift in Sources */ = {isa = PBXBuildFile; fileRef = 905D20E549C5B1ED6DA256E1 /* ChatSubagentThreadsScenario.swift */; };
+		46102A0670A2B2A1C67D2220 /* AppKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 7CBB5B71DA7DCCCC67453AFB /* AppKit.framework */; };
+		4730AF397FD2E68C83F7D54C /* OttamTranscriptFixtures in Frameworks */ = {isa = PBXBuildFile; productRef = FF4F4FB3A47252A072F4EC29 /* OttamTranscriptFixtures */; };
+		49F2FA4F9F5585B3392D2335 /* OttamTranscriptFixtures in Frameworks */ = {isa = PBXBuildFile; productRef = 252D15BEAEF260EB5A92FB7B /* OttamTranscriptFixtures */; };
+		553DB4F1734A27DE2D31C9D0 /* ChatSwitchKeepsPlaceScenario.swift in Sources */ = {isa = PBXBuildFile; fileRef = BDED05D9644DDA3147C16A11 /* ChatSwitchKeepsPlaceScenario.swift */; };
+		5627C54E410B01B4593D63BC /* libMacAutomationKit.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 15802884F31D8C8E028F6A96 /* libMacAutomationKit.a */; };
+		59700CD87BF8E485F607FAD9 /* ChatTranscriptScenarios.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2724F8A3647A2E0171CDF5B8 /* ChatTranscriptScenarios.swift */; };
+		5A2407FB735B3B6F8F6C1B12 /* CoordinatorCommand.swift in Sources */ = {isa = PBXBuildFile; fileRef = 05B824D9DB636E633EA8D436 /* CoordinatorCommand.swift */; };
+		62391A71895D78FE430367EE /* ScenarioRegistry.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2916E5B95747208B96EFC6AB /* ScenarioRegistry.swift */; };
+		6299ECEFF049BC6438C056FF /* MacAutomationKit.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEDD8066C51FF3AD29AA48F1 /* MacAutomationKit.swift */; };
+		69E37DB2EFB319FE4111398F /* ScenarioExecution.swift in Sources */ = {isa = PBXBuildFile; fileRef = C34CC2FD4F7CDA2E7D5E08EB /* ScenarioExecution.swift */; };
+		6B16C2C0BE92B3099DC0038D /* libUIHarnessCore.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 0A667281477E273A84962FFB /* libUIHarnessCore.a */; };
+		6C48F6A7B362F84CE9484895 /* ScenarioRuntimeSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6359C3B869E6497CA5982BAD /* ScenarioRuntimeSupport.swift */; };
+		748ADFB072C36D1DF8BCE9A3 /* OcclusionScenario.swift in Sources */ = {isa = PBXBuildFile; fileRef = CEA121882D27199700A8BF63 /* OcclusionScenario.swift */; };
+		74C2130725227ECE72353673 /* SmokeScenario.swift in Sources */ = {isa = PBXBuildFile; fileRef = CCF55304124012748D490636 /* SmokeScenario.swift */; };
+		75E4B3D614309B2C09109B22 /* Infrastructure.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2E01E850E56560C0A6A3465E /* Infrastructure.swift */; };
+		769FE58DB2DBA40B488ED464 /* AccessibilityAudit.swift in Sources */ = {isa = PBXBuildFile; fileRef = 269731FFCC3A9D62823E5A8E /* AccessibilityAudit.swift */; };
+		77BAFC6F2D2D533E82930483 /* libsqlite3.tbd in Frameworks */ = {isa = PBXBuildFile; fileRef = 984801048E4B695D9E861707 /* libsqlite3.tbd */; };
+		7B0D2DE6B5BF008398811A21 /* AgentCompatibilityScenarios.swift in Sources */ = {isa = PBXBuildFile; fileRef = 86395726F514D89D219F71CC /* AgentCompatibilityScenarios.swift */; };
+		7F03C0E4C08567F0F1182B16 /* ScenarioRuntimeHelpers.swift in Sources */ = {isa = PBXBuildFile; fileRef = D289C75447F9E60BEB0209CB /* ScenarioRuntimeHelpers.swift */; };
+		7F957927462D480495861CB7 /* ExecutionResult.swift in Sources */ = {isa = PBXBuildFile; fileRef = 565E762DE9388BD9D6E9C390 /* ExecutionResult.swift */; };
+		7FF2CD0DC6C59914D7503257 /* DriverScenarios.swift in Sources */ = {isa = PBXBuildFile; fileRef = 71D29E4DA91FB9B7A034A96F /* DriverScenarios.swift */; };
+		807341A6A5632217E1E6B469 /* AccessibilityAuditTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 45E49AE1541247C68F4316BC /* AccessibilityAuditTests.swift */; };
+		91CC32948B92FC0836F75014 /* MarkdownEngineLabScenarios.swift in Sources */ = {isa = PBXBuildFile; fileRef = D78E8C7C03A48D36ECFAB32F /* MarkdownEngineLabScenarios.swift */; };
+		93066CD037183450F98FC5BA /* AppKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 7CBB5B71DA7DCCCC67453AFB /* AppKit.framework */; };
+		95A5A933C0975A4FB204329F /* AppKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 7CBB5B71DA7DCCCC67453AFB /* AppKit.framework */; };
+		986661C7FDEC87EB1281617E /* Main.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A97E58AE725CD906B2DE4D2 /* Main.swift */; };
+		9E9A7C3A85323D3CEE03B5D0 /* ProcessIdentityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5046E141F7B69C3F67DF01B /* ProcessIdentityTests.swift */; };
+		9FB740A4932897B12C7D774E /* AppKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 7CBB5B71DA7DCCCC67453AFB /* AppKit.framework */; };
+		9FF28A7F8303715F25317975 /* libScenarioKit.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 8C82212CA9FACC79A4079F42 /* libScenarioKit.a */; };
+		A20D9E2C1417A6A0A2D1F082 /* ScenarioExecutionSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = E537AB8F3EA83E1368FEB440 /* ScenarioExecutionSupport.swift */; };
+		A2403FA4C21A876B5ED674BC /* WorkspaceShapeScenarios.swift in Sources */ = {isa = PBXBuildFile; fileRef = 62A270B5EA6B47DFA1D1BBAC /* WorkspaceShapeScenarios.swift */; };
+		A4E5B49649FFD80A12122375 /* OwnedApplication.swift in Sources */ = {isa = PBXBuildFile; fileRef = 28862B0D11672D77E38AC4D4 /* OwnedApplication.swift */; };
+		A58E5DFC55CDCF86F7EAC8B0 /* ScenarioKit.swift in Sources */ = {isa = PBXBuildFile; fileRef = 27D51E21AD6CBC1AB3B1C973 /* ScenarioKit.swift */; };
+		A5D4FB63BE1380955BC48A2E /* ChatRunFailureScenario.swift in Sources */ = {isa = PBXBuildFile; fileRef = FD28AD307112BDFE60D8FC8E /* ChatRunFailureScenario.swift */; };
+		A8BC355E98B24F587A767AD9 /* libScenarioKit.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 8C82212CA9FACC79A4079F42 /* libScenarioKit.a */; };
+		AB164913E415F77279CA52B4 /* ExistingAcceptanceScenarios.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1AA615A295F799F3B626968 /* ExistingAcceptanceScenarios.swift */; };
+		AF1BA259C867392640FCBF32 /* ApplicationServices.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 88E65E8ECA13A38AF0177E85 /* ApplicationServices.framework */; };
+		B0A491CF06735E313133788E /* Capture.swift in Sources */ = {isa = PBXBuildFile; fileRef = 76B470189D106D4D8AC02BA9 /* Capture.swift */; };
+		B22CAA00808492AE5BFE3237 /* RunnerSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 52C900DD42A23E677F393A56 /* RunnerSupport.swift */; };
+		B2BC7EC79775A3AA59465449 /* AgentUpdateScenarios.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4F3A63A220ACF1AC24F7A8C7 /* AgentUpdateScenarios.swift */; };
+		B5D84B01C70945FACDAEE053 /* ConversationToolsScenario.swift in Sources */ = {isa = PBXBuildFile; fileRef = EC04C80FE3797081B3E41B0F /* ConversationToolsScenario.swift */; };
+		B7101E7D9221C42DF787C84B /* ScreenCaptureKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = E82FE5DE89B96968B62EDD7A /* ScreenCaptureKit.framework */; };
+		BA17996C5F6A8C0F8FA32B8A /* EngineSetupScenarios.swift in Sources */ = {isa = PBXBuildFile; fileRef = 158B39840482D4FD59B623F8 /* EngineSetupScenarios.swift */; };
+		BB032800BDE44B748F34E52E /* TranscriptMeasurementScenarios.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D74B8831E4E3EEEFAE8678A /* TranscriptMeasurementScenarios.swift */; };
+		BB51B1A7F9DCDE676B4F8848 /* ScenarioContracts.swift in Sources */ = {isa = PBXBuildFile; fileRef = 38A18493381A763F976EEA61 /* ScenarioContracts.swift */; };
+		BBF5ADD19910BFE696C2D592 /* QueueDatabase.swift in Sources */ = {isa = PBXBuildFile; fileRef = B3191DC90181CF2E291BCC93 /* QueueDatabase.swift */; };
+		BC784D6AC6076FD417066193 /* ChatBackgroundTasksScenario.swift in Sources */ = {isa = PBXBuildFile; fileRef = FCB9854846424F99C271CC04 /* ChatBackgroundTasksScenario.swift */; };
+		BE3E6CFDEEA5579B709146FB /* libCoordinatorKit.a in Frameworks */ = {isa = PBXBuildFile; fileRef = C66B8643D00A8340FCFB7DE6 /* libCoordinatorKit.a */; };
+		C3AA97229A9D413670E8595B /* UniformTypeIdentifiers.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 6586E5D242669347F676C97C /* UniformTypeIdentifiers.framework */; };
+		C81AB78F708D89B7B33B51C9 /* libOttamUIScenarios.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 5DB6314AE2012F2AEF1DD20E /* libOttamUIScenarios.a */; };
+		D1B28B999BC69157C603A737 /* ScenarioRuntimeContext.swift in Sources */ = {isa = PBXBuildFile; fileRef = 19CBDA0AB28D575CC42C1640 /* ScenarioRuntimeContext.swift */; };
+		D6253CEE9BE94E07FD44607E /* ChatNormalizedTranscriptScenario.swift in Sources */ = {isa = PBXBuildFile; fileRef = F81116AE37412A844F9201B6 /* ChatNormalizedTranscriptScenario.swift */; };
+		DCBD61AF3722F78A79B377B3 /* libMacAutomationKit.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 15802884F31D8C8E028F6A96 /* libMacAutomationKit.a */; };
+		E0947A1004A9CA052D2E6D4C /* ChooserRecoveryScenario.swift in Sources */ = {isa = PBXBuildFile; fileRef = BAA137A3995D2F266E2C28F1 /* ChooserRecoveryScenario.swift */; };
+		E55A6DE49DE4717E8BA5D079 /* ScreenCaptureKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = E82FE5DE89B96968B62EDD7A /* ScreenCaptureKit.framework */; };
+		E6A368336F6162A678AF49F8 /* OttamAccessibility in Frameworks */ = {isa = PBXBuildFile; productRef = 6D473D3A3A327025C9FF7965 /* OttamAccessibility */; };
+		E7808C052CCB832F6A0DB25A /* ChatTranscriptHistoryRecoveryScenario.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B5D0EBBD5F449D5A9F9BC90 /* ChatTranscriptHistoryRecoveryScenario.swift */; };
+		E933107BA0DFD547AE57B474 /* OttamAccessibility in Frameworks */ = {isa = PBXBuildFile; productRef = CAD5B3F62F3CDF19FC5E0820 /* OttamAccessibility */; };
+		EC73F3D7EC150AF6D068887B /* ChatTranscriptPayloadsScenario.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5DCE945505AA716BBDE88F2C /* ChatTranscriptPayloadsScenario.swift */; };
+		F3BD1289731D87402FD19877 /* libUIHarnessCore.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 0A667281477E273A84962FFB /* libUIHarnessCore.a */; };
+		F9B05A666F6E7EB06AEC9C6D /* libUIHarnessCore.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 0A667281477E273A84962FFB /* libUIHarnessCore.a */; };
+		FA7F8D673CD75DA84FCA9FB6 /* ApplicationServices.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 88E65E8ECA13A38AF0177E85 /* ApplicationServices.framework */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		0EE594F3A4BE8F1944CF523E /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 712DD38D3C6CC625D2A62995 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 2BE8839E5D902F15F1E4E8DA;
+			remoteInfo = OttamUIScenarios;
+		};
+		19D5A7ECF8B51FC440530628 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 712DD38D3C6CC625D2A62995 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = C96AE88827D2FCBB2E63E42D;
+			remoteInfo = UIHarnessCore;
+		};
+		1FC8FD7F475427F2BB233F66 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 712DD38D3C6CC625D2A62995 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 79B0BB6B92B0A4FC5BF846E6;
+			remoteInfo = ScenarioKit;
+		};
+		25FF93C82DE7AE724492E90F /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 712DD38D3C6CC625D2A62995 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = C96AE88827D2FCBB2E63E42D;
+			remoteInfo = UIHarnessCore;
+		};
+		37DFB362CE4EE99BCF7BB120 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 712DD38D3C6CC625D2A62995 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = E4229C8F29120B3921FFA60D;
+			remoteInfo = CoordinatorKit;
+		};
+		3CBE39307170B219837947E1 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 712DD38D3C6CC625D2A62995 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 0D674900E68FA6B45E2A0727;
+			remoteInfo = MacAutomationKit;
+		};
+		44F0A09EB562C903D70C9F69 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 712DD38D3C6CC625D2A62995 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = C96AE88827D2FCBB2E63E42D;
+			remoteInfo = UIHarnessCore;
+		};
+		4A9FE839CFC787CFDA5315C0 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 712DD38D3C6CC625D2A62995 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = C96AE88827D2FCBB2E63E42D;
+			remoteInfo = UIHarnessCore;
+		};
+		50FB3231F117C6F933195860 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 712DD38D3C6CC625D2A62995 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = C96AE88827D2FCBB2E63E42D;
+			remoteInfo = UIHarnessCore;
+		};
+		6F6332256083840CD91C6165 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 712DD38D3C6CC625D2A62995 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 2BE8839E5D902F15F1E4E8DA;
+			remoteInfo = OttamUIScenarios;
+		};
+		818AE537529A37C1AA40DB17 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 712DD38D3C6CC625D2A62995 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 79B0BB6B92B0A4FC5BF846E6;
+			remoteInfo = ScenarioKit;
+		};
+		8363B5C4BD673FB8B7A4C6F5 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 712DD38D3C6CC625D2A62995 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = C96AE88827D2FCBB2E63E42D;
+			remoteInfo = UIHarnessCore;
+		};
+		85DD80C4DEBDA6223C750F5C /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 712DD38D3C6CC625D2A62995 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = E4229C8F29120B3921FFA60D;
+			remoteInfo = CoordinatorKit;
+		};
+		A44C30E4CC6DB833BCF5B659 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 712DD38D3C6CC625D2A62995 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 0D674900E68FA6B45E2A0727;
+			remoteInfo = MacAutomationKit;
+		};
+		A4A17563AFA0F980EF2C966C /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 712DD38D3C6CC625D2A62995 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 0D674900E68FA6B45E2A0727;
+			remoteInfo = MacAutomationKit;
+		};
+		AD95DE78A563EB8953AC42CC /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 712DD38D3C6CC625D2A62995 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = C96AE88827D2FCBB2E63E42D;
+			remoteInfo = UIHarnessCore;
+		};
+		BD86A2761F6EAD494064468C /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 712DD38D3C6CC625D2A62995 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 79B0BB6B92B0A4FC5BF846E6;
+			remoteInfo = ScenarioKit;
+		};
+		BF6B8CE8D24BF28624D3B0D7 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 712DD38D3C6CC625D2A62995 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 0D674900E68FA6B45E2A0727;
+			remoteInfo = MacAutomationKit;
+		};
+		C5DD23B81F7B3FD1A2DC283F /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 712DD38D3C6CC625D2A62995 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 0D674900E68FA6B45E2A0727;
+			remoteInfo = MacAutomationKit;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		03951553F88CA04BFCB197DA /* AgentProfilesScenario.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentProfilesScenario.swift; sourceTree = "<group>"; };
+		03F218B5433AA38579A5EB59 /* OttamUITestDriver.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = OttamUITestDriver.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		05B824D9DB636E633EA8D436 /* CoordinatorCommand.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoordinatorCommand.swift; sourceTree = "<group>"; };
+		0A667281477E273A84962FFB /* libUIHarnessCore.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = libUIHarnessCore.a; sourceTree = BUILT_PRODUCTS_DIR; };
+		10D2DE7EAEA374AC2CE40547 /* ProcessLifecycle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProcessLifecycle.swift; sourceTree = "<group>"; };
+		15802884F31D8C8E028F6A96 /* libMacAutomationKit.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = libMacAutomationKit.a; sourceTree = BUILT_PRODUCTS_DIR; };
+		158B39840482D4FD59B623F8 /* EngineSetupScenarios.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EngineSetupScenarios.swift; sourceTree = "<group>"; };
+		171DF0C96651BFA58F7EACF1 /* ScenarioContractsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScenarioContractsTests.swift; sourceTree = "<group>"; };
+		19CBDA0AB28D575CC42C1640 /* ScenarioRuntimeContext.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScenarioRuntimeContext.swift; sourceTree = "<group>"; };
+		1A97E58AE725CD906B2DE4D2 /* Main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Main.swift; sourceTree = "<group>"; };
+		269731FFCC3A9D62823E5A8E /* AccessibilityAudit.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccessibilityAudit.swift; sourceTree = "<group>"; };
+		26F3628C46D949ACBC3D87E0 /* UIScenarioRegistry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UIScenarioRegistry.swift; sourceTree = "<group>"; };
+		2724F8A3647A2E0171CDF5B8 /* ChatTranscriptScenarios.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatTranscriptScenarios.swift; sourceTree = "<group>"; };
+		27D51E21AD6CBC1AB3B1C973 /* ScenarioKit.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScenarioKit.swift; sourceTree = "<group>"; };
+		28862B0D11672D77E38AC4D4 /* OwnedApplication.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OwnedApplication.swift; sourceTree = "<group>"; };
+		2916E5B95747208B96EFC6AB /* ScenarioRegistry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScenarioRegistry.swift; sourceTree = "<group>"; };
+		2E01E850E56560C0A6A3465E /* Infrastructure.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Infrastructure.swift; sourceTree = "<group>"; };
+		38A18493381A763F976EEA61 /* ScenarioContracts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScenarioContracts.swift; sourceTree = "<group>"; };
+		433073221573F75219CF9F2F /* QueueDatabaseTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QueueDatabaseTests.swift; sourceTree = "<group>"; };
+		45E49AE1541247C68F4316BC /* AccessibilityAuditTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccessibilityAuditTests.swift; sourceTree = "<group>"; };
+		46D83678565B44B79A76ED85 /* ScenarioCoordinatorLease.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScenarioCoordinatorLease.swift; sourceTree = "<group>"; };
+		4F3A63A220ACF1AC24F7A8C7 /* AgentUpdateScenarios.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentUpdateScenarios.swift; sourceTree = "<group>"; };
+		52C900DD42A23E677F393A56 /* RunnerSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RunnerSupport.swift; sourceTree = "<group>"; };
+		565E762DE9388BD9D6E9C390 /* ExecutionResult.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExecutionResult.swift; sourceTree = "<group>"; };
+		5C57C6FA9992E1AF46893C39 /* ExistingAgentSetupScenarios.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExistingAgentSetupScenarios.swift; sourceTree = "<group>"; };
+		5DB6314AE2012F2AEF1DD20E /* libOttamUIScenarios.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = libOttamUIScenarios.a; sourceTree = BUILT_PRODUCTS_DIR; };
+		5DCE945505AA716BBDE88F2C /* ChatTranscriptPayloadsScenario.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatTranscriptPayloadsScenario.swift; sourceTree = "<group>"; };
+		62A270B5EA6B47DFA1D1BBAC /* WorkspaceShapeScenarios.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkspaceShapeScenarios.swift; sourceTree = "<group>"; };
+		6359C3B869E6497CA5982BAD /* ScenarioRuntimeSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScenarioRuntimeSupport.swift; sourceTree = "<group>"; };
+		6586E5D242669347F676C97C /* UniformTypeIdentifiers.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = UniformTypeIdentifiers.framework; path = System/Library/Frameworks/UniformTypeIdentifiers.framework; sourceTree = SDKROOT; };
+		6A9931D6A2D23DC9EEDD59B9 /* OttamUINativeTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = OttamUINativeTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		71D29E4DA91FB9B7A034A96F /* DriverScenarios.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DriverScenarios.swift; sourceTree = "<group>"; };
+		76B470189D106D4D8AC02BA9 /* Capture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Capture.swift; sourceTree = "<group>"; };
+		7905F385C5D72E876E0BAD64 /* OttamUITestCoordinator */ = {isa = PBXFileReference; includeInIndex = 0; path = OttamUITestCoordinator; sourceTree = BUILT_PRODUCTS_DIR; };
+		7CBB5B71DA7DCCCC67453AFB /* AppKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AppKit.framework; path = System/Library/Frameworks/AppKit.framework; sourceTree = SDKROOT; };
+		7D74B8831E4E3EEEFAE8678A /* TranscriptMeasurementScenarios.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptMeasurementScenarios.swift; sourceTree = "<group>"; };
+		86395726F514D89D219F71CC /* AgentCompatibilityScenarios.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentCompatibilityScenarios.swift; sourceTree = "<group>"; };
+		88E65E8ECA13A38AF0177E85 /* ApplicationServices.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = ApplicationServices.framework; path = System/Library/Frameworks/ApplicationServices.framework; sourceTree = SDKROOT; };
+		8B5D0EBBD5F449D5A9F9BC90 /* ChatTranscriptHistoryRecoveryScenario.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatTranscriptHistoryRecoveryScenario.swift; sourceTree = "<group>"; };
+		8C82212CA9FACC79A4079F42 /* libScenarioKit.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = libScenarioKit.a; sourceTree = BUILT_PRODUCTS_DIR; };
+		905D20E549C5B1ED6DA256E1 /* ChatSubagentThreadsScenario.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatSubagentThreadsScenario.swift; sourceTree = "<group>"; };
+		984801048E4B695D9E861707 /* libsqlite3.tbd */ = {isa = PBXFileReference; lastKnownFileType = "sourcecode.text-based-dylib-definition"; name = libsqlite3.tbd; path = usr/lib/libsqlite3.tbd; sourceTree = SDKROOT; };
+		9E661968A7AAAE420A10ADA4 /* app */ = {isa = PBXFileReference; lastKnownFileType = folder; name = app; path = ../app; sourceTree = SOURCE_ROOT; };
+		ACC8390281707D33B388F1A7 /* DriverApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DriverApp.swift; sourceTree = "<group>"; };
+		B3191DC90181CF2E291BCC93 /* QueueDatabase.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QueueDatabase.swift; sourceTree = "<group>"; };
+		B7028E875469B279F01D7A93 /* Overlays.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Overlays.swift; sourceTree = "<group>"; };
+		BAA137A3995D2F266E2C28F1 /* ChooserRecoveryScenario.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChooserRecoveryScenario.swift; sourceTree = "<group>"; };
+		BDED05D9644DDA3147C16A11 /* ChatSwitchKeepsPlaceScenario.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatSwitchKeepsPlaceScenario.swift; sourceTree = "<group>"; };
+		C2DCC4B27E40B926D3C50D78 /* CaptureSigning.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = CaptureSigning.xcconfig; sourceTree = "<group>"; };
+		C34CC2FD4F7CDA2E7D5E08EB /* ScenarioExecution.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScenarioExecution.swift; sourceTree = "<group>"; };
+		C5046E141F7B69C3F67DF01B /* ProcessIdentityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProcessIdentityTests.swift; sourceTree = "<group>"; };
+		C639D1F297F811D8E4691314 /* OttamUIScenarioRunner */ = {isa = PBXFileReference; includeInIndex = 0; path = OttamUIScenarioRunner; sourceTree = BUILT_PRODUCTS_DIR; };
+		C66B8643D00A8340FCFB7DE6 /* libCoordinatorKit.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = libCoordinatorKit.a; sourceTree = BUILT_PRODUCTS_DIR; };
+		CCF55304124012748D490636 /* SmokeScenario.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SmokeScenario.swift; sourceTree = "<group>"; };
+		CEA121882D27199700A8BF63 /* OcclusionScenario.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OcclusionScenario.swift; sourceTree = "<group>"; };
+		D289C75447F9E60BEB0209CB /* ScenarioRuntimeHelpers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScenarioRuntimeHelpers.swift; sourceTree = "<group>"; };
+		D78E8C7C03A48D36ECFAB32F /* MarkdownEngineLabScenarios.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownEngineLabScenarios.swift; sourceTree = "<group>"; };
+		E25522FE234E1EE41026F098 /* ScenarioRunner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScenarioRunner.swift; sourceTree = "<group>"; };
+		E537AB8F3EA83E1368FEB440 /* ScenarioExecutionSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScenarioExecutionSupport.swift; sourceTree = "<group>"; };
+		E82FE5DE89B96968B62EDD7A /* ScreenCaptureKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = ScreenCaptureKit.framework; path = System/Library/Frameworks/ScreenCaptureKit.framework; sourceTree = SDKROOT; };
+		EC04C80FE3797081B3E41B0F /* ConversationToolsScenario.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationToolsScenario.swift; sourceTree = "<group>"; };
+		F1AA615A295F799F3B626968 /* ExistingAcceptanceScenarios.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExistingAcceptanceScenarios.swift; sourceTree = "<group>"; };
+		F81116AE37412A844F9201B6 /* ChatNormalizedTranscriptScenario.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatNormalizedTranscriptScenario.swift; sourceTree = "<group>"; };
+		FCB9854846424F99C271CC04 /* ChatBackgroundTasksScenario.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatBackgroundTasksScenario.swift; sourceTree = "<group>"; };
+		FD28AD307112BDFE60D8FC8E /* ChatRunFailureScenario.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatRunFailureScenario.swift; sourceTree = "<group>"; };
+		FEAA1F25D960F05D22027619 /* ChatUsageScenario.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatUsageScenario.swift; sourceTree = "<group>"; };
+		FEDD8066C51FF3AD29AA48F1 /* MacAutomationKit.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacAutomationKit.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		0448A00D9E38454EC3A81972 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				46102A0670A2B2A1C67D2220 /* AppKit.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		11FC853FC99AA279E6E53E01 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				95A5A933C0975A4FB204329F /* AppKit.framework in Frameworks */,
+				AF1BA259C867392640FCBF32 /* ApplicationServices.framework in Frameworks */,
+				B7101E7D9221C42DF787C84B /* ScreenCaptureKit.framework in Frameworks */,
+				C3AA97229A9D413670E8595B /* UniformTypeIdentifiers.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		1FAA3CBB85621BD680EED243 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				77BAFC6F2D2D533E82930483 /* libsqlite3.tbd in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		331DAF78EFE9EDA957239570 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				F9B05A666F6E7EB06AEC9C6D /* libUIHarnessCore.a in Frameworks */,
+				C81AB78F708D89B7B33B51C9 /* libOttamUIScenarios.a in Frameworks */,
+				9FF28A7F8303715F25317975 /* libScenarioKit.a in Frameworks */,
+				343C7E94B517B4D2CAB22AEC /* libMacAutomationKit.a in Frameworks */,
+				E933107BA0DFD547AE57B474 /* OttamAccessibility in Frameworks */,
+				4730AF397FD2E68C83F7D54C /* OttamTranscriptFixtures in Frameworks */,
+				9FB740A4932897B12C7D774E /* AppKit.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		3E35E8859D74620D216DE3A1 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				BE3E6CFDEEA5579B709146FB /* libCoordinatorKit.a in Frameworks */,
+				F3BD1289731D87402FD19877 /* libUIHarnessCore.a in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		56B3AA5548B9C84C6D30787E /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				6B16C2C0BE92B3099DC0038D /* libUIHarnessCore.a in Frameworks */,
+				DCBD61AF3722F78A79B377B3 /* libMacAutomationKit.a in Frameworks */,
+				93066CD037183450F98FC5BA /* AppKit.framework in Frameworks */,
+				FA7F8D673CD75DA84FCA9FB6 /* ApplicationServices.framework in Frameworks */,
+				E55A6DE49DE4717E8BA5D079 /* ScreenCaptureKit.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		F9AABE2DFD71FB34C79FA0AB /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				0E7B36C759F120DBC6B4E28A /* libCoordinatorKit.a in Frameworks */,
+				0BDEBC35E0B9CAB1B4A93D3B /* libUIHarnessCore.a in Frameworks */,
+				1EF27FA3ED8C0531D37EB82D /* libOttamUIScenarios.a in Frameworks */,
+				A8BC355E98B24F587A767AD9 /* libScenarioKit.a in Frameworks */,
+				5627C54E410B01B4593D63BC /* libMacAutomationKit.a in Frameworks */,
+				E6A368336F6162A678AF49F8 /* OttamAccessibility in Frameworks */,
+				49F2FA4F9F5585B3392D2335 /* OttamTranscriptFixtures in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		12618AB9DF01EF1448EF5660 /* CoordinatorKit */ = {
+			isa = PBXGroup;
+			children = (
+				05B824D9DB636E633EA8D436 /* CoordinatorCommand.swift */,
+				28862B0D11672D77E38AC4D4 /* OwnedApplication.swift */,
+				B3191DC90181CF2E291BCC93 /* QueueDatabase.swift */,
+			);
+			path = CoordinatorKit;
+			sourceTree = "<group>";
+		};
+		22ABBB7A0BA730401E816908 /* MacAutomationKit */ = {
+			isa = PBXGroup;
+			children = (
+				269731FFCC3A9D62823E5A8E /* AccessibilityAudit.swift */,
+				76B470189D106D4D8AC02BA9 /* Capture.swift */,
+				FEDD8066C51FF3AD29AA48F1 /* MacAutomationKit.swift */,
+				B7028E875469B279F01D7A93 /* Overlays.swift */,
+			);
+			path = MacAutomationKit;
+			sourceTree = "<group>";
+		};
+		25ACC246F92C3C286C24AAAF /* OttamUIScenarioRunner */ = {
+			isa = PBXGroup;
+			children = (
+				565E762DE9388BD9D6E9C390 /* ExecutionResult.swift */,
+				52C900DD42A23E677F393A56 /* RunnerSupport.swift */,
+				46D83678565B44B79A76ED85 /* ScenarioCoordinatorLease.swift */,
+				C34CC2FD4F7CDA2E7D5E08EB /* ScenarioExecution.swift */,
+				E537AB8F3EA83E1368FEB440 /* ScenarioExecutionSupport.swift */,
+				E25522FE234E1EE41026F098 /* ScenarioRunner.swift */,
+				19CBDA0AB28D575CC42C1640 /* ScenarioRuntimeContext.swift */,
+				D289C75447F9E60BEB0209CB /* ScenarioRuntimeHelpers.swift */,
+				6359C3B869E6497CA5982BAD /* ScenarioRuntimeSupport.swift */,
+			);
+			path = OttamUIScenarioRunner;
+			sourceTree = "<group>";
+		};
+		2E48AFACAE400AA92E89DBFB /* MacAutomationKitTests */ = {
+			isa = PBXGroup;
+			children = (
+				45E49AE1541247C68F4316BC /* AccessibilityAuditTests.swift */,
+			);
+			path = MacAutomationKitTests;
+			sourceTree = "<group>";
+		};
+		452B8AE9FE7DC2F3585BA806 /* OttamUITestDriver */ = {
+			isa = PBXGroup;
+			children = (
+				ACC8390281707D33B388F1A7 /* DriverApp.swift */,
+			);
+			path = OttamUITestDriver;
+			sourceTree = "<group>";
+		};
+		4F67A6B9336D022EA0C81337 /* Tests */ = {
+			isa = PBXGroup;
+			children = (
+				BC3B436B7172AF49E22741BF /* CoordinatorKitTests */,
+				2E48AFACAE400AA92E89DBFB /* MacAutomationKitTests */,
+				9A29A410CC9622DED278D512 /* ScenarioKitTests */,
+			);
+			path = Tests;
+			sourceTree = "<group>";
+		};
+		5017495AF905718F8C6C030B /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				C66B8643D00A8340FCFB7DE6 /* libCoordinatorKit.a */,
+				15802884F31D8C8E028F6A96 /* libMacAutomationKit.a */,
+				5DB6314AE2012F2AEF1DD20E /* libOttamUIScenarios.a */,
+				8C82212CA9FACC79A4079F42 /* libScenarioKit.a */,
+				0A667281477E273A84962FFB /* libUIHarnessCore.a */,
+				6A9931D6A2D23DC9EEDD59B9 /* OttamUINativeTests.xctest */,
+				C639D1F297F811D8E4691314 /* OttamUIScenarioRunner */,
+				7905F385C5D72E876E0BAD64 /* OttamUITestCoordinator */,
+				03F218B5433AA38579A5EB59 /* OttamUITestDriver.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		9A29A410CC9622DED278D512 /* ScenarioKitTests */ = {
+			isa = PBXGroup;
+			children = (
+				C5046E141F7B69C3F67DF01B /* ProcessIdentityTests.swift */,
+				171DF0C96651BFA58F7EACF1 /* ScenarioContractsTests.swift */,
+			);
+			path = ScenarioKitTests;
+			sourceTree = "<group>";
+		};
+		9BDC83988CC8D0C1977531C4 /* OttamUIScenarios */ = {
+			isa = PBXGroup;
+			children = (
+				2916E5B95747208B96EFC6AB /* ScenarioRegistry.swift */,
+				DF2B571FBE7C27F0C8E8E39C /* Scenarios */,
+			);
+			path = OttamUIScenarios;
+			sourceTree = "<group>";
+		};
+		A7A32AB904D3D8F26A8D2FE2 /* Configuration */ = {
+			isa = PBXGroup;
+			children = (
+				C2DCC4B27E40B926D3C50D78 /* CaptureSigning.xcconfig */,
+			);
+			path = Configuration;
+			sourceTree = "<group>";
+		};
+		AF330AE1C7405008C0D950CC /* Sources */ = {
+			isa = PBXGroup;
+			children = (
+				12618AB9DF01EF1448EF5660 /* CoordinatorKit */,
+				22ABBB7A0BA730401E816908 /* MacAutomationKit */,
+				25ACC246F92C3C286C24AAAF /* OttamUIScenarioRunner */,
+				9BDC83988CC8D0C1977531C4 /* OttamUIScenarios */,
+				E8A6372A68AE97ADFE43E031 /* OttamUITestCoordinator */,
+				452B8AE9FE7DC2F3585BA806 /* OttamUITestDriver */,
+				EF48F04FBF936C4368DE5EA1 /* ScenarioKit */,
+				C359EB035AEF0D0C09F383D9 /* UIHarnessCore */,
+			);
+			path = Sources;
+			sourceTree = "<group>";
+		};
+		B994720E278479657836DE68 /* Packages */ = {
+			isa = PBXGroup;
+			children = (
+				9E661968A7AAAE420A10ADA4 /* app */,
+			);
+			name = Packages;
+			sourceTree = "<group>";
+		};
+		BC3B436B7172AF49E22741BF /* CoordinatorKitTests */ = {
+			isa = PBXGroup;
+			children = (
+				433073221573F75219CF9F2F /* QueueDatabaseTests.swift */,
+			);
+			path = CoordinatorKitTests;
+			sourceTree = "<group>";
+		};
+		C359EB035AEF0D0C09F383D9 /* UIHarnessCore */ = {
+			isa = PBXGroup;
+			children = (
+				2E01E850E56560C0A6A3465E /* Infrastructure.swift */,
+				10D2DE7EAEA374AC2CE40547 /* ProcessLifecycle.swift */,
+			);
+			path = UIHarnessCore;
+			sourceTree = "<group>";
+		};
+		C59A5D12F83581DB9D38225D = {
+			isa = PBXGroup;
+			children = (
+				A7A32AB904D3D8F26A8D2FE2 /* Configuration */,
+				B994720E278479657836DE68 /* Packages */,
+				AF330AE1C7405008C0D950CC /* Sources */,
+				4F67A6B9336D022EA0C81337 /* Tests */,
+				D582B6AFDC52D0C14F6020D7 /* Frameworks */,
+				5017495AF905718F8C6C030B /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		D582B6AFDC52D0C14F6020D7 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				7CBB5B71DA7DCCCC67453AFB /* AppKit.framework */,
+				88E65E8ECA13A38AF0177E85 /* ApplicationServices.framework */,
+				984801048E4B695D9E861707 /* libsqlite3.tbd */,
+				E82FE5DE89B96968B62EDD7A /* ScreenCaptureKit.framework */,
+				6586E5D242669347F676C97C /* UniformTypeIdentifiers.framework */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
+		DF2B571FBE7C27F0C8E8E39C /* Scenarios */ = {
+			isa = PBXGroup;
+			children = (
+				86395726F514D89D219F71CC /* AgentCompatibilityScenarios.swift */,
+				03951553F88CA04BFCB197DA /* AgentProfilesScenario.swift */,
+				4F3A63A220ACF1AC24F7A8C7 /* AgentUpdateScenarios.swift */,
+				FCB9854846424F99C271CC04 /* ChatBackgroundTasksScenario.swift */,
+				F81116AE37412A844F9201B6 /* ChatNormalizedTranscriptScenario.swift */,
+				FD28AD307112BDFE60D8FC8E /* ChatRunFailureScenario.swift */,
+				905D20E549C5B1ED6DA256E1 /* ChatSubagentThreadsScenario.swift */,
+				BDED05D9644DDA3147C16A11 /* ChatSwitchKeepsPlaceScenario.swift */,
+				8B5D0EBBD5F449D5A9F9BC90 /* ChatTranscriptHistoryRecoveryScenario.swift */,
+				5DCE945505AA716BBDE88F2C /* ChatTranscriptPayloadsScenario.swift */,
+				2724F8A3647A2E0171CDF5B8 /* ChatTranscriptScenarios.swift */,
+				FEAA1F25D960F05D22027619 /* ChatUsageScenario.swift */,
+				BAA137A3995D2F266E2C28F1 /* ChooserRecoveryScenario.swift */,
+				EC04C80FE3797081B3E41B0F /* ConversationToolsScenario.swift */,
+				71D29E4DA91FB9B7A034A96F /* DriverScenarios.swift */,
+				158B39840482D4FD59B623F8 /* EngineSetupScenarios.swift */,
+				F1AA615A295F799F3B626968 /* ExistingAcceptanceScenarios.swift */,
+				5C57C6FA9992E1AF46893C39 /* ExistingAgentSetupScenarios.swift */,
+				D78E8C7C03A48D36ECFAB32F /* MarkdownEngineLabScenarios.swift */,
+				CEA121882D27199700A8BF63 /* OcclusionScenario.swift */,
+				CCF55304124012748D490636 /* SmokeScenario.swift */,
+				7D74B8831E4E3EEEFAE8678A /* TranscriptMeasurementScenarios.swift */,
+				62A270B5EA6B47DFA1D1BBAC /* WorkspaceShapeScenarios.swift */,
+			);
+			path = Scenarios;
+			sourceTree = "<group>";
+		};
+		E8A6372A68AE97ADFE43E031 /* OttamUITestCoordinator */ = {
+			isa = PBXGroup;
+			children = (
+				1A97E58AE725CD906B2DE4D2 /* Main.swift */,
+			);
+			path = OttamUITestCoordinator;
+			sourceTree = "<group>";
+		};
+		EF48F04FBF936C4368DE5EA1 /* ScenarioKit */ = {
+			isa = PBXGroup;
+			children = (
+				38A18493381A763F976EEA61 /* ScenarioContracts.swift */,
+				27D51E21AD6CBC1AB3B1C973 /* ScenarioKit.swift */,
+				26F3628C46D949ACBC3D87E0 /* UIScenarioRegistry.swift */,
+			);
+			path = ScenarioKit;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		0D674900E68FA6B45E2A0727 /* MacAutomationKit */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 0D03F03D80D1E4D3E50347B0 /* Build configuration list for PBXNativeTarget "MacAutomationKit" */;
+			buildPhases = (
+				9F3C584F1D93BB1D8C7A0678 /* Sources */,
+				0457656BBFF685B24ACAEFEE /* Copy Swift Objective-C Interface Header */,
+				11FC853FC99AA279E6E53E01 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				C750B8C6EF54FB89B173F562 /* PBXTargetDependency */,
+			);
+			name = MacAutomationKit;
+			packageProductDependencies = (
+			);
+			productName = MacAutomationKit;
+			productReference = 15802884F31D8C8E028F6A96 /* libMacAutomationKit.a */;
+			productType = "com.apple.product-type.library.static";
+		};
+		2BE8839E5D902F15F1E4E8DA /* OttamUIScenarios */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 1E009F2B20447ADDDF05BB97 /* Build configuration list for PBXNativeTarget "OttamUIScenarios" */;
+			buildPhases = (
+				B104864F4EC06B89E62C4C55 /* Sources */,
+				73581EBD3B09F088F6A3F1EC /* Copy Swift Objective-C Interface Header */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				DBC0418D697B0D37E6EA88EA /* PBXTargetDependency */,
+				C87BA25D886D1D33D415CAC0 /* PBXTargetDependency */,
+				64EAEFA48583A1CD55256BE9 /* PBXTargetDependency */,
+				E632542ACDC896B7AF62B93E /* PBXTargetDependency */,
+			);
+			name = OttamUIScenarios;
+			packageProductDependencies = (
+				E6B9426DF90F8884F3B777AF /* OttamAccessibility */,
+				A604EC9A49416744A8AF01A7 /* OttamTranscriptFixtures */,
+			);
+			productName = OttamUIScenarios;
+			productReference = 5DB6314AE2012F2AEF1DD20E /* libOttamUIScenarios.a */;
+			productType = "com.apple.product-type.library.static";
+		};
+		2F3C529C0C35331C337F5624 /* OttamUITestDriver */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 873125BCC30770170B58D523 /* Build configuration list for PBXNativeTarget "OttamUITestDriver" */;
+			buildPhases = (
+				A2CECF1ADB59D908A7106287 /* Sources */,
+				56B3AA5548B9C84C6D30787E /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				A4867DB1F12626CF0041B198 /* PBXTargetDependency */,
+				1F22D14B78F7720523A9D2C3 /* PBXTargetDependency */,
+			);
+			name = OttamUITestDriver;
+			packageProductDependencies = (
+			);
+			productName = OttamUITestDriver;
+			productReference = 03F218B5433AA38579A5EB59 /* OttamUITestDriver.app */;
+			productType = "com.apple.product-type.application";
+		};
+		557D70956BE53D952ECF4217 /* OttamUITestCoordinator */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 215FDAEC24FF3003ABFE48E8 /* Build configuration list for PBXNativeTarget "OttamUITestCoordinator" */;
+			buildPhases = (
+				F506D828CB2CD8E43939D35A /* Sources */,
+				3E35E8859D74620D216DE3A1 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				0E7466F59A4A623D556B1710 /* PBXTargetDependency */,
+				3856406DD58679BE659F3CEB /* PBXTargetDependency */,
+			);
+			name = OttamUITestCoordinator;
+			packageProductDependencies = (
+			);
+			productName = OttamUITestCoordinator;
+			productReference = 7905F385C5D72E876E0BAD64 /* OttamUITestCoordinator */;
+			productType = "com.apple.product-type.tool";
+		};
+		5F6CB35286F1A630A3980AF3 /* OttamUIScenarioRunner */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 26B8B0B9FF2153B7A6A97D89 /* Build configuration list for PBXNativeTarget "OttamUIScenarioRunner" */;
+			buildPhases = (
+				FD4CEDB6E64325F68CE83BB7 /* Sources */,
+				331DAF78EFE9EDA957239570 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				30CE538062EBFE407C694D12 /* PBXTargetDependency */,
+				082689D1FC18DEEDA6BC026E /* PBXTargetDependency */,
+				7AA9763BA34B03C67EF98C89 /* PBXTargetDependency */,
+				58BD1ADAD2244D35C17E143F /* PBXTargetDependency */,
+			);
+			name = OttamUIScenarioRunner;
+			packageProductDependencies = (
+				CAD5B3F62F3CDF19FC5E0820 /* OttamAccessibility */,
+				FF4F4FB3A47252A072F4EC29 /* OttamTranscriptFixtures */,
+			);
+			productName = OttamUIScenarioRunner;
+			productReference = C639D1F297F811D8E4691314 /* OttamUIScenarioRunner */;
+			productType = "com.apple.product-type.tool";
+		};
+		79B0BB6B92B0A4FC5BF846E6 /* ScenarioKit */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 430F04247805130C2EAD66FA /* Build configuration list for PBXNativeTarget "ScenarioKit" */;
+			buildPhases = (
+				AD339977E37B8BCB3EA11A10 /* Sources */,
+				F0C72A851638AACDD78561EF /* Copy Swift Objective-C Interface Header */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				A4C605F2A50273B75380C853 /* PBXTargetDependency */,
+				DAEA4CFFDE0EFD084881F4D4 /* PBXTargetDependency */,
+				88A3F16F7493D29385675FE3 /* PBXTargetDependency */,
+			);
+			name = ScenarioKit;
+			packageProductDependencies = (
+				FB6EFF83704D17AE0C0706D6 /* OttamAccessibility */,
+			);
+			productName = ScenarioKit;
+			productReference = 8C82212CA9FACC79A4079F42 /* libScenarioKit.a */;
+			productType = "com.apple.product-type.library.static";
+		};
+		8EFDA449BFD84543343C273C /* OttamUINativeTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 6D0ADBA2FE77705ACEEAB0F4 /* Build configuration list for PBXNativeTarget "OttamUINativeTests" */;
+			buildPhases = (
+				4BA51FC8DEAD604D421446CB /* Sources */,
+				F9AABE2DFD71FB34C79FA0AB /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				2A456CAC970175EEA818B947 /* PBXTargetDependency */,
+				0E4BA6E716328957D1571DF7 /* PBXTargetDependency */,
+				33A4885A028B47E2F66207AB /* PBXTargetDependency */,
+				F541480C134D30D11DC957C4 /* PBXTargetDependency */,
+				C3B54635BD8ED7F4C6BAF691 /* PBXTargetDependency */,
+			);
+			name = OttamUINativeTests;
+			packageProductDependencies = (
+				6D473D3A3A327025C9FF7965 /* OttamAccessibility */,
+				252D15BEAEF260EB5A92FB7B /* OttamTranscriptFixtures */,
+			);
+			productName = OttamUINativeTests;
+			productReference = 6A9931D6A2D23DC9EEDD59B9 /* OttamUINativeTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		C96AE88827D2FCBB2E63E42D /* UIHarnessCore */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = AA3F75F94C1554EA19732C01 /* Build configuration list for PBXNativeTarget "UIHarnessCore" */;
+			buildPhases = (
+				A040F1CBD26908506D2753B8 /* Sources */,
+				07CC1FEA1084F60E16D05662 /* Copy Swift Objective-C Interface Header */,
+				0448A00D9E38454EC3A81972 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = UIHarnessCore;
+			packageProductDependencies = (
+			);
+			productName = UIHarnessCore;
+			productReference = 0A667281477E273A84962FFB /* libUIHarnessCore.a */;
+			productType = "com.apple.product-type.library.static";
+		};
+		E4229C8F29120B3921FFA60D /* CoordinatorKit */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 9FD03342AF251F98DF63F631 /* Build configuration list for PBXNativeTarget "CoordinatorKit" */;
+			buildPhases = (
+				B2BEE0BF9890C95DD2B60E0F /* Sources */,
+				562F55DE65BD288D5586CBEF /* Copy Swift Objective-C Interface Header */,
+				1FAA3CBB85621BD680EED243 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				51F0FEFDD1C6264ADDE118A8 /* PBXTargetDependency */,
+			);
+			name = CoordinatorKit;
+			packageProductDependencies = (
+			);
+			productName = CoordinatorKit;
+			productReference = C66B8643D00A8340FCFB7DE6 /* libCoordinatorKit.a */;
+			productType = "com.apple.product-type.library.static";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		712DD38D3C6CC625D2A62995 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 2700;
+				TargetAttributes = {
+					0D674900E68FA6B45E2A0727 = {
+						ProvisioningStyle = Manual;
+					};
+					2BE8839E5D902F15F1E4E8DA = {
+						ProvisioningStyle = Manual;
+					};
+					2F3C529C0C35331C337F5624 = {
+						DevelopmentTeam = "$(OTTAM_UI_TEST_DEVELOPMENT_TEAM)";
+						ProvisioningStyle = Manual;
+					};
+					557D70956BE53D952ECF4217 = {
+						ProvisioningStyle = Manual;
+					};
+					5F6CB35286F1A630A3980AF3 = {
+						ProvisioningStyle = Manual;
+					};
+					79B0BB6B92B0A4FC5BF846E6 = {
+						ProvisioningStyle = Manual;
+					};
+					8EFDA449BFD84543343C273C = {
+						ProvisioningStyle = Manual;
+					};
+					C96AE88827D2FCBB2E63E42D = {
+						ProvisioningStyle = Manual;
+					};
+					E4229C8F29120B3921FFA60D = {
+						ProvisioningStyle = Manual;
+					};
+				};
+			};
+			buildConfigurationList = 4EB4E513E21C782ADE17C041 /* Build configuration list for PBXProject "OttamUITesting" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = C59A5D12F83581DB9D38225D;
+			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				87439E6214F92FC2FC70556C /* XCLocalSwiftPackageReference "../app" */,
+			);
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 5017495AF905718F8C6C030B /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				C96AE88827D2FCBB2E63E42D /* UIHarnessCore */,
+				0D674900E68FA6B45E2A0727 /* MacAutomationKit */,
+				79B0BB6B92B0A4FC5BF846E6 /* ScenarioKit */,
+				2BE8839E5D902F15F1E4E8DA /* OttamUIScenarios */,
+				2F3C529C0C35331C337F5624 /* OttamUITestDriver */,
+				5F6CB35286F1A630A3980AF3 /* OttamUIScenarioRunner */,
+				E4229C8F29120B3921FFA60D /* CoordinatorKit */,
+				557D70956BE53D952ECF4217 /* OttamUITestCoordinator */,
+				8EFDA449BFD84543343C273C /* OttamUINativeTests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		0457656BBFF685B24ACAEFEE /* Copy Swift Objective-C Interface Header */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+				"$(DERIVED_SOURCES_DIR)/$(SWIFT_OBJC_INTERFACE_HEADER_NAME)",
+			);
+			name = "Copy Swift Objective-C Interface Header";
+			outputPaths = (
+				"$(BUILT_PRODUCTS_DIR)/include/$(PRODUCT_MODULE_NAME)/$(SWIFT_OBJC_INTERFACE_HEADER_NAME)",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "ditto \"${SCRIPT_INPUT_FILE_0}\" \"${SCRIPT_OUTPUT_FILE_0}\"\n";
+		};
+		07CC1FEA1084F60E16D05662 /* Copy Swift Objective-C Interface Header */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+				"$(DERIVED_SOURCES_DIR)/$(SWIFT_OBJC_INTERFACE_HEADER_NAME)",
+			);
+			name = "Copy Swift Objective-C Interface Header";
+			outputPaths = (
+				"$(BUILT_PRODUCTS_DIR)/include/$(PRODUCT_MODULE_NAME)/$(SWIFT_OBJC_INTERFACE_HEADER_NAME)",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "ditto \"${SCRIPT_INPUT_FILE_0}\" \"${SCRIPT_OUTPUT_FILE_0}\"\n";
+		};
+		562F55DE65BD288D5586CBEF /* Copy Swift Objective-C Interface Header */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+				"$(DERIVED_SOURCES_DIR)/$(SWIFT_OBJC_INTERFACE_HEADER_NAME)",
+			);
+			name = "Copy Swift Objective-C Interface Header";
+			outputPaths = (
+				"$(BUILT_PRODUCTS_DIR)/include/$(PRODUCT_MODULE_NAME)/$(SWIFT_OBJC_INTERFACE_HEADER_NAME)",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "ditto \"${SCRIPT_INPUT_FILE_0}\" \"${SCRIPT_OUTPUT_FILE_0}\"\n";
+		};
+		73581EBD3B09F088F6A3F1EC /* Copy Swift Objective-C Interface Header */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+				"$(DERIVED_SOURCES_DIR)/$(SWIFT_OBJC_INTERFACE_HEADER_NAME)",
+			);
+			name = "Copy Swift Objective-C Interface Header";
+			outputPaths = (
+				"$(BUILT_PRODUCTS_DIR)/include/$(PRODUCT_MODULE_NAME)/$(SWIFT_OBJC_INTERFACE_HEADER_NAME)",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "ditto \"${SCRIPT_INPUT_FILE_0}\" \"${SCRIPT_OUTPUT_FILE_0}\"\n";
+		};
+		F0C72A851638AACDD78561EF /* Copy Swift Objective-C Interface Header */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+				"$(DERIVED_SOURCES_DIR)/$(SWIFT_OBJC_INTERFACE_HEADER_NAME)",
+			);
+			name = "Copy Swift Objective-C Interface Header";
+			outputPaths = (
+				"$(BUILT_PRODUCTS_DIR)/include/$(PRODUCT_MODULE_NAME)/$(SWIFT_OBJC_INTERFACE_HEADER_NAME)",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "ditto \"${SCRIPT_INPUT_FILE_0}\" \"${SCRIPT_OUTPUT_FILE_0}\"\n";
+		};
+/* End PBXShellScriptBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		4BA51FC8DEAD604D421446CB /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				807341A6A5632217E1E6B469 /* AccessibilityAuditTests.swift in Sources */,
+				9E9A7C3A85323D3CEE03B5D0 /* ProcessIdentityTests.swift in Sources */,
+				04B1E47FEEA9F19A5B9F39E1 /* QueueDatabaseTests.swift in Sources */,
+				0FCF78DB65B5B43337DDECBB /* ScenarioContractsTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		9F3C584F1D93BB1D8C7A0678 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				769FE58DB2DBA40B488ED464 /* AccessibilityAudit.swift in Sources */,
+				B0A491CF06735E313133788E /* Capture.swift in Sources */,
+				6299ECEFF049BC6438C056FF /* MacAutomationKit.swift in Sources */,
+				2C7F2D8DBC5208A94D9BDDA8 /* Overlays.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A040F1CBD26908506D2753B8 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				75E4B3D614309B2C09109B22 /* Infrastructure.swift in Sources */,
+				06B0C5EF90D8D8F007BC720C /* ProcessLifecycle.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A2CECF1ADB59D908A7106287 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				16609379E35CABA99CFC4997 /* DriverApp.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		AD339977E37B8BCB3EA11A10 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				BB51B1A7F9DCDE676B4F8848 /* ScenarioContracts.swift in Sources */,
+				A58E5DFC55CDCF86F7EAC8B0 /* ScenarioKit.swift in Sources */,
+				28009B9F74FB19598E4390D2 /* UIScenarioRegistry.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		B104864F4EC06B89E62C4C55 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				7B0D2DE6B5BF008398811A21 /* AgentCompatibilityScenarios.swift in Sources */,
+				320744BF2414F734981910BA /* AgentProfilesScenario.swift in Sources */,
+				B2BC7EC79775A3AA59465449 /* AgentUpdateScenarios.swift in Sources */,
+				BC784D6AC6076FD417066193 /* ChatBackgroundTasksScenario.swift in Sources */,
+				D6253CEE9BE94E07FD44607E /* ChatNormalizedTranscriptScenario.swift in Sources */,
+				A5D4FB63BE1380955BC48A2E /* ChatRunFailureScenario.swift in Sources */,
+				3DDA96C1C2CED7C3D9036597 /* ChatSubagentThreadsScenario.swift in Sources */,
+				553DB4F1734A27DE2D31C9D0 /* ChatSwitchKeepsPlaceScenario.swift in Sources */,
+				E7808C052CCB832F6A0DB25A /* ChatTranscriptHistoryRecoveryScenario.swift in Sources */,
+				EC73F3D7EC150AF6D068887B /* ChatTranscriptPayloadsScenario.swift in Sources */,
+				59700CD87BF8E485F607FAD9 /* ChatTranscriptScenarios.swift in Sources */,
+				3A4E86AEE3068F378E19FE43 /* ChatUsageScenario.swift in Sources */,
+				E0947A1004A9CA052D2E6D4C /* ChooserRecoveryScenario.swift in Sources */,
+				B5D84B01C70945FACDAEE053 /* ConversationToolsScenario.swift in Sources */,
+				7FF2CD0DC6C59914D7503257 /* DriverScenarios.swift in Sources */,
+				BA17996C5F6A8C0F8FA32B8A /* EngineSetupScenarios.swift in Sources */,
+				AB164913E415F77279CA52B4 /* ExistingAcceptanceScenarios.swift in Sources */,
+				2691D646AE258DF776F5406B /* ExistingAgentSetupScenarios.swift in Sources */,
+				91CC32948B92FC0836F75014 /* MarkdownEngineLabScenarios.swift in Sources */,
+				748ADFB072C36D1DF8BCE9A3 /* OcclusionScenario.swift in Sources */,
+				62391A71895D78FE430367EE /* ScenarioRegistry.swift in Sources */,
+				74C2130725227ECE72353673 /* SmokeScenario.swift in Sources */,
+				BB032800BDE44B748F34E52E /* TranscriptMeasurementScenarios.swift in Sources */,
+				A2403FA4C21A876B5ED674BC /* WorkspaceShapeScenarios.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		B2BEE0BF9890C95DD2B60E0F /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				5A2407FB735B3B6F8F6C1B12 /* CoordinatorCommand.swift in Sources */,
+				A4E5B49649FFD80A12122375 /* OwnedApplication.swift in Sources */,
+				BBF5ADD19910BFE696C2D592 /* QueueDatabase.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		F506D828CB2CD8E43939D35A /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				986661C7FDEC87EB1281617E /* Main.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		FD4CEDB6E64325F68CE83BB7 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				7F957927462D480495861CB7 /* ExecutionResult.swift in Sources */,
+				B22CAA00808492AE5BFE3237 /* RunnerSupport.swift in Sources */,
+				29F1CA03B5103853A420FB0C /* ScenarioCoordinatorLease.swift in Sources */,
+				69E37DB2EFB319FE4111398F /* ScenarioExecution.swift in Sources */,
+				A20D9E2C1417A6A0A2D1F082 /* ScenarioExecutionSupport.swift in Sources */,
+				246075D9E9B667D63857E066 /* ScenarioRunner.swift in Sources */,
+				D1B28B999BC69157C603A737 /* ScenarioRuntimeContext.swift in Sources */,
+				7F03C0E4C08567F0F1182B16 /* ScenarioRuntimeHelpers.swift in Sources */,
+				6C48F6A7B362F84CE9484895 /* ScenarioRuntimeSupport.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		082689D1FC18DEEDA6BC026E /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 2BE8839E5D902F15F1E4E8DA /* OttamUIScenarios */;
+			targetProxy = 0EE594F3A4BE8F1944CF523E /* PBXContainerItemProxy */;
+		};
+		0E4BA6E716328957D1571DF7 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = C96AE88827D2FCBB2E63E42D /* UIHarnessCore */;
+			targetProxy = AD95DE78A563EB8953AC42CC /* PBXContainerItemProxy */;
+		};
+		0E7466F59A4A623D556B1710 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = E4229C8F29120B3921FFA60D /* CoordinatorKit */;
+			targetProxy = 37DFB362CE4EE99BCF7BB120 /* PBXContainerItemProxy */;
+		};
+		1F22D14B78F7720523A9D2C3 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 0D674900E68FA6B45E2A0727 /* MacAutomationKit */;
+			targetProxy = A4A17563AFA0F980EF2C966C /* PBXContainerItemProxy */;
+		};
+		2A456CAC970175EEA818B947 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = E4229C8F29120B3921FFA60D /* CoordinatorKit */;
+			targetProxy = 85DD80C4DEBDA6223C750F5C /* PBXContainerItemProxy */;
+		};
+		30CE538062EBFE407C694D12 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = C96AE88827D2FCBB2E63E42D /* UIHarnessCore */;
+			targetProxy = 4A9FE839CFC787CFDA5315C0 /* PBXContainerItemProxy */;
+		};
+		33A4885A028B47E2F66207AB /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 2BE8839E5D902F15F1E4E8DA /* OttamUIScenarios */;
+			targetProxy = 6F6332256083840CD91C6165 /* PBXContainerItemProxy */;
+		};
+		3856406DD58679BE659F3CEB /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = C96AE88827D2FCBB2E63E42D /* UIHarnessCore */;
+			targetProxy = 25FF93C82DE7AE724492E90F /* PBXContainerItemProxy */;
+		};
+		51F0FEFDD1C6264ADDE118A8 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = C96AE88827D2FCBB2E63E42D /* UIHarnessCore */;
+			targetProxy = 19D5A7ECF8B51FC440530628 /* PBXContainerItemProxy */;
+		};
+		58BD1ADAD2244D35C17E143F /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 0D674900E68FA6B45E2A0727 /* MacAutomationKit */;
+			targetProxy = BF6B8CE8D24BF28624D3B0D7 /* PBXContainerItemProxy */;
+		};
+		64EAEFA48583A1CD55256BE9 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			productRef = E6B9426DF90F8884F3B777AF /* OttamAccessibility */;
+		};
+		7AA9763BA34B03C67EF98C89 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 79B0BB6B92B0A4FC5BF846E6 /* ScenarioKit */;
+			targetProxy = BD86A2761F6EAD494064468C /* PBXContainerItemProxy */;
+		};
+		88A3F16F7493D29385675FE3 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			productRef = FB6EFF83704D17AE0C0706D6 /* OttamAccessibility */;
+		};
+		A4867DB1F12626CF0041B198 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = C96AE88827D2FCBB2E63E42D /* UIHarnessCore */;
+			targetProxy = 50FB3231F117C6F933195860 /* PBXContainerItemProxy */;
+		};
+		A4C605F2A50273B75380C853 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = C96AE88827D2FCBB2E63E42D /* UIHarnessCore */;
+			targetProxy = 8363B5C4BD673FB8B7A4C6F5 /* PBXContainerItemProxy */;
+		};
+		C3B54635BD8ED7F4C6BAF691 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 0D674900E68FA6B45E2A0727 /* MacAutomationKit */;
+			targetProxy = 3CBE39307170B219837947E1 /* PBXContainerItemProxy */;
+		};
+		C750B8C6EF54FB89B173F562 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = C96AE88827D2FCBB2E63E42D /* UIHarnessCore */;
+			targetProxy = 44F0A09EB562C903D70C9F69 /* PBXContainerItemProxy */;
+		};
+		C87BA25D886D1D33D415CAC0 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 0D674900E68FA6B45E2A0727 /* MacAutomationKit */;
+			targetProxy = A44C30E4CC6DB833BCF5B659 /* PBXContainerItemProxy */;
+		};
+		DAEA4CFFDE0EFD084881F4D4 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 0D674900E68FA6B45E2A0727 /* MacAutomationKit */;
+			targetProxy = C5DD23B81F7B3FD1A2DC283F /* PBXContainerItemProxy */;
+		};
+		DBC0418D697B0D37E6EA88EA /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 79B0BB6B92B0A4FC5BF846E6 /* ScenarioKit */;
+			targetProxy = 818AE537529A37C1AA40DB17 /* PBXContainerItemProxy */;
+		};
+		E632542ACDC896B7AF62B93E /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			productRef = A604EC9A49416744A8AF01A7 /* OttamTranscriptFixtures */;
+		};
+		F541480C134D30D11DC957C4 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 79B0BB6B92B0A4FC5BF846E6 /* ScenarioKit */;
+			targetProxy = 1FC8FD7F475427F2BB233F66 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		265D1F4D8A443A9849A07B39 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				COMBINE_HIDPI_IMAGES = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = dev.ottam.OttamUIScenarios;
+				PRODUCT_NAME = OttamUIScenarios;
+				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
+			};
+			name = Release;
+		};
+		27245D62DBAFCC69924A6225 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				COMBINE_HIDPI_IMAGES = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = dev.ottam.MacAutomationKit;
+				PRODUCT_NAME = MacAutomationKit;
+				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
+			};
+			name = Debug;
+		};
+		2B29A1497F792F323C53E717 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				COMBINE_HIDPI_IMAGES = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = dev.ottam.ScenarioKit;
+				PRODUCT_NAME = ScenarioKit;
+				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
+			};
+			name = Debug;
+		};
+		3FA277B557058C28BF01A0DE /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				COMBINE_HIDPI_IMAGES = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = dev.ottam.ScenarioKit;
+				PRODUCT_NAME = ScenarioKit;
+				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
+			};
+			name = Release;
+		};
+		6553B4E9A15A4B9C89B04FB9 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				COMBINE_HIDPI_IMAGES = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-ObjC",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = dev.ottam.OttamUINativeTests;
+				PRODUCT_NAME = OttamUINativeTests;
+				SDKROOT = macosx;
+			};
+			name = Release;
+		};
+		69A501531CA4E9FE88C6FA63 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				COMBINE_HIDPI_IMAGES = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-ObjC",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = dev.ottam.OttamUINativeTests;
+				PRODUCT_NAME = OttamUINativeTests;
+				SDKROOT = macosx;
+			};
+			name = Debug;
+		};
+		6B5095920D9BEDF6531A5645 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_STYLE = Manual;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		73A74751B44F2DC2DCF09D47 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				COMBINE_HIDPI_IMAGES = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = dev.ottam.MacAutomationKit;
+				PRODUCT_NAME = MacAutomationKit;
+				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
+			};
+			name = Release;
+		};
+		880AF7A3A0182E7279A58C22 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				COMBINE_HIDPI_IMAGES = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = dev.ottam.CoordinatorKit;
+				PRODUCT_NAME = CoordinatorKit;
+				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
+			};
+			name = Debug;
+		};
+		8952E20DE4CFE5F926C63AFE /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				COMBINE_HIDPI_IMAGES = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-ObjC",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = dev.ottam.OttamUITestCoordinator;
+				PRODUCT_NAME = OttamUITestCoordinator;
+				SDKROOT = macosx;
+			};
+			name = Debug;
+		};
+		A8E5E029598014CF1BCAC3B7 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				COMBINE_HIDPI_IMAGES = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = dev.ottam.OttamUIScenarios;
+				PRODUCT_NAME = OttamUIScenarios;
+				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
+			};
+			name = Debug;
+		};
+		C42DE24C7FF96DF1A529F2DF /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_STYLE = Manual;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		C588918D2241DA8CB62369AF /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = C2DCC4B27E40B926D3C50D78 /* CaptureSigning.xcconfig */;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "$(OTTAM_UI_TEST_SIGNING_IDENTITY)";
+				CODE_SIGN_STYLE = Manual;
+				COMBINE_HIDPI_IMAGES = YES;
+				DEVELOPMENT_TEAM = "$(OTTAM_UI_TEST_DEVELOPMENT_TEAM)";
+				INFOPLIST_FILE = "Supporting/OttamUITestDriver-Info.plist";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-ObjC",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = dev.ottam.OttamUITestDriver;
+				PRODUCT_NAME = OttamUITestDriver;
+				SDKROOT = macosx;
+			};
+			name = Debug;
+		};
+		C6E0BCFAB8932DB6FE107AA4 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				COMBINE_HIDPI_IMAGES = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-ObjC",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = dev.ottam.OttamUIScenarioRunner;
+				PRODUCT_NAME = OttamUIScenarioRunner;
+				SDKROOT = macosx;
+			};
+			name = Debug;
+		};
+		D872AD53CD71AE727EB28173 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				COMBINE_HIDPI_IMAGES = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = dev.ottam.UIHarnessCore;
+				PRODUCT_NAME = UIHarnessCore;
+				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
+			};
+			name = Release;
+		};
+		E7C1E108F3D29C5EE372012D /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				COMBINE_HIDPI_IMAGES = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-ObjC",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = dev.ottam.OttamUIScenarioRunner;
+				PRODUCT_NAME = OttamUIScenarioRunner;
+				SDKROOT = macosx;
+			};
+			name = Release;
+		};
+		F300553000CFF2EB4AA5BDFB /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				COMBINE_HIDPI_IMAGES = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = dev.ottam.UIHarnessCore;
+				PRODUCT_NAME = UIHarnessCore;
+				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
+			};
+			name = Debug;
+		};
+		F4C93C1EB4B9A2457EED318E /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				COMBINE_HIDPI_IMAGES = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-ObjC",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = dev.ottam.OttamUITestCoordinator;
+				PRODUCT_NAME = OttamUITestCoordinator;
+				SDKROOT = macosx;
+			};
+			name = Release;
+		};
+		F96CBD88AA3F77C5D6AE5FEE /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = C2DCC4B27E40B926D3C50D78 /* CaptureSigning.xcconfig */;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "$(OTTAM_UI_TEST_SIGNING_IDENTITY)";
+				CODE_SIGN_STYLE = Manual;
+				COMBINE_HIDPI_IMAGES = YES;
+				DEVELOPMENT_TEAM = "$(OTTAM_UI_TEST_DEVELOPMENT_TEAM)";
+				INFOPLIST_FILE = "Supporting/OttamUITestDriver-Info.plist";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-ObjC",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = dev.ottam.OttamUITestDriver;
+				PRODUCT_NAME = OttamUITestDriver;
+				SDKROOT = macosx;
+			};
+			name = Release;
+		};
+		FF4831865B17410533EEFF2B /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				COMBINE_HIDPI_IMAGES = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = dev.ottam.CoordinatorKit;
+				PRODUCT_NAME = CoordinatorKit;
+				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		0D03F03D80D1E4D3E50347B0 /* Build configuration list for PBXNativeTarget "MacAutomationKit" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				27245D62DBAFCC69924A6225 /* Debug */,
+				73A74751B44F2DC2DCF09D47 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		1E009F2B20447ADDDF05BB97 /* Build configuration list for PBXNativeTarget "OttamUIScenarios" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A8E5E029598014CF1BCAC3B7 /* Debug */,
+				265D1F4D8A443A9849A07B39 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		215FDAEC24FF3003ABFE48E8 /* Build configuration list for PBXNativeTarget "OttamUITestCoordinator" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				8952E20DE4CFE5F926C63AFE /* Debug */,
+				F4C93C1EB4B9A2457EED318E /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		26B8B0B9FF2153B7A6A97D89 /* Build configuration list for PBXNativeTarget "OttamUIScenarioRunner" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				C6E0BCFAB8932DB6FE107AA4 /* Debug */,
+				E7C1E108F3D29C5EE372012D /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		430F04247805130C2EAD66FA /* Build configuration list for PBXNativeTarget "ScenarioKit" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				2B29A1497F792F323C53E717 /* Debug */,
+				3FA277B557058C28BF01A0DE /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		4EB4E513E21C782ADE17C041 /* Build configuration list for PBXProject "OttamUITesting" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				6B5095920D9BEDF6531A5645 /* Debug */,
+				C42DE24C7FF96DF1A529F2DF /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		6D0ADBA2FE77705ACEEAB0F4 /* Build configuration list for PBXNativeTarget "OttamUINativeTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				69A501531CA4E9FE88C6FA63 /* Debug */,
+				6553B4E9A15A4B9C89B04FB9 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		873125BCC30770170B58D523 /* Build configuration list for PBXNativeTarget "OttamUITestDriver" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				C588918D2241DA8CB62369AF /* Debug */,
+				F96CBD88AA3F77C5D6AE5FEE /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		9FD03342AF251F98DF63F631 /* Build configuration list for PBXNativeTarget "CoordinatorKit" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				880AF7A3A0182E7279A58C22 /* Debug */,
+				FF4831865B17410533EEFF2B /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		AA3F75F94C1554EA19732C01 /* Build configuration list for PBXNativeTarget "UIHarnessCore" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				F300553000CFF2EB4AA5BDFB /* Debug */,
+				D872AD53CD71AE727EB28173 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		87439E6214F92FC2FC70556C /* XCLocalSwiftPackageReference "../app" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = ../app;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		252D15BEAEF260EB5A92FB7B /* OttamTranscriptFixtures */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = OttamTranscriptFixtures;
+		};
+		6D473D3A3A327025C9FF7965 /* OttamAccessibility */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = OttamAccessibility;
+		};
+		A604EC9A49416744A8AF01A7 /* OttamTranscriptFixtures */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = OttamTranscriptFixtures;
+		};
+		CAD5B3F62F3CDF19FC5E0820 /* OttamAccessibility */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = OttamAccessibility;
+		};
+		E6B9426DF90F8884F3B777AF /* OttamAccessibility */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = OttamAccessibility;
+		};
+		FB6EFF83704D17AE0C0706D6 /* OttamAccessibility */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = OttamAccessibility;
+		};
+		FF4F4FB3A47252A072F4EC29 /* OttamTranscriptFixtures */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = OttamTranscriptFixtures;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = 712DD38D3C6CC625D2A62995 /* Project object */;
+}

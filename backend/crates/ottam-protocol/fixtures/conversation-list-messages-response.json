@@ -1,0 +1,38 @@
+{
+  "id": 53,
+  "result": {
+    "page": {
+      "messages": [
+        {
+          "messageID": "message_system_fixture",
+          "conversationID": "conversation_fixture",
+          "role": "system",
+          "body": "review-bot finished.",
+          "position": 1,
+          "createdAt": "2026-07-03T22:00:01.000Z",
+          "attachments": [],
+          "source": "user",
+          "note": {
+            "childConversationID": "conversation_child_fixture",
+            "childName": "review-bot",
+            "kind": "report",
+            "state": "completed",
+            "excerpt": "No correctness issues in app/Package.swift.",
+            "waitsForUser": false,
+            "deferred": false
+          }
+        },
+        {
+          "messageID": "message_user_fixture",
+          "conversationID": "conversation_fixture",
+          "role": "user",
+          "body": "Discuss how engine routing should work.",
+          "position": 0,
+          "createdAt": "2026-07-03T22:00:00.000Z",
+          "attachments": [],
+          "source": "user"
+        }
+      ]
+    }
+  }
+}
