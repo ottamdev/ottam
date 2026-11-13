@@ -490,7 +490,9 @@ private struct BackendProcessLogPaths: Sendable {
 private extension ISO8601DateFormatter {
     static let backendLogStamp: ISO8601DateFormatter = {
         let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        // Basic format (20261113T035159.972Z): colons in file names break
+        // artifact uploads and non-macOS filesystems.
+        formatter.formatOptions = [.withYear, .withMonth, .withDay, .withTime, .withFractionalSeconds, .withTimeZone]
         return formatter
     }()
 }
