@@ -4,8 +4,8 @@ import SwiftUI
 /// colours match `assets/brand/mark.svg`.
 ///
 /// The view is square and scales with its frame. It animates through SwiftUI,
-/// so inside the hosted transcript prefer a Core Animation mask (see
-/// `ChatShimmerText`).
+/// so inside the hosted transcript use `ThreadSpinner`, which runs the same
+/// geometry on Core Animation.
 struct OttamThreadMark: View {
     enum Tint {
         /// Amber to red-orange, left to right. The gradient is pinned to the
