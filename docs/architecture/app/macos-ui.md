@@ -25,7 +25,10 @@ hold UI state only; durable domain authority stays behind the Core protocol
   Justify any custom control against the system one it replaces.
 - Mirror stable user actions through focused commands and menus before adding
   toolbar-only controls. Keep debug and rebuild actions out of product menus.
-- Share status vocabulary (badges, progress, warnings) across surfaces.
+- Share status vocabulary (badges, progress, warnings) across surfaces. The
+  one exception is a running turn's trailer, which shows the thread mark
+  (`ThreadSpinner`) as the transcript's working state; controls and loading
+  states keep the system `ProgressView`.
 - While Core is unavailable the workspace chooser swaps its content, at the
   same size, for startup, reconnecting or failure content; no card layers over
   it. A failure in an open workspace keeps the workspace and shows

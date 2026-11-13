@@ -62,7 +62,7 @@ private struct ShimmerHighlight<Content: View>: NSViewRepresentable {
     }
 }
 
-final class ChatShimmerHighlightView: NSView {
+final class ChatShimmerHighlightView: WindowVisibleAnimationView {
     private static let animationKey = "shimmer"
     private static let period: TimeInterval = 1.8
 
@@ -122,32 +122,6 @@ final class ChatShimmerHighlightView: NSView {
     override func accessibilityChildren() -> [Any]? { [] }
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
 
-    override func viewDidMoveToWindow() {
-        super.viewDidMoveToWindow()
-        stopObservingWindow()
-        if let window {
-            NotificationCenter.default.addObserver(self, selector: #selector(updateAnimation),
-                name: NSWindow.didChangeOcclusionStateNotification, object: window)
-        }
-        needsLayout = true
-        updateAnimation()
-    }
-
-    func stopObservingWindow() {
-        NotificationCenter.default.removeObserver(self, name: NSWindow.didChangeOcclusionStateNotification, object: nil)
-        band.removeAnimation(forKey: Self.animationKey)
-    }
-
-    override func viewDidHide() {
-        super.viewDidHide()
-        updateAnimation()
-    }
-
-    override func viewDidUnhide() {
-        super.viewDidUnhide()
-        updateAnimation()
-    }
-
     override func layout() {
         super.layout()
         hosting.frame = bounds
@@ -171,10 +145,13 @@ final class ChatShimmerHighlightView: NSView {
 
     private var bandWidth: CGFloat { max(bounds.width * 0.45, 40) }
 
-    @objc private func updateAnimation() {
-        let visible = window?.occlusionState.contains(.visible) == true && !isHiddenOrHasHiddenAncestor
-        guard visible, bounds.width > 0, bounds.height > 0, layer?.mask === band else {
-            band.removeAnimation(forKey: Self.animationKey)
+    override func removeAnimation() {
+        band.removeAnimation(forKey: Self.animationKey)
+    }
+
+    override func updateAnimation() {
+        guard canAnimate, layer?.mask === band else {
+            removeAnimation()
             return
         }
         guard band.animation(forKey: Self.animationKey) == nil else { return }
@@ -185,8 +162,7 @@ final class ChatShimmerHighlightView: NSView {
         sweep.repeatCount = .infinity
         sweep.timingFunction = CAMediaTimingFunction(name: .linear)
         // Preserve the shared sweep phase when labels change or reattach.
-        sweep.beginTime = band.convertTime(CACurrentMediaTime(), from: nil)
-            - Date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: Self.period)
+        sweep.beginTime = Self.sharedPhaseBeginTime(for: band, period: Self.period)
         band.add(sweep, forKey: Self.animationKey)
     }
 

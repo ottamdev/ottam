@@ -5,6 +5,11 @@ import SwiftUI
 /// The thread mark as a small indeterminate progress indicator: the thread
 /// draws in, pulls out the far side, and repeats.
 ///
+/// It stands in for the system spinner only on a running turn's trailer, so
+/// the transcript's working state carries the brand mark; controls keep
+/// `ProgressView` (see the status vocabulary rule in
+/// `docs/architecture/app/macos-ui.md`).
+///
 /// Core Animation runs the stroke, so nothing ticks the hosted transcript's
 /// SwiftUI graph or the main thread while it plays (see `ChatShimmerText`).
 /// Reduce Motion shows the still mark.
@@ -36,7 +41,9 @@ private struct ThreadSpinnerRepresentable: NSViewRepresentable {
     }
 }
 
-final class ThreadSpinnerView: NSView {
+/// The backing layer is the thread's `CAShapeLayer`, so AppKit keeps it
+/// attached and flips it to the mark's top-left geometry.
+final class ThreadSpinnerView: WindowVisibleAnimationView {
     private static let animationKey = "thread"
     private static let travel: TimeInterval = 0.7
     private static let hold: TimeInterval = 0.1
@@ -45,93 +52,79 @@ final class ThreadSpinnerView: NSView {
     /// Optical sizing at 16pt: a translucent 8-unit stroke antialiases thin
     /// next to text, so the spinner draws heavier than mark.svg, with tails a
     /// little longer to keep the thread's proportions.
-    private static let strokeUnits: CGFloat = 9.5
+    static let strokeUnits: CGFloat = 9.5
     private static let tail: CGFloat = 38
 
-    private let thread = CAShapeLayer()
+    /// The bounds size the current path was built for.
+    private var pathSize: CGSize?
 
     var animates = true {
-        didSet { if animates != oldValue { restartAnimation() } }
+        didSet { if animates != oldValue { updateAnimation() } }
     }
+
+    var thread: CAShapeLayer? { layer as? CAShapeLayer }
+    var isAnimating: Bool { layer?.animation(forKey: Self.animationKey) != nil }
 
     init() {
         super.init(frame: .zero)
         wantsLayer = true
-        thread.fillColor = nil
-        thread.lineCap = .round
-        thread.lineJoin = .round
         setAccessibilityElement(false)
     }
 
     required init?(coder: NSCoder) { nil }
 
+    override var isFlipped: Bool { true }
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
 
-    override func viewDidMoveToWindow() {
-        super.viewDidMoveToWindow()
-        stopObservingWindow()
-        if let window {
-            NotificationCenter.default.addObserver(self, selector: #selector(updateAnimation),
-                name: NSWindow.didChangeOcclusionStateNotification, object: window)
-        }
-        needsLayout = true
-        updateAnimation()
-    }
-
-    func stopObservingWindow() {
-        NotificationCenter.default.removeObserver(self, name: NSWindow.didChangeOcclusionStateNotification, object: nil)
-        thread.removeAnimation(forKey: Self.animationKey)
-    }
-
-    override func viewDidHide() {
-        super.viewDidHide()
-        updateAnimation()
-    }
-
-    override func viewDidUnhide() {
-        super.viewDidUnhide()
-        updateAnimation()
+    override func makeBackingLayer() -> CALayer {
+        let thread = CAShapeLayer()
+        thread.fillColor = nil
+        thread.lineCap = .round
+        thread.lineJoin = .round
+        return thread
     }
 
     override func viewDidChangeEffectiveAppearance() {
         super.viewDidChangeEffectiveAppearance()
-        needsLayout = true
+        applyStrokeColor()
     }
 
-    override func layout() {
-        super.layout()
-        guard let layer, bounds.width > 0, bounds.height > 0 else {
-            thread.removeAnimation(forKey: Self.animationKey)
-            return
-        }
+    private func applyStrokeColor() {
+        guard let thread else { return }
         CATransaction.begin()
         CATransaction.setDisableActions(true)
-        // AppKit may replace the backing layer while the view is detached.
-        if thread.superlayer !== layer { layer.addSublayer(thread) }
-        thread.frame = bounds
-        // The mark's geometry is top-left origin; the backing layer is not.
-        var flip = CGAffineTransform(a: 1, b: 0, c: 0, d: -1, tx: 0, ty: bounds.height)
-        thread.path = OttamThreadMark.centerline(in: bounds, tail: Self.tail).cgPath.copy(using: &flip)
-        thread.lineWidth = OttamThreadMark.lineWidth(in: bounds, units: Self.strokeUnits)
         effectiveAppearance.performAsCurrentDrawingAppearance {
             thread.strokeColor = NSColor.secondaryLabelColor.cgColor
         }
         CATransaction.commit()
+    }
+
+    override func layout() {
+        super.layout()
+        // A replaced backing layer arrives without a path.
+        if let thread, bounds.width > 0, bounds.height > 0,
+           thread.path == nil || pathSize != bounds.size {
+            CATransaction.begin()
+            CATransaction.setDisableActions(true)
+            thread.path = OttamThreadMark.centerline(in: bounds, tail: Self.tail).cgPath
+            thread.lineWidth = OttamThreadMark.lineWidth(in: bounds, units: Self.strokeUnits)
+            CATransaction.commit()
+            pathSize = bounds.size
+            applyStrokeColor()
+        }
         updateAnimation()
     }
 
-    private func restartAnimation() {
-        thread.removeAnimation(forKey: Self.animationKey)
-        updateAnimation()
+    override func removeAnimation() {
+        layer?.removeAnimation(forKey: Self.animationKey)
     }
 
-    @objc private func updateAnimation() {
-        let visible = window?.occlusionState.contains(.visible) == true && !isHiddenOrHasHiddenAncestor
-        guard animates, visible, thread.superlayer != nil, thread.path != nil else {
-            thread.removeAnimation(forKey: Self.animationKey)
+    override func updateAnimation() {
+        guard animates, canAnimate, let thread, thread.path != nil else {
+            removeAnimation()
             return
         }
-        guard thread.animation(forKey: Self.animationKey) == nil else { return }
+        guard !isAnimating else { return }
 
         let period = Self.period
         let travelIn = Self.travel / period
@@ -154,11 +147,7 @@ final class ThreadSpinnerView: NSView {
         cycle.animations = [end, start]
         cycle.duration = period
         cycle.repeatCount = .infinity
-        // Every spinner shares one phase, so a rebuilt row does not restart it.
-        cycle.beginTime = thread.convertTime(CACurrentMediaTime(), from: nil)
-            - Date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: period)
+        cycle.beginTime = Self.sharedPhaseBeginTime(for: thread, period: period)
         thread.add(cycle, forKey: Self.animationKey)
     }
-
-    var isAnimating: Bool { thread.animation(forKey: Self.animationKey) != nil }
 }
