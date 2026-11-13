@@ -129,14 +129,29 @@ private struct ThreadShape: Shape {
     }
 
     func path(in rect: CGRect) -> Path {
-        // mark.svg's 100-unit box, centred in the frame.
+        // Normalizing merges the stroker's per-segment pieces into one
+        // outline; without it their seams show as notches at the joins.
+        OttamThreadMark.centerline(in: rect)
+            .trimmedPath(from: from, to: to)
+            .strokedPath(StrokeStyle(
+                lineWidth: OttamThreadMark.lineWidth(in: rect),
+                lineCap: .round, lineJoin: .round))
+            .normalized(eoFill: false)
+    }
+}
+
+extension OttamThreadMark {
+    /// The thread's centreline in mark.svg's 100-unit box, centred in `rect`,
+    /// in SwiftUI's top-left-origin space. `tail` is how far each end reaches
+    /// past the loop's centre; mark.svg's is 34.
+    static func centerline(in rect: CGRect, tail: CGFloat = 34) -> Path {
         let unit = min(rect.width, rect.height) / 100
         func point(_ x: CGFloat, _ y: CGFloat) -> CGPoint {
             CGPoint(x: rect.midX + (x - 50) * unit, y: rect.midY + (y - 50) * unit)
         }
 
         var thread = Path()
-        thread.move(to: point(16, 74))
+        thread.move(to: point(50 - tail, 74))
         thread.addLine(to: point(50, 74))
         // Up the right side, over the top, down the left. `clockwise` is
         // mirrored in SwiftUI's flipped coordinate space.
@@ -146,13 +161,12 @@ private struct ThreadShape: Shape {
         thread.addArc(
             center: point(50, 50), radius: 24 * unit,
             startAngle: .degrees(-90), endAngle: .degrees(-270), clockwise: true)
-        thread.addLine(to: point(84, 74))
-
-        // Normalizing merges the stroker's per-segment pieces into one
-        // outline; without it their seams show as notches at the joins.
+        thread.addLine(to: point(50 + tail, 74))
         return thread
-            .trimmedPath(from: from, to: to)
-            .strokedPath(StrokeStyle(lineWidth: 8 * unit, lineCap: .round, lineJoin: .round))
-            .normalized(eoFill: false)
+    }
+
+    /// The stroke width for `rect`; mark.svg's is 8 units.
+    static func lineWidth(in rect: CGRect, units: CGFloat = 8) -> CGFloat {
+        units * min(rect.width, rect.height) / 100
     }
 }
