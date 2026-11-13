@@ -140,8 +140,7 @@ private struct ChatTurnTrailerRow: View {
         subagents: Int
     ) -> some View {
         HStack(spacing: 8) {
-            ProgressView()
-                .controlSize(.small)
+            ThreadSpinner()
 
             Text(activityLabel ?? (status == .queued ? "Starting agent…" : "Agent is working"))
                 .appFont(.callout)

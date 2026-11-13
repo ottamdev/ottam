@@ -7,24 +7,13 @@ status: active
 
 ## Current Status
 
-Ottam is licensed under Apache 2.0, renamed, scrubbed of personal paths, and
-has its community files. What remains before a first public download is listed
-under Next.
+The source is public at `ottamdev/ottam` under Apache 2.0, with its community
+files and private vulnerability reporting. What remains before a first public
+download is listed under Next.
 
 ## Active
 
-- [ ] **Publish the snapshot** (decision 6). Write the tree with
-  `git archive HEAD` into a separate `ottamdev/ottam` checkout, never a copy of
-  the working directory, and commit it there as the one root commit. The
-  pre-release checkout never gets an `ottamdev` remote. Push while the
-  repository is private, review it on GitHub, then make it public.
-- [ ] **Enable GitHub private vulnerability reporting** as soon as
-  `ottamdev/ottam` is public, before announcing it. `SECURITY.md` points there,
-  and it cannot be turned on earlier.
-- [ ] **Confirm CI on the public repository.** `full-tests` has not run on the
-  pre-release repository's `main` lately: GitHub Actions billing stopped the
-  jobs before they started. Public repositories run standard runners free, so
-  watch the first `full-tests` run after publishing. Two consecutive
+- [ ] **Confirm UI validation.** `full-tests` runs here; two consecutive
   `macos-ui-validation` dispatches have not been observed.
 
 ## Next
@@ -66,3 +55,7 @@ PTY restore across Core restarts, the Markdown editor, the streaming CPU goal, a
    pre-release repository kept private as the full-history archive, because
    its history holds pre-scrub paths, strategy documents, and pull request
    discussion that only a rewrite would remove.
+7. **Canonical repository.** `ottamdev/ottam` (2026-11-12): development
+   continues from its snapshot and the pre-release repository is a read-only
+   archive, because post-snapshot changes already live only in `ottamdev/ottam`
+   and another snapshot would drop them.
