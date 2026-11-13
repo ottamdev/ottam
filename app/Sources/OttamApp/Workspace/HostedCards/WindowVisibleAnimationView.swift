@@ -6,8 +6,12 @@ import QuartzCore
 /// lifecycle callbacks and window occlusion changes call `updateAnimation()`;
 /// subclasses add or remove their animation there.
 class WindowVisibleAnimationView: NSView {
+    /// Whether the window is on screen. Tests override it: a never-ordered
+    /// window reports no occlusion state.
+    var isWindowVisible: Bool { window?.occlusionState.contains(.visible) == true }
+
     var canAnimate: Bool {
-        window?.occlusionState.contains(.visible) == true
+        isWindowVisible
             && !isHiddenOrHasHiddenAncestor
             && bounds.width > 0 && bounds.height > 0
     }

@@ -43,7 +43,7 @@ private struct ThreadSpinnerRepresentable: NSViewRepresentable {
 
 /// The backing layer is the thread's `CAShapeLayer`, so AppKit keeps it
 /// attached and flips it to the mark's top-left geometry.
-final class ThreadSpinnerView: WindowVisibleAnimationView {
+class ThreadSpinnerView: WindowVisibleAnimationView {
     private static let animationKey = "thread"
     private static let travel: TimeInterval = 0.7
     private static let hold: TimeInterval = 0.1

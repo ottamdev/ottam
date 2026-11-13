@@ -3,6 +3,12 @@ import QuartzCore
 import Testing
 @testable import OttamApp
 
+/// A never-ordered test window reports no occlusion state, so the window
+/// counts as visible whenever the view is in one.
+private final class VisibleThreadSpinnerView: ThreadSpinnerView {
+    override var isWindowVisible: Bool { window != nil }
+}
+
 @Suite("Thread spinner")
 @MainActor
 struct ThreadSpinnerTests {
@@ -10,17 +16,11 @@ struct ThreadSpinnerTests {
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 40, height: 40),
             styleMask: [.borderless], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
-        let view = ThreadSpinnerView()
+        let view = VisibleThreadSpinnerView()
         view.frame = NSRect(x: 0, y: 0, width: 16, height: 16)
         window.contentView?.addSubview(view)
         view.layout()
         return (window, view)
-    }
-
-    // Occlusion is not reported for a never-ordered test window, so the cycle
-    // is seeded directly; the tests cover removal and geometry.
-    private func seedCycle(_ view: ThreadSpinnerView) {
-        view.layer!.add(CABasicAnimation(keyPath: "strokeEnd"), forKey: "thread")
     }
 
     @Test("the backing layer is the flipped thread at the spinner's optical weight")
@@ -55,29 +55,45 @@ struct ThreadSpinnerTests {
         }
     }
 
-    @Test("Reduce Motion, hiding, zero size and detaching remove the cycle")
+    @Test("a visible spinner runs one repeating draw-in and pull-out cycle")
+    func cycle() throws {
+        let (window, view) = fixture()
+        defer { window.close() }
+        let cycle = try #require(view.layer?.animation(forKey: "thread") as? CAAnimationGroup)
+        #expect(cycle.repeatCount == .infinity)
+        #expect(abs(cycle.duration - 1.7) < 0.001)
+        let keyPaths = (cycle.animations ?? []).compactMap { ($0 as? CAPropertyAnimation)?.keyPath }
+        #expect(Set(keyPaths) == ["strokeStart", "strokeEnd"])
+    }
+
+    @Test("Reduce Motion, hiding, zero size and detaching each stop the cycle, and undoing them restarts it")
     func lifecycle() {
         let (window, view) = fixture()
         defer { window.close() }
-        seedCycle(view)
         #expect(view.isAnimating)
+
         view.animates = false
         #expect(!view.isAnimating)
         view.animates = true
-        seedCycle(view)
+        #expect(view.isAnimating)
+
         view.isHidden = true
         #expect(!view.isAnimating)
         view.isHidden = false
-        seedCycle(view)
+        #expect(view.isAnimating)
+
         view.setFrameSize(.zero)
         view.layout()
         #expect(!view.isAnimating)
         view.setFrameSize(NSSize(width: 16, height: 16))
         view.layout()
-        seedCycle(view)
+        #expect(view.isAnimating)
+
         view.removeFromSuperview()
         #expect(!view.isAnimating)
         #expect(view.thread?.path != nil)
+        window.contentView?.addSubview(view)
+        #expect(view.isAnimating)
     }
 
     @Test("the spinner is invisible to accessibility and hit testing")
