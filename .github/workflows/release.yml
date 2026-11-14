@@ -24,7 +24,9 @@ concurrency:
 
 jobs:
   release:
-    runs-on: macos-26
+    # Preview image (macOS 27, Xcode 27), the toolchain Ottam is developed and
+    # tested with; move to macos-27 when GitHub makes it generally available.
+    runs-on: xcode-27
     timeout-minutes: 90
     environment: release
     env:

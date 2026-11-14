@@ -9,7 +9,9 @@ permissions:
 
 jobs:
   ui-validation:
-    runs-on: macos-26
+    # Same preview image as full-tests and release; move to macos-27 when GitHub
+    # makes it generally available.
+    runs-on: xcode-27
     timeout-minutes: 45
     env:
       OTTAM_UI_TEST_DRIVER_TOPOLOGY: direct

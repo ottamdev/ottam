@@ -166,6 +166,12 @@ archive extraction. Update matrix, with real independently signed builds:
   the workflow can be proven on real releases; the logic stays in scripts the
   workflow calls, so a local run remains possible. Dispatch only, so pushing
   a tag never starts a production run.
+- **CI and releases run on GitHub's `xcode-27` preview image** (2026-11-14),
+  until `macos-27` is generally available. Ottam is developed with Xcode 27,
+  and a build linked against the 26 SDK behaves differently on macOS 27, so
+  tests and releases share the developer toolchain. The deployment target
+  stays macOS 26; nothing in CI runs on 26, so the clean-account check in
+  milestone 3's Try it covers it.
 - **The feed lives on a project-owned domain** (2026-11-09). `SUFeedURL` is
   the one address baked into every shipped build, and a `github.io` URL
   breaks on a repository rename or transfer.
