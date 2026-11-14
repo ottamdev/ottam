@@ -1005,6 +1005,12 @@ impl ModelCatalogService {
             // that answer would replace newer live data. Let it settle
             // first, then forget, then probe.
             catalog.settle_in_flight(&agent_id).await;
+            // A CLI home's teardown outlives the probe while a sign-in
+            // refresh holds the lock, and refuses another probe until it
+            // stops. Here, off the request, waiting it out is free.
+            while registry.probe_teardown_pending(&agent_id) {
+                tokio::time::sleep(Duration::from_millis(100)).await;
+            }
             catalog.forget_live_observations(&agent_id);
             // `run_probe_and_record` logs a failure.
             let _ = catalog.probe_now(&registry, &agent_id).await;
@@ -2821,6 +2827,34 @@ mod tests {
             .expect("Recheck runs a probe of its own once the older one settles");
             assert_eq!(factory.created.load(Ordering::SeqCst), 1);
             assert_eq!(catalog.models_for(&id), vec![option("sonnet")]);
+        }
+
+        /// The older probe's teardown can still be waiting on a CLI home's
+        /// refresh lock; Recheck waits for it rather than being refused.
+        #[tokio::test]
+        async fn a_recheck_reprobe_waits_out_a_pending_teardown() {
+            let home = tempfile::tempdir().unwrap();
+            let lock = home
+                .path()
+                .join(crate::agent::refresh_lock::CLAUDE_REFRESH_LOCK);
+            std::fs::create_dir(&lock).unwrap();
+            let factory = Arc::new(FakeProbeFactory::with_models(vec![option("sonnet")]));
+            let registry = registry(factory.clone());
+            let id = publish_existing(&registry, home.path());
+            let catalog = Arc::new(ModelCatalogService::load(None));
+            catalog.probe_now(&registry, &id).await.unwrap();
+            assert!(registry.probe_teardown_pending(&id));
+            catalog.reprobe_in_background(&registry, &id);
+            tokio::time::sleep(Duration::from_millis(250)).await;
+            assert_eq!(factory.created.load(Ordering::SeqCst), 1);
+            std::fs::remove_dir(&lock).unwrap();
+            tokio::time::timeout(Duration::from_secs(3), async {
+                while factory.created.load(Ordering::SeqCst) < 2 {
+                    tokio::time::sleep(Duration::from_millis(20)).await;
+                }
+            })
+            .await
+            .expect("Recheck probes once the teardown stops");
         }
 
         fn registry_with_cleanup(
