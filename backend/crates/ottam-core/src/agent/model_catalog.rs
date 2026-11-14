@@ -986,8 +986,8 @@ impl ModelCatalogService {
     /// [`Self::probe_now`] without waiting: an explicit Recheck that must not
     /// stall on a cold CLI start. It ignores freshness and backoff, since the
     /// user may have just changed the agent outside Ottam, but honors the
-    /// test gate. Like a sign-in, it drops live provenance first, so the
-    /// probe's answer replaces what an earlier session advertised.
+    /// test gate. Like a sign-in, it drops live provenance, so the probe's
+    /// answer replaces what an earlier session advertised.
     pub(crate) fn reprobe_in_background(
         self: &Arc<Self>,
         registry: &Arc<AgentRegistry>,
@@ -996,14 +996,32 @@ impl ModelCatalogService {
         if background_probes_off() {
             return;
         }
-        self.forget_live_observations(agent_id);
         let catalog = Arc::clone(self);
         let registry = Arc::clone(registry);
         let agent_id = agent_id.clone();
         tokio::spawn(async move {
+            // A probe already running started before this Recheck: joining
+            // it would record its older answer, and without live provenance
+            // that answer would replace newer live data. Let it settle
+            // first, then forget, then probe.
+            catalog.settle_in_flight(&agent_id).await;
+            catalog.forget_live_observations(&agent_id);
             // `run_probe_and_record` logs a failure.
             let _ = catalog.probe_now(&registry, &agent_id).await;
         });
+    }
+
+    /// Wait out whatever probe holds the agent's slot, if any.
+    async fn settle_in_flight(&self, agent_id: &AgentId) {
+        let existing = self
+            .in_flight
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .get(&agent_id.0)
+            .cloned();
+        if let Some(waiter) = existing {
+            let _ = Self::await_probe(agent_id, waiter).await;
+        }
     }
 
     /// Probe one agent right now and wait for the outcome. This is what an
@@ -1065,15 +1083,7 @@ impl ModelCatalogService {
         registry: &Arc<AgentRegistry>,
         agent_id: &AgentId,
     ) -> Result<(), HarnessError> {
-        let existing = self
-            .in_flight
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
-            .get(&agent_id.0)
-            .cloned();
-        if let Some(waiter) = existing {
-            let _ = Self::await_probe(agent_id, waiter).await;
-        }
+        self.settle_in_flight(agent_id).await;
         self.probe_now(registry, agent_id).await
     }
 
@@ -2785,6 +2795,32 @@ mod tests {
             }
             assert_eq!(factory.shutdowns.load(Ordering::SeqCst), 3);
             assert_eq!(catalog.probe_slots.available_permits(), 2);
+        }
+
+        /// A probe running when Recheck arrives predates it, so Recheck
+        /// waits it out and runs its own instead of taking that answer.
+        #[tokio::test]
+        async fn a_recheck_reprobe_waits_out_an_older_probe_then_runs_its_own() {
+            let factory = Arc::new(FakeProbeFactory::with_models(vec![option("sonnet")]));
+            let registry = registry(factory.clone());
+            let id = AgentId::new("claude");
+            let catalog = Arc::new(ModelCatalogService::load(None));
+            let (older, _) = catalog.begin_probe(&id).expect("slot free");
+            catalog.reprobe_in_background(&registry, &id);
+            for _ in 0..20 {
+                tokio::task::yield_now().await;
+            }
+            assert_eq!(factory.created.load(Ordering::SeqCst), 0);
+            catalog.finish_probe(&id, older, Ok(()));
+            tokio::time::timeout(Duration::from_secs(2), async {
+                while catalog.models_for(&id).is_empty() {
+                    tokio::time::sleep(Duration::from_millis(10)).await;
+                }
+            })
+            .await
+            .expect("Recheck runs a probe of its own once the older one settles");
+            assert_eq!(factory.created.load(Ordering::SeqCst), 1);
+            assert_eq!(catalog.models_for(&id), vec![option("sonnet")]);
         }
 
         fn registry_with_cleanup(
