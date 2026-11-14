@@ -499,3 +499,45 @@ fn payload_upgrade_backs_up_the_pair_and_the_restored_pair_keeps_committed_histo
         bytes[..PAGE]
     );
 }
+
+/// Only payload migrations pending: startup still takes the coordinated
+/// backup first, and the failing payload migration stays typed.
+#[test]
+fn payload_only_pending_migration_is_backed_up_and_fails_typed() {
+    let (home, _, _) = stored_payload();
+    drop(crate::storage::Database::open(home.path().to_owned()).unwrap());
+    // The tables stay but the payload baseline reads as pending, so startup
+    // backs up and then fails to create them again.
+    connect(&home.path().join("payloads.sqlite"))
+        .batch_execute("DELETE FROM __diesel_schema_migrations;")
+        .unwrap();
+
+    let error = crate::storage::Database::open(home.path().to_owned())
+        .err()
+        .expect("the payload migration must fail");
+    assert_eq!(error.kind, "storageMigrationFailed");
+    assert_eq!(error.message, "failed to apply embedded payload migrations");
+
+    let backups = verified_backups(home.path());
+    assert_eq!(backups.len(), 1);
+    assert_eq!(
+        std::fs::read_to_string(backups[0].join("verified")).unwrap(),
+        "ottam.sqlite\npayloads.sqlite\n"
+    );
+    backup::verify_snapshot(&backups[0]).unwrap();
+    let mut payload = connect(&home.path().join("payloads.sqlite"));
+    assert!(applied_versions(&mut payload).is_empty());
+    #[derive(QueryableByName)]
+    struct Count {
+        #[diesel(sql_type = diesel::sql_types::BigInt)]
+        value: i64,
+    }
+    assert_eq!(
+        diesel::sql_query("SELECT COUNT(*) AS value FROM payload_revisions")
+            .get_result::<Count>(&mut payload)
+            .unwrap()
+            .value,
+        1,
+        "the failed migration leaves the payload database in place"
+    );
+}

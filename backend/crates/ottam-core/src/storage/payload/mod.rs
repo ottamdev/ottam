@@ -109,6 +109,24 @@ impl Reader {
 
 pub(in crate::storage) const MIGRATIONS: EmbeddedMigrations =
     embed_migrations!("src/storage/payload/migrations");
+/// Startup migrates the payload database right after main, so its failures
+/// stay typed (`storageMigrationFailed`) instead of surfacing from the first
+/// later open.
+pub(in crate::storage) fn migrate(
+    home: &std::path::Path,
+) -> std::result::Result<(), super::StorageError> {
+    Repository::open(home).map(drop).map_err(|error| {
+        match error.downcast::<super::StorageError>() {
+            Ok(typed) => *typed,
+            Err(error) => super::StorageError::classify(
+                error.to_string(),
+                "storageUnavailable",
+                "failed to open the payload database",
+            ),
+        }
+    })
+}
+
 pub(crate) type Error = Box<dyn std::error::Error + Send + Sync>;
 pub(crate) type Result<T> = std::result::Result<T, Error>;
 fn invalid(message: &str) -> Error {
@@ -178,7 +196,8 @@ impl Repository {
     }
 
     /// `Database::open` refuses a newer payload schema before either database
-    /// migrates; this repeats the refusal for every later writer open.
+    /// migrates; this repeats the refusal for every later writer open, before
+    /// any pragma can touch the newer database.
     fn open_with<S: diesel::migration::MigrationSource<diesel::sqlite::Sqlite>>(
         home: &std::path::Path,
         migrations: S,
@@ -186,13 +205,22 @@ impl Repository {
         let path = home.join("payloads.sqlite");
         let mut connection =
             SqliteConnection::establish(path.to_str().ok_or_else(|| invalid("path"))?)?;
-        Self::configure_writer(&mut connection)?;
+        connection.batch_execute("PRAGMA busy_timeout=5000;")?;
         super::database::check_migrations(
             &mut connection,
             &migrations,
             super::database::NEWER_PAYLOAD,
         )?;
-        connection.run_pending_migrations(migrations)?;
+        Self::configure_writer(&mut connection)?;
+        connection
+            .run_pending_migrations(migrations)
+            .map_err(|error| {
+                super::StorageError::classify(
+                    error.to_string(),
+                    "storageMigrationFailed",
+                    "failed to apply embedded payload migrations",
+                )
+            })?;
         Ok(Self {
             accounting: cache::accounting(home, &mut connection)?,
             connection,

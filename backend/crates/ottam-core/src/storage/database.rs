@@ -25,21 +25,25 @@ pub(in crate::storage) const NEWER_PAYLOAD: &str =
 /// hard-coded: a constant has to be bumped in lockstep with every new migration
 /// directory, and forgetting makes each database reject itself as "created by
 /// a newer Ottam version" on the first reopen after upgrading.
-fn embedded_versions<S: MigrationSource<Sqlite>>(source: &S) -> Vec<String> {
-    source
-        .migrations()
-        .map(|migrations| {
-            migrations
-                .iter()
-                .map(|migration| migration.name().version().to_string())
-                .collect()
-        })
-        .unwrap_or_default()
+fn embedded_versions<S: MigrationSource<Sqlite>>(source: &S) -> Result<Vec<String>, StorageError> {
+    let migrations = source.migrations().map_err(|error| {
+        StorageError::classify(
+            error.to_string(),
+            "storageMigrationFailed",
+            "Could not read the embedded migrations",
+        )
+    })?;
+    Ok(migrations
+        .iter()
+        .map(|migration| migration.name().version().to_string())
+        .collect())
 }
 
-/// The newest migration this binary embeds.
+/// The newest migration this binary embeds; it only names the main-only
+/// backup, so an unreadable bundle names it with an empty version.
 fn latest_migration_version() -> String {
     embedded_versions(&MIGRATIONS)
+        .unwrap_or_default()
         .into_iter()
         .max()
         .unwrap_or_default()
@@ -242,6 +246,7 @@ impl Database {
                 "failed to drop columns removed from the baseline",
             )
         })?;
+        super::payload::migrate(&home)?;
 
         super::payload::maintenance::reconcile_startup(&home, &mut bootstrap).map_err(|error| {
             StorageError::classify(
@@ -589,8 +594,14 @@ pub(in crate::storage) fn check_migrations<S: MigrationSource<Sqlite>>(
         "SELECT version AS value FROM __diesel_schema_migrations ORDER BY version",
     )
     .load::<TextValue>(connection)
-    .map_err(StorageError::from)?;
-    let embedded = embedded_versions(source);
+    .map_err(|error| {
+        StorageError::classify(
+            error.to_string(),
+            "storageMigrationFailed",
+            "Could not inspect applied migrations",
+        )
+    })?;
+    let embedded = embedded_versions(source)?;
     let latest = embedded
         .iter()
         .max()
