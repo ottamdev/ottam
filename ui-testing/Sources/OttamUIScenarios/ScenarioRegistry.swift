@@ -29,7 +29,6 @@ public enum ScenarioRegistry {
             .settingsExistingSetups,
             .settingsProfiles,
             .settingsProfileDeleteProbe,
-            .onboardingMissingNode,
             .chatTranscriptLiveLight,
             .chatTranscriptLiveDark,
             .chatTranscriptComplete,

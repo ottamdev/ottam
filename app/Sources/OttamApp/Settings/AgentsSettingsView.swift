@@ -13,8 +13,11 @@ struct AgentsSettingsSection: View {
     /// agents' names; loading stays this pane's job.
     let model: AgentsSettingsModel
     @State private var signIn = AgentSignInController()
-    @State private var setupHarness: String?
     @State private var creatingHarness: String?
+    /// The harness whose CLI setup is being added, and each harness's last
+    /// add failure, so one provider page never shows another's.
+    @State private var addingCLISetup: String?
+    @State private var cliSetupErrors: [String: String] = [:]
     @State private var navigationPath = NavigationPath()
     @State private var namedAgents: NamedAgentsSettingsModel?
     @State private var editingNamedAgent: NamedAgentDraft?
@@ -193,23 +196,57 @@ struct AgentsSettingsSection: View {
                 Text("Each instance keeps its own home and conversations. Choose an instance to manage its sign-in and settings.")
             }
             Section {
-                Button("Set Up \(providerName(harnessID))…") { setupHarness = harnessID }
+                Button(addingCLISetup == harnessID ? "Adding…" : "Add My CLI Setup…") { addCLISetup(harnessID) }
+                    .disabled(addingCLISetup == harnessID || cliSetupAdded(harnessID) || detected(harnessID)?.available != true)
+                    .accessibilityIdentifier("agent.cliSetup.add")
                 Button("Create another profile…") { creatingHarness = harnessID }
                     .accessibilityIdentifier("agent.profile.create")
+            } footer: {
+                if let cliSetupNote = cliSetupNote(harnessID) {
+                    Text(cliSetupNote)
+                }
             }
         }
         .formStyle(.grouped)
         .navigationTitle(providerName(harnessID))
+        .task { try? await model.detectSetups() }
         .sheet(isPresented: Binding(get: { creatingHarness != nil }, set: { if !$0 { creatingHarness = nil } })) {
             AgentProfileLabelSheet(title: "Create \(providerName(harnessID)) Profile", actionTitle: "Create", initialLabel: "", existingLabels: instances(harnessID).compactMap(\.label)) { label in
                 let id = try await model.createProfile(harnessID: harnessID, label: label)
                 navigationPath.append(id)
             }
         }
-        .sheet(isPresented: Binding(get: { setupHarness != nil }, set: { if !$0 { setupHarness = nil; model.requestReload() } })) {
-            AgentSetupSheet(runtime: runtime, harnessID: harnessID) { agentID in
-                model.requestReload()
+    }
+
+    private func detected(_ harnessID: String) -> AgentDetectedSetup? {
+        model.detectedSetups.first { $0.harnessID == harnessID }
+    }
+
+    private func cliSetupAdded(_ harnessID: String) -> Bool {
+        instances(harnessID).contains { $0.homeKind == .existing }
+    }
+
+    /// Why Add My CLI Setup is unavailable, or what it will reuse.
+    private func cliSetupNote(_ harnessID: String) -> String? {
+        if let error = cliSetupErrors[harnessID] { return error }
+        if cliSetupAdded(harnessID) { return "Your CLI setup is already an instance above." }
+        guard let detected = detected(harnessID) else { return nil }
+        if !detected.available { return detected.detail }
+        return "Reuses \(detected.path): its sign-in, hooks, MCP servers, and skills."
+    }
+
+    /// Adds the CLI's own home as an instance and opens its page, where
+    /// install and sign-in live.
+    private func addCLISetup(_ harnessID: String) {
+        addingCLISetup = harnessID
+        cliSetupErrors[harnessID] = nil
+        Task {
+            defer { addingCLISetup = nil }
+            do {
+                let agentID = try await model.addExistingSetup(harnessID: harnessID)
                 navigationPath.append(agentID)
+            } catch {
+                cliSetupErrors[harnessID] = error.localizedDescription
             }
         }
     }

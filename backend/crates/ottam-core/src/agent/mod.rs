@@ -4,6 +4,7 @@ mod acp;
 mod adapter_install;
 mod agent_install_service;
 mod auth;
+mod catalog_probe;
 mod instances;
 mod managed_node;
 pub(crate) mod metadata;
@@ -28,6 +29,7 @@ pub use acp::{
 pub(crate) use agent_install_service::{
     AgentInstallEventSink, AgentInstallService, InstallOutcome,
 };
+pub use catalog_probe::ProbeCleanup;
 pub(crate) use auth::{
     AgentSignInService, AuthEventSink, AuthTerminalFuture, AuthTerminalHost, AuthTerminalRequest,
     AuthTerminalRoot, AuthTerminalSession, SignedInSink,

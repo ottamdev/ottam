@@ -76,7 +76,8 @@ notarization and updates live in the [distribution spec](../app/distribution.md)
 
 ## Decisions
 
-- 2026-10-04: one setup sheet from the landing sequences Node before adapter
-  installation; nothing installs automatically on a fresh machine, and the
-  workspace chooser has no setup step.
+- 2026-10-04: Node installs before adapters, and nothing installs on a fresh
+  machine without the user choosing it. Since 2026-11-12 the choice is made in
+  the first-launch Onboarding window
+  ([agent onboarding](../app/agent-onboarding.md#decisions)).
 - The managed install layout stays under `OTTAM_HOME`, not Application Support.

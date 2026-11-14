@@ -1,4 +1,5 @@
 use super::acp::AcpHarnessAdapter;
+use super::catalog_probe::ProbeCleanup;
 #[cfg(test_seams)]
 use super::native_test::NativeTestAdapter;
 use super::node_resolver::{NodeResolution, NodeResolver, NodeSource, ResolvedNodeRuntime};
@@ -33,7 +34,9 @@ pub const OMP_AGENT_ID: &str = "omp";
 pub const TEST_BINARY_AGENT_ID: &str = "test.binary";
 /// Adapter versions are pinned rather than tracked with `@latest` so an
 /// upstream release cannot change what every user runs without an app release.
-/// Bump deliberately; `ModelCatalogService` re-probes when a pin moves.
+/// Bump deliberately; `ModelCatalogService` re-probes when a pin moves. Each
+/// definition's `catalog_probe` rests on what that version stores for a bare
+/// `session/new`: recheck it with `scripts/check-probe-leftovers.py`.
 const CODEX_ACP_PACKAGE: (&str, &str) = ("@agentclientprotocol/codex-acp", "2.5.0");
 const CLAUDE_ACP_PACKAGE: (&str, &str) = ("@agentclientprotocol/claude-agent-acp", "0.100.0");
 /// Each adapter's own `engines.node`, per engine rather than one figure for
@@ -447,6 +450,10 @@ pub struct AgentRegistry {
     auth_changes: Arc<OnceLock<AuthChangeSink>>,
     session_catalogs: Arc<OnceLock<SessionCatalogSink>>,
     refresh_homes: StdMutex<BTreeMap<AgentId, super::refresh_lock::HomeUse>>,
+    /// Agents whose last catalog probe is still waiting out a CLI home's
+    /// sign-in refresh before it stops. One at a time per agent, so a held
+    /// lock never collects a process per probe.
+    probe_teardowns: StdMutex<std::collections::BTreeSet<AgentId>>,
 }
 
 /// Where each agent's isolated home lives. Ottam points every vendor CLI
@@ -575,6 +582,7 @@ impl AgentRegistry {
             auth_changes: Arc::new(OnceLock::new()),
             session_catalogs: Arc::new(OnceLock::new()),
             refresh_homes: StdMutex::new(BTreeMap::new()),
+            probe_teardowns: StdMutex::new(std::collections::BTreeSet::new()),
         }
     }
 
@@ -1423,16 +1431,46 @@ impl AgentRegistry {
         })
     }
 
-    /// Create a standalone adapter instance the registry does not track. Used
-    /// by the model-catalog probe so a throwaway session never disturbs the
-    /// shared adapter's lifecycle or status.
-    pub(crate) fn create_unmanaged_adapter(
+    /// Create a standalone adapter for the model-catalog probe, outside the
+    /// managed map, so a throwaway session never disturbs the shared
+    /// adapter's lifecycle or status. It is still tracked as a live child, so
+    /// Quit, removal, and install pruning wait for it like any other.
+    /// `extra_arguments` follow the launch's own, for a probe that points the
+    /// agent somewhere else.
+    pub(crate) fn create_probe_adapter(
         &self,
         agent_id: &AgentId,
+        extra_arguments: Vec<String>,
     ) -> Result<Arc<dyn HarnessAdapter>, HarnessError> {
         self.prepare_home(agent_id)?;
-        let definition = self.definition(agent_id)?;
-        Ok(self.factory.create(definition, 1))
+        let mut definition = self.definition(agent_id)?;
+        definition.launch.arguments.extend(extra_arguments);
+        let adapter = self.factory.create(definition, 1);
+        self.track_adapter(&adapter);
+        Ok(adapter)
+    }
+
+    /// Claims the agent's one background probe teardown; false while the
+    /// previous one is still waiting.
+    pub(crate) fn begin_probe_teardown(&self, agent_id: &AgentId) -> bool {
+        self.probe_teardowns
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .insert(agent_id.clone())
+    }
+
+    pub(crate) fn probe_teardown_pending(&self, agent_id: &AgentId) -> bool {
+        self.probe_teardowns
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .contains(agent_id)
+    }
+
+    pub(crate) fn finish_probe_teardown(&self, agent_id: &AgentId) {
+        self.probe_teardowns
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .remove(agent_id);
     }
 
     /// Installation verification must never borrow a user's shared home, even
@@ -2309,7 +2347,7 @@ fn create_managed_home(home: &Path, variables: &[HomeVariable]) -> io::Result<()
 
 /// Order is the default-pick order: with equal readiness, a new chat starts on
 /// the first agent here.
-fn built_in_definitions() -> Vec<AgentDefinition> {
+pub(super) fn built_in_definitions() -> Vec<AgentDefinition> {
     let claude = pinned(CLAUDE_ACP_PACKAGE);
     let codex = pinned(CODEX_ACP_PACKAGE);
     #[cfg_attr(not(test_seams), allow(unused_mut))]
@@ -2360,6 +2398,15 @@ fn built_in_definitions() -> Vec<AgentDefinition> {
             sign_in_proof: SignInProof::Session,
             terminal_login_args: None,
             mcp_connections: McpConnections::PerSession,
+            // At 0.100.0 a transcript appears only with the first prompt; the
+            // adapter spreads `claudeCode.options` into the CLI's query
+            // options, so this keeps even that from being written.
+            catalog_probe: ProbeCleanup::SessionMeta(|| {
+                serde_json::Map::from_iter([(
+                    "claudeCode".to_string(),
+                    serde_json::json!({"options": {"persistSession": false}}),
+                )])
+            }),
         },
         AgentDefinition {
             agent_id: AgentId::new(CODEX_AGENT_ID),
@@ -2393,6 +2440,9 @@ fn built_in_definitions() -> Vec<AgentDefinition> {
             sign_in_proof: SignInProof::Session,
             terminal_login_args: None,
             mcp_connections: McpConnections::PerSession,
+            // At 2.5.0 the rollout file is written with the first prompt, so
+            // a bare `session/new` stores no thread.
+            catalog_probe: ProbeCleanup::Nothing,
         },
         opencode_definition(),
         omp_definition(),
@@ -2434,6 +2484,7 @@ fn push_test_definitions(definitions: &mut Vec<AgentDefinition>) {
             sign_in_proof: SignInProof::Session,
             terminal_login_args: None,
             mcp_connections: McpConnections::PerSession,
+            catalog_probe: ProbeCleanup::Nothing,
         });
     }
     if let Some(definition) = test_binary_definition() {
@@ -2503,6 +2554,7 @@ fn test_binary_definition() -> Option<AgentDefinition> {
         sign_in_proof: SignInProof::Session,
         terminal_login_args: None,
         mcp_connections: McpConnections::PerSession,
+        catalog_probe: ProbeCleanup::Nothing,
     })
 }
 
@@ -2628,6 +2680,9 @@ fn opencode_definition() -> AgentDefinition {
         sign_in_proof: SignInProof::Session,
         terminal_login_args: None,
         mcp_connections: McpConnections::PerDirectory,
+        // At 2.2.5 every `session/new` stores a session row, and
+        // `session/delete` removes it.
+        catalog_probe: ProbeCleanup::DeleteSession,
     }
 }
 
@@ -2716,6 +2771,11 @@ fn omp_definition() -> AgentDefinition {
         // stores the one picked, and exits.
         terminal_login_args: Some(&["login"]),
         mcp_connections: McpConnections::PerSession,
+        // At 18.16.0 every `session/new` writes a `.jsonl` under the agent
+        // directory's `sessions/`. omp has no `session/delete`, ignores
+        // `--no-session` in ACP, and records a handle in
+        // `acp-session-handles.json` only for a switched or forked session.
+        catalog_probe: ProbeCleanup::ScratchSessionDir("--session-dir"),
     }
 }
 

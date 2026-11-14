@@ -31,6 +31,10 @@ final class OttamAppRuntime {
     /// Deliberately transient — persisting it would make a plain ⌘, reopen
     /// whatever pane a deep-link once targeted.
     var pendingSettingsPane: SettingsPane?
+    /// Whether first-launch onboarding still owns the app: decided once from
+    /// `onboarding.json` before any scene, and cleared when it finishes.
+    private(set) var onboardingPending: Bool
+    let onboardingStore: OnboardingStore
     private(set) var workspaceListError: String?
     private var recoveryTask: Task<Void, Never>?
     private var lifecycleInstalled = false
@@ -39,15 +43,19 @@ final class OttamAppRuntime {
     init(
         client: OttamCoreProcessClient = OttamCoreProcessClient(
             executableURL: ReviewEnvironment.ottamCoreExecutableURL
-        )
+        ),
+        onboardingStore: OnboardingStore = .default()
     ) {
         self.client = client
+        self.onboardingStore = onboardingStore
+        self.onboardingPending = onboardingStore.launchNeedsOnboarding()
         self.runtimeInstall = RuntimeInstallController(client: client)
         self.agentInstall = AgentInstallController(client: client)
         self.mcpSignIn = McpSignInController(client: client)
         // Seed the chooser dimensions before Core is up; refreshed lists
         // replace the snapshot after startup.
         workspaces = WorkspaceListSnapshotCache.load()
+        windows.suppressesDefaultWindow = onboardingPending
     }
 
     var activeWorkspaces: [WorkspaceListItem] {
@@ -56,6 +64,13 @@ final class OttamAppRuntime {
 
     var archivedWorkspaces: [WorkspaceListItem] {
         workspaces.filter { $0.workspace.archivedAt != nil }
+    }
+
+    /// Records onboarding as done; the caller then opens the Welcome window.
+    func completeOnboarding() throws {
+        try onboardingStore.save(.complete)
+        onboardingPending = false
+        windows.suppressesDefaultWindow = false
     }
 
     func start() async {
@@ -226,6 +241,9 @@ final class WorkspaceWindowRegistry {
     var activeActions: OttamWindowActions?
     @ObservationIgnored private var controllers: [WorkspaceID: WorkspaceWindowController] = [:]
     @ObservationIgnored private weak var chooserWindow: NSWindow?
+    /// Set while onboarding owns the launch, so a restore that brings back
+    /// no workspace window does not open the Welcome window beside it.
+    @ObservationIgnored var suppressesDefaultWindow = false
 
     init() {
         NotificationCenter.default.addObserver(
@@ -246,7 +264,7 @@ final class WorkspaceWindowRegistry {
     /// SwiftUI skips the chooser whenever the app has saved windows, so a
     /// launch whose saved windows all fail to restore would start with none.
     private func didFinishRestoringWindows() {
-        guard controllers.isEmpty else { return }
+        guard controllers.isEmpty, !suppressesDefaultWindow else { return }
         restorationLogger.notice("no workspace window restored; opening the default window")
         _ = NSApplication.shared.delegate?.applicationOpenUntitledFile?(NSApplication.shared)
     }

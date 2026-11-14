@@ -53,11 +53,27 @@ struct OttamMain: App {
         )
         .windowStyle(.hiddenTitleBar)
         .windowResizability(.contentSize)
+        // Onboarding opens in its place until it finishes, then opens it.
+        .defaultLaunchBehavior(runtime.onboardingPending ? .suppressed : .automatic)
         // App-wide; they act on the main workspace window through the
         // registry. Workspace windows are AppKit's (WorkspaceWindowController).
         .commands {
             OttamCommands(runtime: runtime)
         }
+
+        // First launch only. No close button: quitting is the way out, and
+        // the next launch resumes.
+        Window("Set Up Ottam", id: OnboardingView.windowID) {
+            OnboardingView(runtime: runtime)
+                .windowMinimizeBehavior(.disabled)
+                .windowFullScreenBehavior(.disabled)
+                .windowDismissBehavior(.disabled)
+        }
+        .defaultSize(width: OnboardingView.windowSize.width, height: OnboardingView.windowSize.height)
+        .windowStyle(.hiddenTitleBar)
+        .windowResizability(.contentSize)
+        .restorationBehavior(.disabled)
+        .defaultLaunchBehavior(runtime.onboardingPending ? .presented : .suppressed)
 
         Window("Settings", id: "settings") {
             SettingsView(runtime: runtime)

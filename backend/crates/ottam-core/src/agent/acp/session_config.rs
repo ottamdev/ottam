@@ -866,6 +866,7 @@ mod tests {
             mode_id: mode.map(str::to_owned),
             thought_level_id: None,
             mcp_servers: Vec::new(),
+            meta: None,
         };
         let applied = apply_session_config(
             &RecordingSetter::default(),
@@ -1071,6 +1072,7 @@ mod tests {
                 mode_id: Some("auto".to_string()),
                 thought_level_id: Some("high".to_string()),
                 mcp_servers: Vec::new(),
+                meta: None,
             },
         )
         .await
@@ -1107,6 +1109,7 @@ mod tests {
                 mode_id: Some("plan".to_string()),
                 thought_level_id: None,
                 mcp_servers: Vec::new(),
+                meta: None,
             },
         )
         .await
@@ -1174,6 +1177,7 @@ mod tests {
             mode_id: None,
             thought_level_id: thought_level_id.map(str::to_owned),
             mcp_servers: Vec::new(),
+            meta: None,
         };
 
         let setter = switching();
@@ -1462,6 +1466,7 @@ mod tests {
             mode_id: None,
             thought_level_id: level.map(str::to_owned),
             mcp_servers: Vec::new(),
+            meta: None,
         };
         let applied = apply_session_config(
             &switching_to_glm(),
@@ -1515,6 +1520,7 @@ mod tests {
                 mode_id: None,
                 thought_level_id: Some("high".to_string()),
                 mcp_servers: Vec::new(),
+                meta: None,
             },
         )
         .await
@@ -1548,6 +1554,7 @@ mod tests {
                 mode_id: Some("plan".to_string()),
                 thought_level_id: None,
                 mcp_servers: Vec::new(),
+                meta: None,
             },
         )
         .await

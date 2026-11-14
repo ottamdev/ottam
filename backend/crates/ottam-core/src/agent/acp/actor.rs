@@ -1042,6 +1042,7 @@ pub(super) trait AcpCommandConnection:
         &self,
         cwd: PathBuf,
         mcp_servers: Vec<McpServerEntry>,
+        meta: Option<serde_json::Map<String, serde_json::Value>>,
     ) -> Pin<
         Box<
             dyn Future<Output = Result<CommandNewSessionResponse, agent_client_protocol::Error>>
@@ -1148,6 +1149,7 @@ impl AcpCommandConnection for ConnectionTo<Agent> {
         &self,
         cwd: PathBuf,
         mcp_servers: Vec<McpServerEntry>,
+        meta: Option<serde_json::Map<String, serde_json::Value>>,
     ) -> Pin<
         Box<
             dyn Future<Output = Result<CommandNewSessionResponse, agent_client_protocol::Error>>
@@ -1156,7 +1158,9 @@ impl AcpCommandConnection for ConnectionTo<Agent> {
         >,
     > {
         Box::pin(async move {
-            self.send_request(NewSessionRequest::new(cwd).mcp_servers(acp_mcp_servers(mcp_servers)))
+            let mut request = NewSessionRequest::new(cwd).mcp_servers(acp_mcp_servers(mcp_servers));
+            request.meta = meta;
+            self.send_request(request)
                 .block_task()
                 .await
                 .map(|response| CommandNewSessionResponse {
@@ -1932,7 +1936,7 @@ pub(super) async fn run_command_loop(
                         let _ = reply.send(result);
                     }
                     AdapterCommand::NewSession { cwd, config, reply } => {
-                        let result = match connection.new_session(cwd.clone(), config.mcp_servers.clone()).await
+                        let result = match connection.new_session(cwd.clone(), config.mcp_servers.clone(), config.meta.clone()).await
                         {
                             Ok(response) => {
                                 let session_id = HarnessSessionId::new(response.session_id);

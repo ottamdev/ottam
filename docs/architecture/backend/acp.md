@@ -89,8 +89,10 @@ record ([persistence](persistence.md#agent-questions)).
 `OTTAM_NODE` is authoritative even when broken. A complete system toolchain at
 Node 22+ beats the managed runtime; per-engine floors otherwise decide. The
 pi-family slot is oh-my-pi, not upstream pi: pi refuses in-tree ACP. Managed
-runtime install is user-initiated; an installed older runtime is the standing
-consent for a new pin (`RuntimeInstallService::reconcile`). Only an older
+runtime and adapter installs are user-initiated: an explicit Get or Install,
+or the agents a user ticks in first-launch onboarding. An installed older
+runtime is the standing consent for a new pin
+(`RuntimeInstallService::reconcile`). Only an older
 runtime stands in; a newer one left by a rolled-back app never runs.
 
 ## Managed Adapter Lifecycle And Setup UI
@@ -180,6 +182,21 @@ model leaves; `session/load` records nothing. `engine.changed` is a hint;
 clients re-read `engine.list`. Core never emits it for a refreshed but
 unchanged entry: every `engine.list` folds the live answer into the cache, so
 each poll would trigger another.
+
+The probe opens one session in a throwaway adapter and must leave no vendor
+history. What a bare `session/new` stores differs per adapter, so each
+definition declares its cleanup beside the pin (`ProbeCleanup`,
+`agent/catalog_probe.rs`); it rests on adapter internals, so recheck it with
+`scripts/check-probe-leftovers.py` at every pin bump. A failed cleanup logs
+"model catalog probe left a session behind" and still records the catalog.
+CLI-setup homes are probed too (decided 2026-11-13: onboarding needs their
+models): the throwaway process runs the user's settings and hooks, is never
+stopped while the home's sign-in refresh lock is held, and counts as a live
+child for Quit; one per home waits at a time. Recheck on a CLI setup re-probes
+whatever the catalog's age, since one already signed in never signs in
+through Ottam and its own terminal can change what it offers.
+ACP's unstable `session/options` replaces the probe for an agent that
+advertises `sessionCapabilities.options`.
 
 ## Runtime Probe Budget
 

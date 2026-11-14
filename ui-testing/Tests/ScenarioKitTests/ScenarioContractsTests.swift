@@ -185,7 +185,6 @@ final class ScenarioContractsTests: XCTestCase {
                 "settings.existing-setups",
                 "settings.profiles",
                 "settings.profile-delete-probe",
-                "onboarding.missing-node",
                 "chat.transcript-live-light",
                 "chat.transcript-live-dark",
                 "chat.transcript-complete",

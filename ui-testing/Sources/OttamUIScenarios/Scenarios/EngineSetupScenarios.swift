@@ -57,10 +57,9 @@ extension UIScenarioDefinition {
                 ]
             )
         )
-        try await context.pressControl(named: "Set Up an Agent…", waitForText: "Choose a profile")
-        try await context.capture(routeCapture(id: "first-agent-setup-sheet", scope: nil,
-                                              required: [], snapshotPolicy: .sheet))
-        try await context.pressControl(named: "Cancel", waitForText: "Set Up an Agent…")
+        // Nothing installed means no sign-in to finish: the landing points at
+        // Settings rather than reopening setup.
+        try await context.assert(.labelContains(context.element(id: AccessibilityID.chatSetUpAgents), "Open Agent Settings"))
     }
     /// The picker while a runtime probe outruns the list budget, and the flip
     /// when it answers.
@@ -132,26 +131,6 @@ extension UIScenarioDefinition {
         )
     }
 
-    public static let onboardingMissingNode = UIScenarioDefinition(
-        descriptor: ScenarioDescriptor(
-            id: "onboarding.missing-node",
-            description: "Show Node readiness in the first-agent native setup sheet.",
-            tags: ["onboarding", "runtime", "acceptance"],
-            requirements: ["Accessibility", "Screen Recording"]
-        ),
-        launchConfiguration: ScenarioLaunchConfiguration(
-            validationProfile: "focused", routes: "chat",
-            environment: ["OTTAM_ADAPTER_INSTALLS": "on", "OTTAM_NODE": "/ottam-ui-test/missing-node",
-                          "OTTAM_UI_TEST_APPEARANCE": "light"],
-            fixtures: ["missing explicit Node runtime and empty adapter store"]
-        ),
-        preparation: waitForSetUpAgents
-    ) { context in
-        try await context.pressControl(named: "Set Up an Agent…", waitForText: "Choose a profile")
-        try await context.capture(routeCapture(id: "onboarding-missing-node", scope: nil,
-                                              required: [], snapshotPolicy: .sheet))
-        try await context.pressControl(named: "Cancel", waitForText: "Set Up an Agent…")
-    }
 }
 
 /// Wait until detection resolves and the setup action is available.

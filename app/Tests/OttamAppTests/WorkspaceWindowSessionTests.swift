@@ -9,9 +9,13 @@ import Testing
 struct WorkspaceWindowSessionTests {
     private func session(_ id: String = "session-tests") -> WorkspaceWindowSession {
         let client = OttamCoreProcessClient(executableURL: URL(fileURLWithPath: "/nonexistent/core"))
+        // The runtime decides onboarding at init, which records it in the
+        // store's home; keep that out of the developer's real one.
+        let home = FileManager.default.temporaryDirectory
+            .appendingPathComponent("window-session-\(UUID().uuidString)")
         return WorkspaceWindowSession(
             workspaceID: WorkspaceID(id),
-            runtime: OttamAppRuntime(client: client)
+            runtime: OttamAppRuntime(client: client, onboardingStore: OnboardingStore(directory: home))
         )
     }
 

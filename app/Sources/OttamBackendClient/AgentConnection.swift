@@ -371,8 +371,9 @@ public final class OttamCoreProcessClient: @unchecked Sendable {
         try await connection.uninstallAgentAdapter(agentID: agentID, removeHome: removeHome, operationKey: operationKey)
     }
 
+    /// `workspaceID` nil lists engines before any workspace exists.
     public func listEngines(
-        workspaceID: WorkspaceID,
+        workspaceID: WorkspaceID?,
         refreshRuntime: Bool = false
     ) async throws -> EngineListResult {
         try await connection.listEngines(
@@ -905,7 +906,7 @@ public extension AgentConnection {
     }
 
     func listEngines(
-        workspaceID: WorkspaceID,
+        workspaceID: WorkspaceID?,
         refreshRuntime: Bool = false
     ) async throws -> EngineListResult {
         try await request(

@@ -27,9 +27,7 @@ final class NamedAgentsSettingsModel {
     func load(workspaceID: WorkspaceID?) async {
         do {
             let listed = try await client.listNamedAgents()
-            if let workspaceID {
-                engines = (try? await client.listEngines(workspaceID: workspaceID).engines) ?? engines
-            }
+            engines = (try? await client.listEngines(workspaceID: workspaceID).engines) ?? engines
             namedAgents = listed.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
             errorText = nil
             didLoadOnce = true
@@ -111,11 +109,13 @@ struct NamedAgentDraft: Identifiable {
     }
 }
 
-/// The Agents pane's Named Agents section: each named agent with its agent
-/// and mode, opened for editing in a sheet.
+/// The Agents pane's Named Agents section: each named agent with its agent,
+/// model, and mode, opened for editing in a sheet.
 struct NamedAgentsSection: View {
     let model: NamedAgentsSettingsModel
     @Binding var editing: NamedAgentDraft?
+    /// The agent Add starts on; nil is the first one listed.
+    var defaultEngineID: EngineID?
 
     var body: some View {
         Section {
@@ -161,7 +161,7 @@ struct NamedAgentsSection: View {
                 Text("Named Agents")
                 Spacer()
                 Button("Add Named Agent…") {
-                    editing = NamedAgentDraft(engineID: model.engines.first?.engineID.rawValue ?? "")
+                    editing = NamedAgentDraft(engineID: (defaultEngineID ?? model.engines.first?.engineID)?.rawValue ?? "")
                 }
                 .disabled(!model.didLoadOnce)
                 .accessibilityIdentifier("namedAgent.add")
@@ -174,10 +174,15 @@ struct NamedAgentsSection: View {
     private func detail(_ agent: NamedAgent) -> String {
         let engine = model.engine(agent.engineID)
         let agentName = engine?.displayName ?? agent.engineID.rawValue
+        // No model set runs the agent's default, so name the one it runs
+        // now; omitted until the agent's catalog lists it.
+        let model = (agent.modelID ?? engine?.defaultModelID).map { modelID in
+            engine?.models.first { $0.modelID == modelID }?.displayName ?? modelID
+        }
         let mode = agent.modeID.map { modeID in
             engine?.modes.first { $0.id == modeID }?.displayName ?? modeID
         }
-        return [agentName, mode].compactMap(\.self).joined(separator: " · ")
+        return [agentName, model, mode].compactMap(\.self).joined(separator: " · ")
     }
 }
 
