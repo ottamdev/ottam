@@ -11,16 +11,18 @@ Native Swift tests own presentation and state branching. The only complete
 real-app run is `./scripts/smoke-app-bundle.sh`, which captures seven pages in
 one isolated app lifetime (inventory in `ui-testing/README.md`). Behavioral
 scenarios run only by explicit ID. The `macos-ui-validation` workflow is
-`workflow_dispatch` only. Every item below is trigger-based.
+`workflow_dispatch` only. Restore automatic execution is unblocked; every
+other item below is trigger-based.
 
 ## Backlog
 
-- **Restore automatic execution.** Trigger: a manual run of the workflow
-  executes its steps successfully. Then run native app tests, native UI-harness
+- **Restore automatic execution.** Unblocked: manual runs now execute every
+  step and upload their evidence. Run native app tests, native UI-harness
   tests, and the seven-page smoke in one job on one built bundle, and upload
   screenshots, AX evidence, results, logs, and the contact sheet. Do not make
-  the workflow a required check before then. A zero-step billing or runner
-  failure is unavailable infrastructure, not a product result.
+  the workflow a required check until automatic execution ships. A zero-step
+  billing or runner failure is unavailable infrastructure, not a product
+  result.
 - **Measure actual cost.** Trigger: successful automatic runs exist. Record
   duration, app-launch count, foreground activations, and billed minutes. Do
   not set a target from the retired suite's timing.

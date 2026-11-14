@@ -12,7 +12,7 @@ current.
 
 ## Release
 
-- [Open Source Release Readiness](operations/open-source-release.md) — active — two consecutive `macos-ui-validation` dispatches, then Next
+- [Open Source Release Readiness](operations/open-source-release.md) — active — Next: first-run sequencing, payload database upgrade protections, distribution
 - [App Update And Distribution](app/distribution.md) — active — Milestone 1: clean-account acceptance and the entitlement tests
 
 ## Agents (ACP)
@@ -55,4 +55,4 @@ current.
 
 - [Agent Efficiency](operations/agent-efficiency.md) — active — P1-4 inline Rust tests to siblings, then P0-8 generated-artifact markers
 - [Agent Efficiency: File Splits And Cleanup](operations/agent-efficiency-splits.md) — active — P1-4 (transcript, registry, model catalog, auth)
-- [macOS UI Validation Follow-Ups](operations/macos-ui-validation.md) — deferred — restore automatic CI after a manual run executes its steps
+- [macOS UI Validation Follow-Ups](operations/macos-ui-validation.md) — deferred — restore automatic CI (unblocked: manual runs pass)
