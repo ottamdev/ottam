@@ -604,7 +604,7 @@ pub(in crate::storage) fn check_migrations<S: MigrationSource<Sqlite>>(
     }
     Ok(embedded
         .iter()
-        .any(|version| !applied.iter().any(|applied| &applied.value == version)))
+        .any(|version| !applied.iter().any(|applied| applied.value == *version)))
 }
 
 /// Both databases are checked before either migrates, and any pending
