@@ -32,7 +32,7 @@ current.
 
 ## Backend
 
-- [Agent Runtime And Setup Acceptance](backend/agent-runtime-setup.md) — active — real-provider lifecycle, then download and runtime repair
+- [Agent Runtime And Setup Acceptance](backend/agent-runtime-setup.md) — active — record the first-install environment, then real-provider lifecycle
 - [Permission Changes In Existing Conversations](backend/live-session-configuration.md) — active — probe a generating turn and a pending permission, then two-client ordering
 - [SQLite Payload Storage](backend/sqlite-payload-storage.md) — active — pick A or B on the incompressible-write tradeoff, then guard payload database upgrades
 - [Tool Permissions](backend/tool-permissions.md) — active — finish the P1 walkthrough on oh-my-pi
