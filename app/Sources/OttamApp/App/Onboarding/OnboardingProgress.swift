@@ -38,11 +38,6 @@ enum OnboardingProgress {
         (agent.adapterPackage?.installState ?? .installed) == .installed
     }
 
-    /// Whether the agent needs the Node runtime: anything but a prebuilt binary.
-    static func usesNode(_ agent: AgentSummary) -> Bool {
-        agent.adapterPackage?.source != .binary
-    }
-
     /// Signed in, or for a multi-provider agent, at least one provider set up.
     static func isSignedIn(_ agent: AgentSummary) -> Bool {
         switch AgentSetupStatus(agent: agent) {
@@ -85,7 +80,7 @@ enum OnboardingProgress {
         if instances.contains(where: {
             !isInstalled($0)
                 || needsLayout($0, usesCLISetup: record.cliSetupHarnessIDs.contains($0.harnessID ?? $0.agentID.rawValue))
-                || (usesNode($0) && EngineRuntimeProblem(agent: $0) != nil)
+                || EngineRuntimeProblem(adapterOf: $0) != nil
         }) {
             return .install
         }

@@ -140,7 +140,7 @@ final class OnboardingModel {
     /// Node is in the plan while any chosen agent needs it and it is not ready,
     /// and stays listed (as done) once installed here.
     var needsNode: Bool {
-        selected.compactMap(instance).contains { OnboardingProgress.usesNode($0) && EngineRuntimeProblem(agent: $0) != nil }
+        selected.compactMap(instance).contains { EngineRuntimeProblem(adapterOf: $0) != nil }
     }
 
     var showsNodeRow: Bool { needsNode || nodeAutoStarted }
@@ -151,7 +151,7 @@ final class OnboardingModel {
                 guard let agent = instance(harnessID) else { return false }
                 return OnboardingProgress.isInstalled(agent)
                     && !OnboardingProgress.needsLayout(agent, usesCLISetup: cliSetup.contains(harnessID))
-                    && !(OnboardingProgress.usesNode(agent) && EngineRuntimeProblem(agent: agent) != nil)
+                    && EngineRuntimeProblem(adapterOf: agent) == nil
             }
     }
 
@@ -214,7 +214,7 @@ final class OnboardingModel {
         }
         for harnessID in selected where !autoStarted.contains(harnessID) {
             guard let agent = instance(harnessID), !OnboardingProgress.isInstalled(agent) else { continue }
-            if OnboardingProgress.usesNode(agent), EngineRuntimeProblem(agent: agent) != nil { continue }
+            if EngineRuntimeProblem(adapterOf: agent) != nil { continue }
             autoStarted.insert(harnessID)
             runtime.agentInstall.install(agentID: AgentID(harnessID))
         }
