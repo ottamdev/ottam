@@ -13,7 +13,7 @@ current.
 ## Release
 
 - [Open Source Release Readiness](operations/open-source-release.md) — active — Next: first-run sequencing, payload database upgrade protections, distribution
-- [App Update And Distribution](app/distribution.md) — active — Milestone 1: clean-account acceptance and the entitlement tests
+- [App Update And Distribution](app/distribution.md) — active — Milestone 1: clean-account acceptance
 
 ## Agents (ACP)
 

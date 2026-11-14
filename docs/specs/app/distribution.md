@@ -35,15 +35,6 @@ notarization, GitHub access, or Sparkle key.
 
 ### Milestone 1 — a release build that installs
 
-- [ ] **Entitlements and usage strings.** Ottam is the TCC responsible process
-  for every shell and agent it spawns. The app declares
-  `automation.apple-events`, `device.audio-input`, `device.camera`, and the
-  `personal-information` set (contacts, calendars, location, photos), each
-  with a usage string; `ottam-core` declares none. Unproven: whether spawned
-  processes actually need them under hardened runtime. Test each case with
-  and without its entitlement on a release build, and drop any that make no
-  difference. Add a JIT or
-  library-validation exception only when a failing case proves the need.
 - [ ] **Clean-account acceptance.** Try it 3 and 5–7 on a clean macOS 26
   account, with a real notarized archive.
 

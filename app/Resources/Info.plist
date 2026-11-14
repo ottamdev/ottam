@@ -30,14 +30,6 @@
   <true/>
   <key>NSAppleEventsUsageDescription</key>
   <string>A program running in Ottam wants to control another app.</string>
-  <key>NSCalendarsFullAccessUsageDescription</key>
-  <string>A program running in Ottam wants to access your calendars.</string>
-  <key>NSCalendarsUsageDescription</key>
-  <string>A program running in Ottam wants to access your calendars.</string>
-  <key>NSCameraUsageDescription</key>
-  <string>A program running in Ottam wants to use the camera.</string>
-  <key>NSContactsUsageDescription</key>
-  <string>A program running in Ottam wants to access your contacts.</string>
   <key>NSDesktopFolderUsageDescription</key>
   <string>A program running in Ottam wants to access files on your Desktop.</string>
   <key>NSDocumentsFolderUsageDescription</key>
@@ -48,15 +40,7 @@
   <true/>
   <key>NSHumanReadableCopyright</key>
   <string>© 2026 Ottam contributors</string>
-  <key>NSLocationUsageDescription</key>
-  <string>A program running in Ottam wants to use your location.</string>
   <key>NSMicrophoneUsageDescription</key>
   <string>A program running in Ottam wants to use the microphone.</string>
-  <key>NSPhotoLibraryUsageDescription</key>
-  <string>A program running in Ottam wants to access your photos.</string>
-  <key>NSRemindersFullAccessUsageDescription</key>
-  <string>A program running in Ottam wants to access your reminders.</string>
-  <key>NSRemindersUsageDescription</key>
-  <string>A program running in Ottam wants to access your reminders.</string>
 </dict>
 </plist>

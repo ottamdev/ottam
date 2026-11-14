@@ -74,6 +74,21 @@ Terminal identities and Terminal scrollback do not.
 - SSH, cloud execution, structured artifacts and concurrent orchestration need
   reviewed product and architecture work first.
 
+## Privacy Permissions
+
+Ottam is the TCC responsible process for every shell, agent and tool it
+spawns, so their privacy prompts name Ottam and use its usage strings. Under
+hardened runtime, a protected service with no matching entitlement is refused
+silently: there's no prompt and no Privacy & Security entry to enable. Release
+builds entitle only the microphone (2026-11-12), because agents have no need
+for the camera, contacts, calendars, location or photos, and a silent refusal
+is safer than a prompt granted to an unfamiliar tool. Reminders has no
+entitlement and is refused because `Info.plist` carries no reminders usage
+string. Apple events and files in Desktop, Documents and Downloads need no
+entitlement and still prompt.
+There are no JIT or library-validation exceptions; add one only when a failing
+case proves the need (`app/Signing/Ottam.entitlements`).
+
 ## Current Limits
 
 There is no persistent broker or multi-client daemon. A second process cannot
