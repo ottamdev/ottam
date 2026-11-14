@@ -107,7 +107,8 @@ new_repo() {
   local repo="$1" cargo_version="$2"
   mkdir -p "$repo/scripts/lib" "$repo/backend"
   cp "$repo_root/scripts/release-app.sh" "$repo/scripts/"
-  cp "$repo_root/scripts/lib/release-version.sh" "$repo_root/scripts/lib/release-signing.sh" "$repo/scripts/lib/"
+  cp "$repo_root/scripts/lib/release-version.sh" "$repo_root/scripts/lib/release-signing.sh" \
+    "$repo_root/scripts/lib/release-feed.sh" "$repo/scripts/lib/"
   printf '#!/bin/sh\necho "build reached" >&2\nexit 99\n' > "$repo/scripts/build-app.sh"
   chmod +x "$repo/scripts/build-app.sh"
   printf '[workspace.package]\nedition = "2021"\nversion = "%s"\n' "$cargo_version" > "$repo/backend/Cargo.toml"

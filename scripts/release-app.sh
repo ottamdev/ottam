@@ -6,18 +6,21 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$ROOT_DIR/scripts/lib/release-version.sh"
 # shellcheck source=scripts/lib/release-signing.sh
 source "$ROOT_DIR/scripts/lib/release-signing.sh"
+# shellcheck source=scripts/lib/release-feed.sh
+source "$ROOT_DIR/scripts/lib/release-feed.sh"
 
 CARGO_MANIFEST="$ROOT_DIR/backend/Cargo.toml"
 ENTITLEMENTS="$ROOT_DIR/app/Signing/Ottam.entitlements"
 MODE=release
 IDENTITY="${OTTAM_RELEASE_IDENTITY:-}"
 NOTARY_PROFILE="${OTTAM_NOTARY_PROFILE:-ottam-notary}"
+NOTARY_ARGS=(--keychain-profile "$NOTARY_PROFILE")
+[ -z "${OTTAM_NOTARY_KEYCHAIN:-}" ] || NOTARY_ARGS+=(--keychain "$OTTAM_NOTARY_KEYCHAIN")
 RELEASE_OUTPUT="$ROOT_DIR/.build/release"
 VERSION=""
 BUNDLE_ID=""
 USE_ENTITLEMENTS=1
-# The one address baked into every shipped build; it must outlive any host.
-PRODUCTION_FEED_URL="https://updates.ottam.dev/appcast.xml"
+PRODUCTION_FEED_URL="$RELEASE_FEED_URL"
 FEED_URL=""
 FEED_URL_OVERRIDE=""
 # Sparkle's Ed25519 public key, base64. Public by design; the private half
@@ -43,7 +46,9 @@ Usage:
       It has no updater unless --feed-url is given.
 
 OTTAM_RELEASE_IDENTITY is the default for --identity. OTTAM_NOTARY_PROFILE
-names the notarytool keychain profile (default: ottam-notary). A feed also
+names the notarytool keychain profile (default: ottam-notary), and
+OTTAM_NOTARY_KEYCHAIN the keychain holding it when that isn't the default
+one. A feed also
 needs Sparkle's public key in app/Signing/sparkle-public-key.
 USAGE
 }
@@ -237,7 +242,7 @@ notarize() {
 
   ditto -c -k --keepParent "$app" "$upload"
   echo "Submitting to the notary service (profile $NOTARY_PROFILE); this usually takes a few minutes."
-  xcrun notarytool submit "$upload" --keychain-profile "$NOTARY_PROFILE" \
+  xcrun notarytool submit "$upload" "${NOTARY_ARGS[@]}" \
     --wait --output-format json > "$result" || true
   status="$(plutil -extract status raw -o - "$result" 2>/dev/null || true)"
   submission_id="$(plutil -extract id raw -o - "$result" 2>/dev/null || true)"
@@ -250,7 +255,7 @@ notarize() {
     echo "Notarization ended with status '$status' (submission ${submission_id:-none})." >&2
     cat "$result" >&2 || true
     [ -z "$submission_id" ] ||
-      xcrun notarytool log "$submission_id" --keychain-profile "$NOTARY_PROFILE" >&2 || true
+      xcrun notarytool log "$submission_id" "${NOTARY_ARGS[@]}" >&2 || true
     exit 70
   fi
   echo "Notarized: submission $submission_id"
@@ -284,7 +289,7 @@ release() {
   require_update_feed
   identity="$(release_resolve_identity "Developer ID Application" "$IDENTITY")"
   # Fail before the build, not after it, when the notary credentials don't work.
-  xcrun notarytool history --keychain-profile "$NOTARY_PROFILE" >/dev/null 2>&1 || {
+  xcrun notarytool history "${NOTARY_ARGS[@]}" >/dev/null 2>&1 || {
     echo "The notary keychain profile '$NOTARY_PROFILE' is missing or can't sign in." >&2
     exit 69
   }

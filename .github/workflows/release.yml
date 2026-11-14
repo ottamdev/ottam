@@ -1,0 +1,123 @@
+name: release
+
+# Manual only: pushing a tag runs nothing. Cut locally, push the tag, then
+#   gh workflow run release.yml --ref v26.11.0 -f feed=production
+# The release environment admits only v* tags and waits for the maintainer's
+# approval before any secret reaches the runner.
+on:
+  workflow_dispatch:
+    inputs:
+      feed:
+        description: Appcast to publish to; test builds update from the test feed and become pre-releases
+        type: choice
+        options: [production, test]
+        # No default: a forgotten -f must not publish to production.
+        required: true
+
+permissions:
+  contents: write
+
+# One publication at a time, never cancelled midway by another.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: macos-26
+    timeout-minutes: 90
+    environment: release
+    env:
+      FEED: ${{ inputs.feed }}
+      TEST_FEED_URL: https://updates.ottam.dev/test/appcast.xml
+    steps:
+      - name: Require a release tag
+        if: github.ref_type != 'tag'
+        run: |
+          echo "Run this workflow on a vYY.M.N tag, not ${GITHUB_REF}." >&2
+          exit 1
+      # No caches: a release builds only from the tag and pinned fetches.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      # rustup ships on the runner image; no third-party action sees this job.
+      - name: Install Rust stable
+        run: rustup toolchain install stable --profile minimal && rustup default stable
+      - name: Fetch GhosttyKit
+        run: ./scripts/fetch-ghosttykit.sh
+
+      - name: Import release credentials
+        env:
+          DEVELOPER_ID_P12: ${{ secrets.DEVELOPER_ID_P12 }}
+          DEVELOPER_ID_P12_PASSWORD: ${{ secrets.DEVELOPER_ID_P12_PASSWORD }}
+          NOTARY_API_KEY: ${{ secrets.NOTARY_API_KEY }}
+          NOTARY_API_KEY_ID: ${{ secrets.NOTARY_API_KEY_ID }}
+          NOTARY_API_ISSUER: ${{ secrets.NOTARY_API_ISSUER }}
+          SPARKLE_ED_PRIVATE_KEY: ${{ secrets.SPARKLE_ED_PRIVATE_KEY }}
+          UPDATES_DEPLOY_KEY: ${{ secrets.UPDATES_DEPLOY_KEY }}
+        run: |
+          umask 077
+          secrets="$RUNNER_TEMP/release-secrets"
+          keychain="$RUNNER_TEMP/release.keychain-db"
+          keychain_password="$(uuidgen)"
+          mkdir "$secrets"
+
+          # Developer ID in a keychain of its own, searched before the login one.
+          printf '%s' "$DEVELOPER_ID_P12" | base64 --decode > "$secrets/developer-id.p12"
+          security create-keychain -p "$keychain_password" "$keychain"
+          security set-keychain-settings -lut 7200 "$keychain"
+          security unlock-keychain -p "$keychain_password" "$keychain"
+          security import "$secrets/developer-id.p12" -k "$keychain" \
+            -P "$DEVELOPER_ID_P12_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$keychain_password" "$keychain" >/dev/null
+          security list-keychains -d user -s "$keychain" $(security list-keychains -d user | tr -d '"')
+          rm "$secrets/developer-id.p12"
+
+          # The notary profile release-app.sh expects, stored in that keychain.
+          printf '%s' "$NOTARY_API_KEY" > "$secrets/notary.p8"
+          xcrun notarytool store-credentials ottam-notary --key "$secrets/notary.p8" \
+            --key-id "$NOTARY_API_KEY_ID" --issuer "$NOTARY_API_ISSUER" --keychain "$keychain"
+          rm "$secrets/notary.p8"
+
+          printf '%s' "$SPARKLE_ED_PRIVATE_KEY" > "$secrets/sparkle.key"
+          printf '%s\n' "$UPDATES_DEPLOY_KEY" > "$secrets/deploy.key"
+          # GitHub's published SSH host key, pinned rather than trusted on first use.
+          echo 'github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl' \
+            > "$secrets/known_hosts"
+          echo "RELEASE_KEYCHAIN=$keychain" >> "$GITHUB_ENV"
+          echo "RELEASE_SECRETS=$secrets" >> "$GITHUB_ENV"
+
+      - name: Check the release can publish before building it
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GIT_SSH_COMMAND: ssh -i ${{ runner.temp }}/release-secrets/deploy.key -o IdentitiesOnly=yes -o UserKnownHostsFile=${{ runner.temp }}/release-secrets/known_hosts -o StrictHostKeyChecking=yes
+        run: |
+          git clone --quiet git@github.com:ottamdev/updates.git "$RUNNER_TEMP/updates"
+          git -C "$RUNNER_TEMP/updates" config user.name "Ottam release"
+          git -C "$RUNNER_TEMP/updates" config user.email "release@ottam.dev"
+          ./scripts/publish-release.sh --preflight --version "${GITHUB_REF_NAME#v}" --feed "$FEED" \
+            --updates-checkout "$RUNNER_TEMP/updates"
+
+      - name: Build, sign, notarize, and verify
+        env:
+          OTTAM_NOTARY_KEYCHAIN: ${{ env.RELEASE_KEYCHAIN }}
+        run: |
+          if [ "$FEED" = test ]; then
+            ./scripts/release-app.sh --feed-url "$TEST_FEED_URL"
+          else
+            ./scripts/release-app.sh
+          fi
+
+      - name: Publish the release and its appcast
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GIT_SSH_COMMAND: ssh -i ${{ runner.temp }}/release-secrets/deploy.key -o IdentitiesOnly=yes -o UserKnownHostsFile=${{ runner.temp }}/release-secrets/known_hosts -o StrictHostKeyChecking=yes
+        run: |
+          ./scripts/publish-release.sh --version "${GITHUB_REF_NAME#v}" --feed "$FEED" \
+            --updates-checkout "$RUNNER_TEMP/updates" --ed-key-file "$RELEASE_SECRETS/sparkle.key"
+
+      - name: Remove release credentials
+        if: always()
+        run: |
+          [ -z "${RELEASE_KEYCHAIN:-}" ] || security delete-keychain "$RELEASE_KEYCHAIN" || true
+          rm -rf "$RUNNER_TEMP/release-secrets"
