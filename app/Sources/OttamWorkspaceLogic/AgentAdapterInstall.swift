@@ -39,6 +39,9 @@ public struct AgentAdapterInstallPresentation: Equatable, Sendable {
     /// A footer line, only when the title cannot carry the news — today that
     /// is the failure explanation.
     public let detail: String?
+    /// Why the action is disabled when Node is the blocker. A plain
+    /// requirement, not a failure, so it reads as secondary text.
+    public let requirement: String?
 
     /// - Parameters:
     ///   - installedVersion: The version launching now, from `agent.list`.
@@ -46,16 +49,49 @@ public struct AgentAdapterInstallPresentation: Equatable, Sendable {
     ///     update's new pin. The agent stays usable throughout, so the slot
     ///     reads as an update — *Updating…* / *Update Now* / *Retry* — never as
     ///     a first install.
+    ///   - runtimeProblem: The Node problem behind an npm adapter; nil for a
+    ///     prebuilt binary. Core refuses every npm install without a working
+    ///     Node, so each offered action waits for it. Nothing installs Node
+    ///     from here: the page's Runtime section offers that.
     public init(
         installState: AgentAdapterInstallState?,
         install: AgentAdapterInstall,
         installedVersion: String? = nil,
-        update: AgentUpdateStatus? = nil
+        update: AgentUpdateStatus? = nil,
+        runtimeProblem: EngineRuntimeProblem? = nil
+    ) {
+        let unblocked = Self(
+            ignoringRuntime: installState,
+            install: install,
+            installedVersion: installedVersion,
+            update: update
+        )
+        guard runtimeProblem != nil, unblocked.isActionEnabled else {
+            self = unblocked
+            return
+        }
+        // A failure here is most likely core's own Node refusal, so the
+        // requirement replaces it rather than repeating it in orange.
+        actionTitle = unblocked.actionTitle
+        isActionEnabled = false
+        statusText = unblocked.statusText
+        detail = nil
+        requirement = Self.nodeRequirement
+    }
+
+    public static let nodeRequirement = "Needs Node.js. Install it under Runtime below."
+
+    private init(
+        ignoringRuntime installState: AgentAdapterInstallState?,
+        install: AgentAdapterInstall,
+        installedVersion: String?,
+        update: AgentUpdateStatus?
     ) {
         if let update {
             self = Self(update: update, installedVersion: installedVersion, install: install)
             return
         }
+        requirement = nil
         // The live flow wins over the possibly stale list snapshot.
         switch install.phase {
         case .starting:
@@ -173,5 +209,6 @@ public struct AgentAdapterInstallPresentation: Equatable, Sendable {
         isActionEnabled = enabled
         statusText = status
         self.detail = detail
+        requirement = nil
     }
 }

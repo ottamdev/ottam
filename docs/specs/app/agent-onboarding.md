@@ -91,26 +91,6 @@ Try it:
   - Verify with: `./scripts/ui-test.sh run settings.existing-setups` and
     `chat.no-usable-engine`.
 
-## Next
-
-- [ ] 4. Gate adapter installation on Node readiness in Settings › Agents.
-  - Why: on an instance page, **Get** for an uninstalled Node-launched
-    adapter is enabled whatever Node's state.
-    `AgentAdapterInstallPresentation.isActionEnabled` reads only the install
-    phase, and core then fails the install with "a working Node runtime is
-    required to install the adapter" (`agent_install_service.rs`).
-  - Scope: disable Get for a Node-launched adapter while its runtime is not
-    ready, with a line pointing at the Node Runtime section (shown whenever
-    `AgentsSettingsModel.hasRuntimeProblem`). Prebuilt-binary agents
-    (OpenCode, Oh-My-Pi) are unaffected. Nothing installs automatically
-    outside onboarding (Decisions).
-  - Done when: with no usable Node, Settings › Agents shows Get disabled,
-    with the reason, for Codex and Claude Code; installing managed Node
-    enables Get; OpenCode's and Oh-My-Pi's Get stay enabled throughout.
-  - Verify with: `./scripts/test-app.sh --filter AgentAdapterInstall` with a
-    runtime that is not ready, plus a real-window Settings check with
-    screenshots and AX.
-
 ## Backlog
 
 - The UI-test harness cannot capture the Onboarding window: runs skip

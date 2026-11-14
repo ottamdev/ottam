@@ -101,7 +101,11 @@ runtime stands in; a newer one left by a rolled-back app never runs.
   adapter rather than installing on demand. Install completes only after an
   ACP handshake and catalog probe (`.pending-<version>` marker; startup deletes
   any still pending). Standing-consent and older-only rules match the runtime
-  (`ManagedAdapterInstalls::launchable`). A pin upgrade stops no running
+  (`ManagedAdapterInstalls::launchable`). Core refuses an npm adapter install
+  without a ready Node, so Settings disables every npm install action while
+  Node has a problem and points at the Runtime section rather than installing
+  Node itself; prebuilt binaries never wait
+  (`AgentAdapterInstallPresentation`). A pin upgrade stops no running
   adapter. Registration order is the default-pick order; the app keys icons by
   brand and renders agents from `agent.list` with no per-agent Swift.
 - Each instance gets an isolated home via `home_variables`; core never
