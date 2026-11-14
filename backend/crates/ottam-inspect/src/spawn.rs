@@ -25,6 +25,7 @@ pub struct SpawnedCore {
     child: Child,
     /// Present while the home should be deleted on drop (no `--keep-home`).
     _temp_home: Option<tempfile::TempDir>,
+    kept_scratch_home: bool,
 }
 
 pub struct SpawnOptions {
@@ -33,6 +34,10 @@ pub struct SpawnOptions {
     /// Clone `<source-home>/agents` (installed adapters) into the scratch
     /// home so install-state questions answer like the real home would.
     pub copy_agents_from: Option<PathBuf>,
+    /// `--spawn-home`: a caller-owned home, created if missing and never
+    /// deleted, used instead of a scratch one (seeding a dev home before
+    /// its app first launches).
+    pub home: Option<PathBuf>,
 }
 
 impl SpawnedCore {
@@ -41,7 +46,7 @@ impl SpawnedCore {
         // core's normal shutdown signal.
         drop(self.connection);
         let _ = self.child.wait();
-        if self._temp_home.is_none() {
+        if self.kept_scratch_home {
             // --keep-home: the caller wants the scratch home for inspection.
             eprintln!("scratch home kept at {}", self.home.display());
         }
@@ -50,12 +55,18 @@ impl SpawnedCore {
 
 pub fn spawn(options: &SpawnOptions, timeout: Duration) -> Result<SpawnedCore, String> {
     let core_bin = resolve_core_bin(options.core_bin.as_deref())?;
-    let temp_home = tempfile::TempDir::with_prefix("ottam-inspect-")
-        .map_err(|error| format!("failed to create a scratch home: {error}"))?;
-    let (home, temp_home) = if options.keep_home {
-        (temp_home.keep(), None)
+    let (home, temp_home) = if let Some(home) = &options.home {
+        std::fs::create_dir_all(home)
+            .map_err(|error| format!("failed to create {}: {error}", home.display()))?;
+        (home.clone(), None)
     } else {
-        (temp_home.path().to_path_buf(), Some(temp_home))
+        let temp_home = tempfile::TempDir::with_prefix("ottam-inspect-")
+            .map_err(|error| format!("failed to create a scratch home: {error}"))?;
+        if options.keep_home {
+            (temp_home.keep(), None)
+        } else {
+            (temp_home.path().to_path_buf(), Some(temp_home))
+        }
     };
     if let Some(source_home) = &options.copy_agents_from {
         let source = source_home.join("agents");
@@ -100,6 +111,7 @@ pub fn spawn(options: &SpawnOptions, timeout: Duration) -> Result<SpawnedCore, S
         home,
         child,
         _temp_home: temp_home,
+        kept_scratch_home: options.keep_home && options.home.is_none(),
     })
 }
 

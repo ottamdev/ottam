@@ -46,7 +46,8 @@ attached; do mutations against `--spawn`.
 
 Flags: `--home <path>` (inspect a specific home), `--timeout <secs>`,
 `--raw` (full response envelope), and for `--spawn`: `--core-bin`,
-`--keep-home`, `--copy-agents`.
+`--keep-home`, `--copy-agents`. `--spawn-home <path>` spawns against that
+home instead of a scratch one (only when no app owns it).
 
 Home resolution: `--home` > `$OTTAM_HOME` > this worktree's running
 instance (`.build/run-app/*/owner.json`, live pid wins) > `~/.ottam`.

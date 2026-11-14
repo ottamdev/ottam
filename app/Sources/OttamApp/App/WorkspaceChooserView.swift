@@ -90,6 +90,12 @@ struct WorkspaceChooserView: View {
                     dismissWindow(id: "workspaceChooser")
                 }
             )
+            if errorText == nil {
+                errorText = await DevWorkspaceLauncher.openIfRequested(
+                    runtime: runtime,
+                    openWorkspace: openWorkspace
+                )
+            }
 #endif
         }
         .sheet(isPresented: $showingNewWorkspace) {

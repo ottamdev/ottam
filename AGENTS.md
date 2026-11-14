@@ -164,7 +164,9 @@ affected registered scenario (`./scripts/ui-test.sh list`,
 `./scripts/smoke-app-bundle.sh`, not the internal `ui-test.sh smoke`. Pull
 request CI does not run real-window checks (`macos-ui-validation` is a manual
 dispatch); run the affected ones locally before publishing UI changes.
-Real-window runs replace
+A new isolated `run-app.sh` home skips onboarding: it is seeded with agents on
+the developer's CLI setups and opens its Workspace. Pass `--onboarding` or
+`--chooser` to reach those windows. Real-window runs replace
 `.build/ui-tests/current`, so run one at a time and archive useful evidence
 with `./scripts/ui-test.sh archive <name>`. Report exact screenshot paths and
 whether you inspected them. `ui-testing/project.yml` is authoritative; never

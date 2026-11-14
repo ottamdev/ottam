@@ -21,7 +21,7 @@ BACKEND_DIR="$ROOT_DIR/backend"
 WANTS_HOME=1
 for arg in "$@"; do
   case "$arg" in
-    --home|--spawn) WANTS_HOME=0 ;;
+    --home|--spawn|--spawn-home) WANTS_HOME=0 ;;
   esac
 done
 
