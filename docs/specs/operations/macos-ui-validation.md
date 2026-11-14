@@ -19,7 +19,8 @@ other item below is trigger-based.
 - **Restore automatic execution.** Unblocked: manual runs now execute every
   step and upload their evidence. Run native app tests, native UI-harness
   tests, and the seven-page smoke in one job on one built bundle, and upload
-  screenshots, AX evidence, results, logs, and the contact sheet. A zero-step
+  screenshots, AX evidence, results, logs, and the contact sheet. Do not make
+  the workflow a required check until automatic execution ships. A zero-step
   billing or runner failure is unavailable infrastructure, not a product
   result.
 - **Measure actual cost.** Trigger: successful automatic runs exist. Record
