@@ -1,8 +1,9 @@
 use super::error::StorageError;
 use diesel::connection::SimpleConnection;
+use diesel::migration::MigrationSource;
 use diesel::r2d2::{ConnectionManager, CustomizeConnection, Pool};
 use diesel::sql_types::{BigInt, Text};
-use diesel::sqlite::SqliteConnection;
+use diesel::sqlite::{Sqlite, SqliteConnection};
 use diesel::{Connection, QueryableByName, RunQueryDsl};
 use diesel_migrations::{embed_migrations, EmbeddedMigrations, MigrationHarness};
 use fs2::FileExt;
@@ -16,22 +17,31 @@ use tokio::sync::Semaphore;
 pub const MIGRATIONS: EmbeddedMigrations = embed_migrations!("migrations");
 const POOL_SIZE: u32 = 4;
 
-/// The newest migration this binary embeds.
-///
-/// Derived from the embedded bundle rather than hard-coded: a constant has to be
-/// bumped in lockstep with every new migration directory, and forgetting makes
-/// each database reject itself as "created by a newer Ottam version" on the
-/// first reopen after upgrading.
-fn latest_migration_version() -> String {
-    diesel::migration::MigrationSource::<diesel::sqlite::Sqlite>::migrations(&MIGRATIONS)
-        .ok()
-        .and_then(|migrations| {
+pub(in crate::storage) const NEWER_MAIN: &str = "the database was created by a newer Ottam version";
+pub(in crate::storage) const NEWER_PAYLOAD: &str =
+    "the payload database was created by a newer Ottam version";
+
+/// The versions a migration source embeds, read from the bundle rather than
+/// hard-coded: a constant has to be bumped in lockstep with every new migration
+/// directory, and forgetting makes each database reject itself as "created by
+/// a newer Ottam version" on the first reopen after upgrading.
+fn embedded_versions<S: MigrationSource<Sqlite>>(source: &S) -> Vec<String> {
+    source
+        .migrations()
+        .map(|migrations| {
             migrations
                 .iter()
-                .map(|migration| migration.name().version().as_owned())
-                .max()
+                .map(|migration| migration.name().version().to_string())
+                .collect()
         })
-        .map(|version| version.to_string())
+        .unwrap_or_default()
+}
+
+/// The newest migration this binary embeds.
+fn latest_migration_version() -> String {
+    embedded_versions(&MIGRATIONS)
+        .into_iter()
+        .max()
         .unwrap_or_default()
 }
 
@@ -208,68 +218,7 @@ impl Database {
                 "SQLite refused WAL journal mode",
             ));
         }
-        reject_ahead_of_binary(&mut bootstrap)?;
-        // VACUUM INTO includes WAL content and creates a consistent backup;
-        // copying only ottam.sqlite can silently omit committed history.
-        if bootstrap
-            .has_pending_migration(MIGRATIONS)
-            .map_err(|error| {
-                StorageError::classify(
-                    error.to_string(),
-                    "storageMigrationFailed",
-                    "Could not inspect pending migrations",
-                )
-            })?
-            && diesel::sql_query(
-                "SELECT count(*) AS value FROM sqlite_schema WHERE name = 'conversation_runs'",
-            )
-            .get_result::<IntegerValue>(&mut bootstrap)?
-            .value
-                > 0
-        {
-            super::payload::backup::create(&home, &mut bootstrap).map_err(|error| {
-                StorageError::classify(
-                    error.to_string(),
-                    "storageBackupFailed",
-                    "Could not verify the coordinated payload backup",
-                )
-            })?;
-            let mut backup = home.join(format!(
-                "ottam-before-{}.sqlite",
-                latest_migration_version()
-            ));
-            if backup.exists() {
-                backup = home.join(format!(
-                    "ottam-before-{}-{}.sqlite",
-                    latest_migration_version(),
-                    uuid::Uuid::now_v7()
-                ));
-            }
-            if !backup.exists() {
-                diesel::sql_query("VACUUM INTO ?")
-                    .bind::<Text, _>(backup.to_string_lossy().as_ref())
-                    .execute(&mut bootstrap)?;
-                let mut check = SqliteConnection::establish(backup.to_string_lossy().as_ref())
-                    .map_err(|error| {
-                        StorageError::classify(
-                            error.to_string(),
-                            "storageBackupFailed",
-                            "Could not verify migration backup",
-                        )
-                    })?;
-                let integrity = diesel::sql_query(
-                    "SELECT integrity_check AS value FROM pragma_integrity_check",
-                )
-                .get_result::<TextValue>(&mut check)?
-                .value;
-                if integrity != "ok" {
-                    return Err(StorageError::new(
-                        "storageBackupFailed",
-                        "Migration backup failed its integrity check",
-                    ));
-                }
-            }
-        }
+        prepare_upgrade(&home, &mut bootstrap, &super::payload::MIGRATIONS)?;
         let migration_started = Instant::now();
         tracing::info!(database_path = %path.display(), "database migration started");
         bootstrap
@@ -616,7 +565,14 @@ fn drop_columns_removed_from_baseline(
     Ok(())
 }
 
-fn reject_ahead_of_binary(connection: &mut SqliteConnection) -> Result<(), StorageError> {
+/// Refuses a database that recorded a migration newer than `source` embeds,
+/// with no downgrade, and reports whether an existing schema has migrations
+/// pending. Read-only: a home Diesel never migrated reports none pending.
+pub(in crate::storage) fn check_migrations<S: MigrationSource<Sqlite>>(
+    connection: &mut SqliteConnection,
+    source: &S,
+    newer: &'static str,
+) -> Result<bool, StorageError> {
     let migration_table_exists = diesel::sql_query(
         "SELECT COUNT(*) AS value FROM sqlite_schema \
          WHERE type = 'table' AND name = '__diesel_schema_migrations'",
@@ -626,23 +582,109 @@ fn reject_ahead_of_binary(connection: &mut SqliteConnection) -> Result<(), Stora
     .value
         != 0;
     if !migration_table_exists {
-        return Ok(());
+        return Ok(false);
     }
 
-    let versions = diesel::sql_query(
+    let applied = diesel::sql_query(
         "SELECT version AS value FROM __diesel_schema_migrations ORDER BY version",
     )
     .load::<TextValue>(connection)
     .map_err(StorageError::from)?;
-    let latest = latest_migration_version();
-    if versions
+    let embedded = embedded_versions(source);
+    let latest = embedded
         .iter()
-        .any(|version| version.value.as_str() > latest.as_str())
+        .max()
+        .map(String::as_str)
+        .unwrap_or_default();
+    if applied
+        .iter()
+        .any(|version| version.value.as_str() > latest)
     {
-        return Err(StorageError::new(
-            "storageMigrationFailed",
-            "the database was created by a newer Ottam version",
+        return Err(StorageError::new("storageMigrationFailed", newer));
+    }
+    Ok(embedded
+        .iter()
+        .any(|version| !applied.iter().any(|applied| applied.value == *version)))
+}
+
+/// Both databases are checked before either migrates, and any pending
+/// migration on an existing schema first takes one verified coordinated
+/// backup of the pair.
+pub(in crate::storage) fn prepare_upgrade<S: MigrationSource<Sqlite>>(
+    home: &Path,
+    main: &mut SqliteConnection,
+    payload_migrations: &S,
+) -> Result<(), StorageError> {
+    let main_pending = check_migrations(main, &MIGRATIONS, NEWER_MAIN)?
+        && diesel::sql_query(
+            "SELECT count(*) AS value FROM sqlite_schema WHERE name = 'conversation_runs'",
+        )
+        .get_result::<IntegerValue>(main)?
+        .value
+            > 0;
+    let payload_path = home.join("payloads.sqlite");
+    let payload_pending = if payload_path.is_file() {
+        let mut payload = SqliteConnection::establish(payload_path.to_string_lossy().as_ref())
+            .map_err(|error| {
+                StorageError::classify(
+                    error.to_string(),
+                    "storageUnavailable",
+                    "failed to open the payload database",
+                )
+            })?;
+        payload.batch_execute("PRAGMA busy_timeout = 5000;")?;
+        check_migrations(&mut payload, payload_migrations, NEWER_PAYLOAD)?
+    } else {
+        false
+    };
+    if !main_pending && !payload_pending {
+        return Ok(());
+    }
+    // VACUUM INTO includes WAL content and creates a consistent backup;
+    // copying only the database files can silently omit committed history.
+    super::payload::backup::create(home, main).map_err(|error| {
+        StorageError::classify(
+            error.to_string(),
+            "storageBackupFailed",
+            "Could not verify the coordinated payload backup",
+        )
+    })?;
+    if !main_pending {
+        return Ok(());
+    }
+    let mut backup = home.join(format!(
+        "ottam-before-{}.sqlite",
+        latest_migration_version()
+    ));
+    if backup.exists() {
+        backup = home.join(format!(
+            "ottam-before-{}-{}.sqlite",
+            latest_migration_version(),
+            uuid::Uuid::now_v7()
         ));
+    }
+    if !backup.exists() {
+        diesel::sql_query("VACUUM INTO ?")
+            .bind::<Text, _>(backup.to_string_lossy().as_ref())
+            .execute(main)?;
+        let mut check =
+            SqliteConnection::establish(backup.to_string_lossy().as_ref()).map_err(|error| {
+                StorageError::classify(
+                    error.to_string(),
+                    "storageBackupFailed",
+                    "Could not verify migration backup",
+                )
+            })?;
+        let integrity =
+            diesel::sql_query("SELECT integrity_check AS value FROM pragma_integrity_check")
+                .get_result::<TextValue>(&mut check)?
+                .value;
+        if integrity != "ok" {
+            return Err(StorageError::new(
+                "storageBackupFailed",
+                "Migration backup failed its integrity check",
+            ));
+        }
     }
     Ok(())
 }

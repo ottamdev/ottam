@@ -15,9 +15,6 @@ download is listed under Next.
 
 Needed before a first public download, not before the source is public.
 
-- **Payload database upgrade protections.** Newer-schema rejection and the
-  pre-migration backup cover only the main database
-  ([payload storage](../backend/sqlite-payload-storage.md)).
 - **Distribution through the first public release.** A notarized release
   build, the Sparkle updater, and a locally scripted publication to a signed
   appcast; the first public binary must already update itself
