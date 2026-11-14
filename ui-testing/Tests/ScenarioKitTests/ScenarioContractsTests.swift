@@ -182,6 +182,7 @@ final class ScenarioContractsTests: XCTestCase {
                 "chat.engine-checking",
                 "settings.agent-compatibility",
                 "settings.agent-update",
+                "settings.agent-install-needs-node",
                 "settings.existing-setups",
                 "settings.profiles",
                 "settings.profile-delete-probe",

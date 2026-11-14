@@ -26,6 +26,7 @@
 		46102A0670A2B2A1C67D2220 /* AppKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 7CBB5B71DA7DCCCC67453AFB /* AppKit.framework */; };
 		4730AF397FD2E68C83F7D54C /* OttamTranscriptFixtures in Frameworks */ = {isa = PBXBuildFile; productRef = FF4F4FB3A47252A072F4EC29 /* OttamTranscriptFixtures */; };
 		49F2FA4F9F5585B3392D2335 /* OttamTranscriptFixtures in Frameworks */ = {isa = PBXBuildFile; productRef = 252D15BEAEF260EB5A92FB7B /* OttamTranscriptFixtures */; };
+		4ECD139C744D609D1F23B501 /* AgentInstallNeedsNodeScenario.swift in Sources */ = {isa = PBXBuildFile; fileRef = 386D2627E7BEE852E77593F3 /* AgentInstallNeedsNodeScenario.swift */; };
 		553DB4F1734A27DE2D31C9D0 /* ChatSwitchKeepsPlaceScenario.swift in Sources */ = {isa = PBXBuildFile; fileRef = BDED05D9644DDA3147C16A11 /* ChatSwitchKeepsPlaceScenario.swift */; };
 		5627C54E410B01B4593D63BC /* libMacAutomationKit.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 15802884F31D8C8E028F6A96 /* libMacAutomationKit.a */; };
 		59700CD87BF8E485F607FAD9 /* ChatTranscriptScenarios.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2724F8A3647A2E0171CDF5B8 /* ChatTranscriptScenarios.swift */; };
@@ -241,6 +242,7 @@
 		28862B0D11672D77E38AC4D4 /* OwnedApplication.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OwnedApplication.swift; sourceTree = "<group>"; };
 		2916E5B95747208B96EFC6AB /* ScenarioRegistry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScenarioRegistry.swift; sourceTree = "<group>"; };
 		2E01E850E56560C0A6A3465E /* Infrastructure.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Infrastructure.swift; sourceTree = "<group>"; };
+		386D2627E7BEE852E77593F3 /* AgentInstallNeedsNodeScenario.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentInstallNeedsNodeScenario.swift; sourceTree = "<group>"; };
 		38A18493381A763F976EEA61 /* ScenarioContracts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScenarioContracts.swift; sourceTree = "<group>"; };
 		433073221573F75219CF9F2F /* QueueDatabaseTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QueueDatabaseTests.swift; sourceTree = "<group>"; };
 		45E49AE1541247C68F4316BC /* AccessibilityAuditTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccessibilityAuditTests.swift; sourceTree = "<group>"; };
@@ -546,6 +548,7 @@
 			isa = PBXGroup;
 			children = (
 				86395726F514D89D219F71CC /* AgentCompatibilityScenarios.swift */,
+				386D2627E7BEE852E77593F3 /* AgentInstallNeedsNodeScenario.swift */,
 				03951553F88CA04BFCB197DA /* AgentProfilesScenario.swift */,
 				4F3A63A220ACF1AC24F7A8C7 /* AgentUpdateScenarios.swift */,
 				FCB9854846424F99C271CC04 /* ChatBackgroundTasksScenario.swift */,
@@ -994,6 +997,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				7B0D2DE6B5BF008398811A21 /* AgentCompatibilityScenarios.swift in Sources */,
+				4ECD139C744D609D1F23B501 /* AgentInstallNeedsNodeScenario.swift in Sources */,
 				320744BF2414F734981910BA /* AgentProfilesScenario.swift in Sources */,
 				B2BC7EC79775A3AA59465449 /* AgentUpdateScenarios.swift in Sources */,
 				BC784D6AC6076FD417066193 /* ChatBackgroundTasksScenario.swift in Sources */,
