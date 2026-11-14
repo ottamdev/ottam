@@ -10,8 +10,8 @@ status: active
 Payload storage ships; the contract is
 [Persistence](../../architecture/backend/persistence.md#payload-storage), and
 the migrations under `storage/payload/migrations/` are the schema source of
-truth. Open: an undecided write-cost tradeoff, and upgrade and backup
-coverage for the payload database.
+truth. Open: an undecided write-cost tradeoff, and consolidating and
+bounding migration backups.
 
 ## Active
 
@@ -35,18 +35,6 @@ coverage for the payload database.
 
 ## Next
 
-- [ ] **Cover both databases during upgrades.**
-  - Why: only `Database::open` rejects migration versions newer than the
-    binary. `storage::payload::Repository::open` runs pending migrations without
-    that guard, and payload-only migrations don't trigger the coordinated
-    backup. `previous_schema_upgrade_backs_up_and_backfills_run_origin` takes
-    the main backup branch but never restores the pair.
-  - Scope: apply the version refusal and pre-migration backup policy to both
-    databases, with a typed failure and no automatic downgrade.
-  - Verify with: newer payload migration rejection, and a previous-to-current
-    fixture that takes the backup path, restores the verified pair and checks
-    committed history after reopen. Existing fresh/down-up and coordinated WAL
-    restore tests stay as regressions.
 - [ ] **Consolidate migration backups and bound retention.**
   - Why: pending main migrations create the coordinated pair plus an extra
     main-only `ottam-before-<version>.sqlite`. Nothing prunes backups.
