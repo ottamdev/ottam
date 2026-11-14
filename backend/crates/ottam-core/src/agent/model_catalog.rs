@@ -1,20 +1,19 @@
 //! Background discovery and caching of the models each ACP agent advertises.
 //!
 //! ACP exposes model choices only in the `session/new` response (as a
-//! `category: model` config option), so the catalog is discovered by probing:
-//! spawn a throwaway adapter, create a session in a scratch directory, read
-//! the advertised models from the adapter status, and tear the process down.
-//! No prompt is ever sent, so the probe session is side-effect-free.
+//! `category: model` config option), so the catalog is discovered by probing
+//! (`catalog_probe`): this module decides when to probe and merges what each
+//! probe and live session observed.
 //!
 //! Results are cached in memory and persisted to `~/.ottam/model-catalog.json`
 //! so the composer has model choices immediately on relaunch.
 
 use super::acp::AcpFeature;
+use super::catalog_probe;
 use super::registry::AgentRegistry;
 use super::types::{
     AdapterLifecycleState, AdapterStatus, AgentDefinition, AgentId, AgentModelOption,
     AgentModelSelects, AgentSessionSelects, HarnessAuthState, HarnessError, HarnessErrorKind,
-    RuntimeAvailability, SessionConfigRequest,
 };
 use ottam_protocol::AgentAuthMethod;
 use serde::{Deserialize, Serialize};
@@ -40,11 +39,6 @@ pub type CatalogChangeSink = Arc<dyn Fn(&AgentId) + Send + Sync>;
 
 const CATALOG_FILE_NAME: &str = "model-catalog.json";
 const CATALOG_TTL: Duration = Duration::from_secs(24 * 60 * 60);
-/// Bounded end-to-end probe budget; `npx -y ...@latest` can be slow on a cold
-/// npm cache.
-const PROBE_TIMEOUT: Duration = Duration::from_secs(60);
-/// Grace period for an adapter's asynchronous first identity notification.
-const AUTH_STATUS_GRACE_PERIOD: Duration = Duration::from_secs(6);
 /// Minimum spacing between probe attempts for the same agent. A probe that
 /// yields no catalog (uninstalled runtime, unauthenticated, offline) records
 /// nothing, so without this backoff `engine.list` would re-spawn a real `npx`
@@ -947,9 +941,10 @@ impl ModelCatalogService {
     }
 
     /// Refresh one used instance when stale, respecting backoff and the test
-    /// gate. Explicit Recheck/install verification use `probe_now` instead.
+    /// gate. Explicit Recheck and install verification use `probe_now`, or
+    /// [`Self::reprobe_in_background`].
     pub fn spawn_probe(self: &Arc<Self>, registry: &Arc<AgentRegistry>, selected: &AgentId) {
-        if std::env::var("OTTAM_MODEL_CATALOG_PROBE").is_ok_and(|value| value == "off") {
+        if background_probes_off() {
             return;
         }
         for definition in registry.definitions() {
@@ -985,6 +980,53 @@ impl ModelCatalogService {
                     .await;
                 catalog.finish_probe(&agent_id, sender, outcome);
             });
+        }
+    }
+
+    /// [`Self::probe_now`] without waiting: an explicit Recheck that must not
+    /// stall on a cold CLI start. It ignores freshness and backoff, since the
+    /// user may have just changed the agent outside Ottam, but honors the
+    /// test gate. Like a sign-in, it drops live provenance, so the probe's
+    /// answer replaces what an earlier session advertised.
+    pub(crate) fn reprobe_in_background(
+        self: &Arc<Self>,
+        registry: &Arc<AgentRegistry>,
+        agent_id: &AgentId,
+    ) {
+        if background_probes_off() {
+            return;
+        }
+        let catalog = Arc::clone(self);
+        let registry = Arc::clone(registry);
+        let agent_id = agent_id.clone();
+        tokio::spawn(async move {
+            // A probe already running started before this Recheck: joining
+            // it would record its older answer, and without live provenance
+            // that answer would replace newer live data. Let it settle
+            // first, then forget, then probe.
+            catalog.settle_in_flight(&agent_id).await;
+            // A CLI home's teardown outlives the probe while a sign-in
+            // refresh holds the lock, and refuses another probe until it
+            // stops. Here, off the request, waiting it out is free.
+            while registry.probe_teardown_pending(&agent_id) {
+                tokio::time::sleep(Duration::from_millis(100)).await;
+            }
+            catalog.forget_live_observations(&agent_id);
+            // `run_probe_and_record` logs a failure.
+            let _ = catalog.probe_now(&registry, &agent_id).await;
+        });
+    }
+
+    /// Wait out whatever probe holds the agent's slot, if any.
+    async fn settle_in_flight(&self, agent_id: &AgentId) {
+        let existing = self
+            .in_flight
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .get(&agent_id.0)
+            .cloned();
+        if let Some(waiter) = existing {
+            let _ = Self::await_probe(agent_id, waiter).await;
         }
     }
 
@@ -1047,15 +1089,7 @@ impl ModelCatalogService {
         registry: &Arc<AgentRegistry>,
         agent_id: &AgentId,
     ) -> Result<(), HarnessError> {
-        let existing = self
-            .in_flight
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
-            .get(&agent_id.0)
-            .cloned();
-        if let Some(waiter) = existing {
-            let _ = Self::await_probe(agent_id, waiter).await;
-        }
+        self.settle_in_flight(agent_id).await;
         self.probe_now(registry, agent_id).await
     }
 
@@ -1132,9 +1166,9 @@ impl ModelCatalogService {
             HarnessError::new(HarnessErrorKind::Internal, "Catalog admission stopped")
         })?;
         registry.definition(agent_id)?;
-        // `probe_agent` bounds itself and always shuts the throwaway
-        // adapter down, so a timeout can't leak a live child process.
-        match probe_agent(registry, agent_id).await {
+        // The probe bounds itself and always shuts the throwaway adapter
+        // down, so a timeout can't leak a live child process.
+        match catalog_probe::probe(registry, agent_id).await {
             Ok(probe) => {
                 tracing::info!(
                     target: "ottam_core::agent",
@@ -1242,157 +1276,10 @@ impl ModelCatalogService {
     }
 }
 
-struct CatalogProbe {
-    models: Vec<AgentModelOption>,
-    default_model_id: Option<String>,
-    prompt_image: bool,
-    auth_methods: Vec<AgentAuthMethod>,
-    /// `None` when the probe's `session/new` failed — nothing was observed.
-    session_selects: Option<AgentSessionSelects>,
-    /// Everything `initialize` reported, keyed by ACP surface.
-    agent_advertises: BTreeMap<AcpFeature, bool>,
-    /// The sign-in verdict observed through session validation or an explicit
-    /// auth-status notification. Claude session creation alone leaves Unknown.
-    /// Persisted with the adapter pin and reported to the registry so a cold
-    /// launch can offer Sign In without waiting for a prompt to fail.
-    auth_state: HarnessAuthState,
-}
-
-/// Probe one agent with a throwaway adapter: start, `session/new` in a scratch
-/// directory (which populates the adapter's advertised models), read them off
-/// the status, shut down. Never touches the registry's shared adapter.
-async fn probe_agent(
-    registry: &Arc<AgentRegistry>,
-    agent_id: &AgentId,
-) -> Result<CatalogProbe, HarnessError> {
-    // Never launch an adapter whose pin is not installed: `resolved_definition`
-    // falls back to `npx`, which downloads and executes the package — the
-    // un-consented fetch the install flow exists to prevent. This is the choke
-    // point for both the background sweep and `probe_now`, which is also what
-    // keeps install verification from ever attesting an npx tree: a probe can
-    // only exist once the published directory is the thing that launches.
-    let definition = registry.definition(agent_id)?;
-    if registry.adapter_needs_install(&definition) {
-        return Err(HarnessError::new(
-            HarnessErrorKind::AdapterNotInstalled,
-            format!("{agent_id}'s adapter is not installed"),
-        ));
-    }
-    // Skip the expensive spawn for an agent whose runtime is missing or
-    // unsupported; the cheap version probe would fail anyway and the backoff
-    // keeps us from retrying it every poll.
-    let runtime = registry.runtime_status(agent_id).await?;
-    if !matches!(runtime.availability, RuntimeAvailability::Ready) {
-        return Err(HarnessError::new(
-            HarnessErrorKind::RuntimeMissing,
-            format!("{agent_id} runtime is not ready for a model catalog probe"),
-        ));
-    }
-    if definition.existing_home().is_some() {
-        // Keep this managed adapter alive: a throwaway probe must not create a
-        // vendor session or interrupt shared-home credential refresh.
-        let adapter = registry.get_or_start(agent_id).await?;
-        let status = wait_for_auth_status(adapter.status(), AUTH_STATUS_GRACE_PERIOD).await;
-        return Ok(CatalogProbe {
-            models: status.models,
-            default_model_id: status.default_model_id,
-            prompt_image: status.capabilities.prompt_image,
-            agent_advertises: status.capabilities.agent_advertises,
-            auth_methods: status.auth_methods.iter().map(wire_auth_method).collect(),
-            session_selects: status.session_selects,
-            auth_state: status.auth_state,
-        });
-    }
-    let adapter = registry.create_unmanaged_adapter(agent_id)?;
-    let scratch = std::env::temp_dir().join("ottam-model-probe");
-    let _ = std::fs::create_dir_all(&scratch);
-    registry.begin_catalog_probe(agent_id);
-    let probe = async {
-        adapter.start().await?;
-        // `session/new` is where the models live, but it is also the step that
-        // fails for a signed-out agent — which is exactly when the sign-ins
-        // read off `initialize` matter most. So the session is attempted for
-        // what it adds, not required for the probe to be worth recording.
-        let session = adapter
-            .new_session(scratch, SessionConfigRequest::default())
-            .await;
-        let status = wait_for_auth_status(adapter.status(), AUTH_STATUS_GRACE_PERIOD).await;
-        if let Err(error) = &session {
-            tracing::info!(
-                target: "ottam_core::agent",
-                agent_id = %agent_id,
-                error = %error,
-                auth_method_count = status.auth_methods.len(),
-                "model catalog probe could not open a session; keeping what initialize reported"
-            );
-        }
-        Ok(CatalogProbe {
-            models: status.models,
-            default_model_id: status.default_model_id,
-            // Read from `initialize`, so both are settled whether or not
-            // `session/new` succeeded.
-            prompt_image: status.capabilities.prompt_image,
-            agent_advertises: status.capabilities.agent_advertises.clone(),
-            auth_methods: status.auth_methods.iter().map(wire_auth_method).collect(),
-            session_selects: status.session_selects,
-            auth_state: status.auth_state,
-        })
-    };
-    // Bound the probe here rather than at the call site: on timeout the `probe`
-    // future is dropped but `adapter.shutdown()` below still runs, tearing down
-    // the child process instead of detaching it.
-    let result = match tokio::time::timeout(PROBE_TIMEOUT, probe).await {
-        Ok(result) => result,
-        Err(_) => Err(HarnessError::new(
-            HarnessErrorKind::Internal,
-            format!("model catalog probe for {agent_id} timed out"),
-        )),
-    };
-    let stopped = adapter.shutdown().await.is_ok();
-    registry.finish_catalog_probe(agent_id, stopped);
-    result
-}
-
-/// Give an advertised identity notification time to arrive before the probe
-/// shuts down. Other adapters need no wait; silence stays Unknown.
-async fn wait_for_auth_status(
-    mut status_rx: tokio::sync::watch::Receiver<AdapterStatus>,
-    grace_period: Duration,
-) -> AdapterStatus {
-    if status_rx.borrow().capabilities.auth_status {
-        let _ = tokio::time::timeout(grace_period, async {
-            loop {
-                if status_rx.borrow_and_update().auth_state != HarnessAuthState::Unknown {
-                    break;
-                }
-                if status_rx.changed().await.is_err() {
-                    break;
-                }
-            }
-        })
-        .await;
-    }
-    let status = status_rx.borrow().clone();
-    status
-}
-
-/// The catalog stores what a client can act on: an id, a name, and which of
-/// the two mechanisms it uses. The command line a terminal method carries is
-/// deliberately dropped — see [`CatalogEntry::auth_methods`].
-fn wire_auth_method(method: &super::types::HarnessAuthMethod) -> AgentAuthMethod {
-    AgentAuthMethod {
-        method_id: method.method_id.clone(),
-        name: method.name.clone(),
-        description: method.description.clone(),
-        kind: match method.kind {
-            super::types::HarnessAuthMethodKind::Agent => {
-                ottam_protocol::AgentAuthMethodKind::Agent
-            }
-            super::types::HarnessAuthMethodKind::Terminal => {
-                ottam_protocol::AgentAuthMethodKind::Terminal
-            }
-        },
-    }
+/// `OTTAM_MODEL_CATALOG_PROBE=off` stops probes nobody waits on, for tests
+/// that must not launch adapters.
+fn background_probes_off() -> bool {
+    std::env::var("OTTAM_MODEL_CATALOG_PROBE").is_ok_and(|value| value == "off")
 }
 
 /// The pinned `package@version` an npm-launched adapter runs, as recorded on a
@@ -1440,45 +1327,6 @@ mod tests {
             .begin_probe(&id)
             .expect("last owner released its fence");
         catalog.finish_probe(&id, sender, Ok(()));
-    }
-
-    #[tokio::test]
-    async fn advertised_auth_status_waits_for_delayed_verdict() {
-        let mut status = AdapterStatus::stopped();
-        status.capabilities.auth_status = true;
-        let (sender, receiver) = tokio::sync::watch::channel(status);
-        let (observed, ()) = tokio::join!(
-            wait_for_auth_status(receiver, Duration::from_secs(1)),
-            async {
-                tokio::task::yield_now().await;
-                sender.send_modify(|status| status.auth_state = HarnessAuthState::Missing);
-            }
-        );
-        assert_eq!(observed.auth_state, HarnessAuthState::Missing);
-        assert!(!observed.credentials_seen);
-    }
-
-    #[tokio::test]
-    async fn auth_status_silence_and_unsupported_extension_stay_unknown() {
-        for advertised in [false, true] {
-            let mut status = AdapterStatus::stopped();
-            status.capabilities.auth_status = advertised;
-            let (_sender, receiver) = tokio::sync::watch::channel(status);
-            let observed = wait_for_auth_status(receiver, Duration::ZERO).await;
-            assert_eq!(observed.auth_state, HarnessAuthState::Unknown);
-            assert!(!observed.credentials_seen);
-        }
-    }
-
-    #[tokio::test]
-    async fn unsupported_auth_status_does_not_wait_for_notifications() {
-        let (_sender, receiver) = tokio::sync::watch::channel(AdapterStatus::stopped());
-        tokio::time::timeout(
-            Duration::from_secs(1),
-            wait_for_auth_status(receiver, Duration::from_secs(60)),
-        )
-        .await
-        .expect("legacy adapter must not wait for an unsupported extension");
     }
 
     fn option(id: &str) -> AgentModelOption {
@@ -2648,12 +2496,21 @@ mod tests {
         use crate::agent::types::{
             AdapterStatus, AgentLaunchSpec, AgentRuntimeStatus, HarnessAdapter, HarnessFuture,
             HarnessPrompt, HarnessSessionId, HarnessSessionSummary, HarnessStopReason,
-            HarnessUpdateReceiver, HarnessUpdateSender,
+            HarnessUpdateReceiver, HarnessUpdateSender, SessionConfigRequest,
         };
-        use crate::agent::RuntimeProbe;
+        use crate::agent::{ProbeCleanup, RuntimeProbe};
+        use std::path::PathBuf;
         use std::sync::atomic::{AtomicUsize, Ordering};
         use tokio::sync::watch;
         use tokio_util::sync::CancellationToken;
+
+        /// What the probes asked of their adapters, for the cleanup tests.
+        #[derive(Default)]
+        struct ProbeLog {
+            arguments: Vec<Vec<String>>,
+            metas: Vec<Option<serde_json::Map<String, serde_json::Value>>>,
+            deleted: Vec<String>,
+        }
 
         struct AlwaysReadyProbe;
 
@@ -2671,8 +2528,12 @@ mod tests {
             updates_tx: HarnessUpdateSender,
             fail_start: bool,
             hold_start: Option<CancellationToken>,
+            fail_delete: bool,
             sessions_created: Arc<AtomicUsize>,
             shutdowns: Arc<AtomicUsize>,
+            /// Shutdowns still to refuse as a refresh in progress.
+            refresh_busy: Arc<AtomicUsize>,
+            log: Arc<Mutex<ProbeLog>>,
         }
 
         impl HarnessAdapter for FakeProbeAdapter {
@@ -2708,6 +2569,16 @@ mod tests {
             }
 
             fn shutdown(&self) -> HarnessFuture<'_, ()> {
+                let busy = self
+                    .refresh_busy
+                    .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |left| left.checked_sub(1))
+                    .is_ok();
+                if busy {
+                    return Box::pin(std::future::ready(Err(HarnessError::new(
+                        HarnessErrorKind::AuthRefreshBusy,
+                        "refreshing",
+                    ))));
+                }
                 self.shutdowns.fetch_add(1, Ordering::SeqCst);
                 Box::pin(std::future::ready(Ok(())))
             }
@@ -2719,9 +2590,10 @@ mod tests {
             fn new_session(
                 &self,
                 _cwd: PathBuf,
-                _config: SessionConfigRequest,
+                config: SessionConfigRequest,
             ) -> HarnessFuture<'_, HarnessSessionId> {
                 self.sessions_created.fetch_add(1, Ordering::SeqCst);
+                self.log.lock().unwrap().metas.push(config.meta);
                 Box::pin(std::future::ready(Ok(HarnessSessionId(
                     "probe-session".to_string(),
                 ))))
@@ -2735,8 +2607,13 @@ mod tests {
                 Box::pin(std::future::ready(Ok(())))
             }
 
-            fn delete_session(&self, _session_id: HarnessSessionId) -> HarnessFuture<'_, ()> {
-                Box::pin(std::future::ready(Ok(())))
+            fn delete_session(&self, session_id: HarnessSessionId) -> HarnessFuture<'_, ()> {
+                self.log.lock().unwrap().deleted.push(session_id.0);
+                Box::pin(std::future::ready(if self.fail_delete {
+                    Err(HarnessError::new(HarnessErrorKind::Internal, "delete refused"))
+                } else {
+                    Ok(())
+                }))
             }
 
             fn prompt(
@@ -2766,8 +2643,11 @@ mod tests {
             fail_start: bool,
             hold_start: Option<CancellationToken>,
             auth_state: Option<HarnessAuthState>,
+            fail_delete: bool,
             sessions_created: Arc<AtomicUsize>,
             shutdowns: Arc<AtomicUsize>,
+            refresh_busy: Arc<AtomicUsize>,
+            log: Arc<Mutex<ProbeLog>>,
         }
 
         impl FakeProbeFactory {
@@ -2778,8 +2658,11 @@ mod tests {
                     fail_start: false,
                     hold_start: None,
                     auth_state: None,
+                    fail_delete: false,
                     sessions_created: Arc::new(AtomicUsize::new(0)),
                     shutdowns: Arc::new(AtomicUsize::new(0)),
+                    refresh_busy: Arc::new(AtomicUsize::new(0)),
+                    log: Arc::default(),
                 }
             }
         }
@@ -2791,6 +2674,11 @@ mod tests {
                 generation: u64,
             ) -> Arc<dyn HarnessAdapter> {
                 self.created.fetch_add(1, Ordering::SeqCst);
+                self.log
+                    .lock()
+                    .unwrap()
+                    .arguments
+                    .push(definition.launch.arguments.clone());
                 let mut status = AdapterStatus::stopped();
                 status.generation = generation;
                 if let Some(auth) = self.auth_state {
@@ -2810,8 +2698,11 @@ mod tests {
                     updates_tx,
                     fail_start: self.fail_start,
                     hold_start: self.hold_start.clone(),
+                    fail_delete: self.fail_delete,
                     sessions_created: self.sessions_created.clone(),
                     shutdowns: self.shutdowns.clone(),
+                    refresh_busy: self.refresh_busy.clone(),
+                    log: self.log.clone(),
                 })
             }
         }
@@ -2912,30 +2803,292 @@ mod tests {
             assert_eq!(catalog.probe_slots.available_permits(), 2);
         }
 
+        /// A probe running when Recheck arrives predates it, so Recheck
+        /// waits it out and runs its own instead of taking that answer.
         #[tokio::test]
-        async fn existing_signed_out_setup_initializes_without_synthetic_session_or_teardown() {
-            let home = tempfile::tempdir().unwrap();
-            let mut factory = FakeProbeFactory::with_models(Vec::new());
-            factory.auth_state = Some(HarnessAuthState::Missing);
-            let factory = Arc::new(factory);
+        async fn a_recheck_reprobe_waits_out_an_older_probe_then_runs_its_own() {
+            let factory = Arc::new(FakeProbeFactory::with_models(vec![option("sonnet")]));
             let registry = registry(factory.clone());
+            let id = AgentId::new("claude");
+            let catalog = Arc::new(ModelCatalogService::load(None));
+            let (older, _) = catalog.begin_probe(&id).expect("slot free");
+            catalog.reprobe_in_background(&registry, &id);
+            for _ in 0..20 {
+                tokio::task::yield_now().await;
+            }
+            assert_eq!(factory.created.load(Ordering::SeqCst), 0);
+            catalog.finish_probe(&id, older, Ok(()));
+            tokio::time::timeout(Duration::from_secs(2), async {
+                while catalog.models_for(&id).is_empty() {
+                    tokio::time::sleep(Duration::from_millis(10)).await;
+                }
+            })
+            .await
+            .expect("Recheck runs a probe of its own once the older one settles");
+            assert_eq!(factory.created.load(Ordering::SeqCst), 1);
+            assert_eq!(catalog.models_for(&id), vec![option("sonnet")]);
+        }
+
+        /// The older probe's teardown can still be waiting on a CLI home's
+        /// refresh lock; Recheck waits for it rather than being refused.
+        #[tokio::test]
+        async fn a_recheck_reprobe_waits_out_a_pending_teardown() {
+            let home = tempfile::tempdir().unwrap();
+            let lock = home
+                .path()
+                .join(crate::agent::refresh_lock::CLAUDE_REFRESH_LOCK);
+            std::fs::create_dir(&lock).unwrap();
+            let factory = Arc::new(FakeProbeFactory::with_models(vec![option("sonnet")]));
+            let registry = registry(factory.clone());
+            let id = publish_existing(&registry, home.path());
+            let catalog = Arc::new(ModelCatalogService::load(None));
+            catalog.probe_now(&registry, &id).await.unwrap();
+            assert!(registry.probe_teardown_pending(&id));
+            catalog.reprobe_in_background(&registry, &id);
+            tokio::time::sleep(Duration::from_millis(250)).await;
+            assert_eq!(factory.created.load(Ordering::SeqCst), 1);
+            std::fs::remove_dir(&lock).unwrap();
+            tokio::time::timeout(Duration::from_secs(3), async {
+                while factory.created.load(Ordering::SeqCst) < 2 {
+                    tokio::time::sleep(Duration::from_millis(20)).await;
+                }
+            })
+            .await
+            .expect("Recheck probes once the teardown stops");
+        }
+
+        fn registry_with_cleanup(
+            factory: Arc<FakeProbeFactory>,
+            cleanup: ProbeCleanup,
+        ) -> Arc<AgentRegistry> {
+            Arc::new(AgentRegistry::with_components(
+                vec![AgentDefinition {
+                    catalog_probe: cleanup,
+                    ..definition()
+                }],
+                Arc::new(AlwaysReadyProbe),
+                factory as Arc<dyn AdapterFactory>,
+            ))
+        }
+
+        fn publish_existing(registry: &AgentRegistry, home: &std::path::Path) -> AgentId {
             let id = AgentId::new("claude.existing");
             registry.publish_instance(crate::agent::AgentInstance {
                 id: id.clone(),
                 harness_id: crate::agent::HarnessId("claude".into()),
                 label: "CLI Claude".into(),
                 home: crate::agent::HomeLayout::Existing {
-                    path: home.path().into(),
+                    path: home.into(),
                     environment: BTreeMap::from([("CLAUDE_CONFIG_DIR".into(), None)]),
                 },
                 claimed: false,
             });
-            let result = super::super::probe_agent(&registry, &id).await.unwrap();
-            assert_eq!(result.auth_state, HarnessAuthState::Missing);
-            assert!(result.models.is_empty());
-            assert_eq!(factory.sessions_created.load(Ordering::SeqCst), 0);
+            id
+        }
+
+        /// A CLI setup is probed like an Ottam profile: a throwaway adapter
+        /// opens the session, so the shared one never holds a synthetic one.
+        #[tokio::test]
+        async fn a_cli_setup_is_probed_through_a_throwaway_adapter() {
+            let home = tempfile::tempdir().unwrap();
+            let mut factory = FakeProbeFactory::with_models(vec![option("sonnet")]);
+            factory.auth_state = Some(HarnessAuthState::Ready);
+            let factory = Arc::new(factory);
+            let registry = registry(factory.clone());
+            let id = publish_existing(&registry, home.path());
+            let result = catalog_probe::probe(&registry, &id).await.unwrap();
+            assert_eq!(result.models, vec![option("sonnet")]);
+            assert_eq!(factory.sessions_created.load(Ordering::SeqCst), 1);
+            // A home with a refresh lock tears down in the background.
+            tokio::time::timeout(Duration::from_secs(2), async {
+                while factory.shutdowns.load(Ordering::SeqCst) == 0 {
+                    tokio::time::sleep(Duration::from_millis(10)).await;
+                }
+            })
+            .await
+            .expect("the throwaway adapter stops");
+            assert_eq!(
+                factory.created.load(Ordering::SeqCst),
+                1,
+                "only the throwaway adapter starts, never the shared one"
+            );
+        }
+
+        /// Stopping a process mid-refresh can strand the user's credentials,
+        /// so the throwaway adapter outlives a held lock; the probe still
+        /// settles, so an install waiting on it never stalls.
+        #[tokio::test]
+        async fn a_held_refresh_lock_defers_teardown_but_not_the_probe() {
+            let home = tempfile::tempdir().unwrap();
+            let lock = home
+                .path()
+                .join(crate::agent::refresh_lock::CLAUDE_REFRESH_LOCK);
+            std::fs::create_dir(&lock).unwrap();
+            let factory = Arc::new(FakeProbeFactory::with_models(vec![option("sonnet")]));
+            let registry = registry(factory.clone());
+            let id = publish_existing(&registry, home.path());
+            let result = tokio::time::timeout(
+                Duration::from_secs(2),
+                catalog_probe::probe(&registry, &id),
+            )
+            .await
+            .expect("the probe settles while the lock is held")
+            .unwrap();
+            assert_eq!(result.models, vec![option("sonnet")]);
+            tokio::time::sleep(Duration::from_millis(250)).await;
             assert_eq!(factory.shutdowns.load(Ordering::SeqCst), 0);
+            std::fs::remove_dir(&lock).unwrap();
+            tokio::time::timeout(Duration::from_secs(2), async {
+                while factory.shutdowns.load(Ordering::SeqCst) == 0 {
+                    tokio::time::sleep(Duration::from_millis(20)).await;
+                }
+            })
+            .await
+            .expect("the adapter stops once the refresh lets go");
+        }
+
+        /// A refresh can take the lock between the teardown's wait and its
+        /// shutdown, which a shared home refuses; the teardown tries again.
+        #[tokio::test]
+        async fn a_refused_shutdown_is_retried_after_the_refresh() {
+            let home = tempfile::tempdir().unwrap();
+            let factory = Arc::new(FakeProbeFactory::with_models(vec![option("sonnet")]));
+            factory.refresh_busy.store(2, Ordering::SeqCst);
+            let registry = registry(factory.clone());
+            let id = publish_existing(&registry, home.path());
+            catalog_probe::probe(&registry, &id).await.unwrap();
+            tokio::time::timeout(Duration::from_secs(2), async {
+                while factory.shutdowns.load(Ordering::SeqCst) == 0 {
+                    tokio::time::sleep(Duration::from_millis(10)).await;
+                }
+            })
+            .await
+            .expect("the adapter stops once shutdown is accepted");
+            assert_eq!(factory.refresh_busy.load(Ordering::SeqCst), 0);
+        }
+
+        /// One process at a time waits behind a CLI home's lock.
+        #[tokio::test]
+        async fn a_pending_teardown_refuses_another_probe() {
+            let home = tempfile::tempdir().unwrap();
+            let lock = home
+                .path()
+                .join(crate::agent::refresh_lock::CLAUDE_REFRESH_LOCK);
+            std::fs::create_dir(&lock).unwrap();
+            let factory = Arc::new(FakeProbeFactory::with_models(vec![option("sonnet")]));
+            let registry = registry(factory.clone());
+            let id = publish_existing(&registry, home.path());
+            catalog_probe::probe(&registry, &id).await.unwrap();
+            let refused = catalog_probe::probe(&registry, &id).await.err().expect("refused");
+            assert!(refused.message.contains("still stopping"), "{}", refused.message);
             assert_eq!(factory.created.load(Ordering::SeqCst), 1);
+            std::fs::remove_dir(&lock).unwrap();
+            tokio::time::timeout(Duration::from_secs(2), async {
+                while registry.probe_teardown_pending(&id) {
+                    tokio::time::sleep(Duration::from_millis(20)).await;
+                }
+            })
+            .await
+            .expect("the teardown settles once the refresh lets go");
+            catalog_probe::probe(&registry, &id).await.unwrap();
+            assert_eq!(factory.created.load(Ordering::SeqCst), 2);
+        }
+
+        #[tokio::test]
+        async fn delete_session_cleanup_deletes_the_probe_session() {
+            let factory = Arc::new(FakeProbeFactory::with_models(vec![option("big")]));
+            let registry = registry_with_cleanup(factory.clone(), ProbeCleanup::DeleteSession);
+            catalog_probe::probe(&registry, &AgentId::new("claude"))
+                .await
+                .unwrap();
+            assert_eq!(factory.log.lock().unwrap().deleted, vec!["probe-session"]);
+            assert_eq!(factory.shutdowns.load(Ordering::SeqCst), 1);
+        }
+
+        /// A broken cleanup is a warning, not an empty model list.
+        #[tokio::test]
+        async fn a_refused_delete_still_records_the_models() {
+            let mut factory = FakeProbeFactory::with_models(vec![option("big")]);
+            factory.fail_delete = true;
+            let factory = Arc::new(factory);
+            let registry = registry_with_cleanup(factory.clone(), ProbeCleanup::DeleteSession);
+            let catalog = Arc::new(ModelCatalogService::load(None));
+            catalog
+                .probe_now(&registry, &AgentId::new("claude"))
+                .await
+                .unwrap();
+            assert_eq!(
+                catalog.models_for(&AgentId::new("claude")),
+                vec![option("big")]
+            );
+            assert_eq!(factory.shutdowns.load(Ordering::SeqCst), 1);
+        }
+
+        #[tokio::test]
+        async fn session_meta_cleanup_reaches_session_new() {
+            let factory = Arc::new(FakeProbeFactory::with_models(vec![option("big")]));
+            let registry = registry_with_cleanup(
+                factory.clone(),
+                ProbeCleanup::SessionMeta(|| {
+                    serde_json::Map::from_iter([(
+                        "vendor".to_string(),
+                        serde_json::json!({"persist": false}),
+                    )])
+                }),
+            );
+            catalog_probe::probe(&registry, &AgentId::new("claude"))
+                .await
+                .unwrap();
+            let log = factory.log.lock().unwrap();
+            assert_eq!(
+                log.metas,
+                vec![Some(
+                    serde_json::json!({"vendor": {"persist": false}})
+                        .as_object()
+                        .unwrap()
+                        .clone()
+                )]
+            );
+            assert!(log.deleted.is_empty());
+        }
+
+        #[tokio::test]
+        async fn scratch_session_dir_cleanup_points_the_store_away_and_removes_it() {
+            let factory = Arc::new(FakeProbeFactory::with_models(vec![option("big")]));
+            let registry = registry_with_cleanup(
+                factory.clone(),
+                ProbeCleanup::ScratchSessionDir("--session-dir"),
+            );
+            catalog_probe::probe(&registry, &AgentId::new("claude"))
+                .await
+                .unwrap();
+            let log = factory.log.lock().unwrap();
+            let arguments = log.arguments.last().expect("one probe adapter");
+            let flag = arguments
+                .iter()
+                .position(|argument| argument == "--session-dir")
+                .expect("the probe passes its store");
+            let store = PathBuf::from(&arguments[flag + 1]);
+            assert!(store.is_absolute());
+            assert!(!store.exists(), "the probe removes its session store");
+            assert_eq!(log.metas, vec![None]);
+        }
+
+        #[tokio::test]
+        async fn no_cleanup_sends_plain_session_new() {
+            let factory = Arc::new(FakeProbeFactory::with_models(vec![option("big")]));
+            let registry = registry(factory.clone());
+            catalog_probe::probe(&registry, &AgentId::new("claude"))
+                .await
+                .unwrap();
+            let log = factory.log.lock().unwrap();
+            assert_eq!(log.metas, vec![None]);
+            assert!(log.deleted.is_empty());
+            assert!(!log
+                .arguments
+                .iter()
+                .flatten()
+                .any(|argument| argument == "--session-dir"));
         }
 
         /// Same registry, but with a managed adapter store rooted at `store` —

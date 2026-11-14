@@ -41,7 +41,7 @@ current.
 
 ## App
 
-- [Agent Onboarding](app/agent-onboarding.md) — active — gate Settings › Agents Get on Node readiness (item 4)
+- [Agent Onboarding](app/agent-onboarding.md) — active — real-window acceptance for items 5–8, then gate Get on Node readiness (item 4)
 - [AppKit Workspace Shell](app/workspace-shell.md) — active — open spikes S2, S3, S6, S7 and the Add Tool flicker
 - [Plan Review](app/chat/plan-review.md) — active — M-c, Claude `planFile`
 - [Quote Reply](app/chat/quote-reply.md) — active — M2 in the Plan tab once its Try it is approved

@@ -193,8 +193,9 @@ fn shared_home_shutdown_cancel_and_claiming_remain_observable_over_jsonl() {
     run_to_completion(&mut core, project_id, "claude", "still opens sessions");
     core.shutdown();
 
-    // Represent models learned during a prior real session. An initialization
-    // recheck cannot replenish these for a shared home, so it must retain them.
+    // Represent models learned during a prior real session. A shared home's
+    // recheck only re-reads sign-in itself (the catalog probe it may start is
+    // gated off here), so it must retain them.
     use ottam_core::agent::{AgentId, AgentRegistry, ModelCatalogService};
     let catalog_path = ottam_home.path().join("model-catalog.json");
     let id = AgentId::new("claude");

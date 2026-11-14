@@ -325,12 +325,14 @@ impl AgentServer {
             Ok(params) => params,
             Err(response) => return Some(response),
         };
-        let workspace_store = self.workspace_runtime_store(&params.workspace_id);
-        if let Err(error) = workspace_store
-            .resolve_working_root(&WorkingRootSelection::WorkspaceFiles)
-            .await
-        {
-            return Some(core_error_response(request.id, -32000, error));
+        if let Some(workspace_id) = &params.workspace_id {
+            let workspace_store = self.workspace_runtime_store(workspace_id);
+            if let Err(error) = workspace_store
+                .resolve_working_root(&WorkingRootSelection::WorkspaceFiles)
+                .await
+            {
+                return Some(core_error_response(request.id, -32000, error));
+            }
         }
         let Some(bridge) = self.agent_bridge.as_ref().cloned() else {
             return Some(error_response(

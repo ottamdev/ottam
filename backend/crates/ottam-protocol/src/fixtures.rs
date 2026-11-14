@@ -424,7 +424,9 @@ pub fn engine_list_request_fixture() -> EngineListRequest {
         RequestID::Number(40),
         METHOD_ENGINE_LIST,
         EngineListParams {
-            workspace_id: WorkspaceID("019b0000-0000-7000-8000-000000000003".to_string()),
+            workspace_id: Some(WorkspaceID(
+                "019b0000-0000-7000-8000-000000000003".to_string(),
+            )),
             refresh_runtime: None,
         },
     )

@@ -52,6 +52,7 @@ struct OttamCommands: Commands {
                 commandLogger.info("open workspace chooser command invoked")
                 openWindow(id: "workspaceChooser")
             }
+            .disabled(runtime.onboardingPending)
         }
 
         CommandGroup(replacing: .appSettings) {
@@ -67,6 +68,7 @@ struct OttamCommands: Commands {
                 openWindow(id: "workspaceChooser")
             }
             .keyboardShortcut("o", modifiers: [.command, .shift])
+            .disabled(runtime.onboardingPending)
 
             Divider()
 

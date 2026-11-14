@@ -290,9 +290,15 @@ impl AgentServer {
                                 return harness_error_response(request_id, error);
                             }
                             registry.forget_probed_auth(&agent_id);
-                            // Authentication freshness is independent of the
-                            // models observed by a real session. Existing homes
-                            // cannot refill a cleared catalog with a probe.
+                            // A CLI setup that was signed in before Ottam saw
+                            // it never signs in here, so this is where its
+                            // catalog fills, and a sign-in in the CLI's own
+                            // terminal can change what it offers, so freshness
+                            // does not skip it. In the background, so a cold
+                            // CLI start never holds up Recheck.
+                            task_bridge
+                                .model_catalog()
+                                .reprobe_in_background(&registry, &agent_id);
                         }
                     }
                     let slug = task_bridge

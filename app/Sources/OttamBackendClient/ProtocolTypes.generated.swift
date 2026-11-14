@@ -2374,11 +2374,12 @@ public struct GitDiffSnapshotParams: Codable, Equatable, Sendable {
 }
 
 public struct EngineListParams: Codable, Equatable, Sendable {
-    public var workspaceID: WorkspaceID
+    /// Checked for a usable working root when present. Omitted by a client with no workspace yet (first-launch onboarding); the engines listed do not depend on it.
+    public var workspaceID: WorkspaceID?
     /// Re-run Node discovery and version probes instead of using process-local caches. Intended for an explicit user action after installing or switching runtimes; ordinary polling omits it.
     public var refreshRuntime: Bool?
 
-    public init(workspaceID: WorkspaceID, refreshRuntime: Bool? = nil) {
+    public init(workspaceID: WorkspaceID? = nil, refreshRuntime: Bool? = nil) {
         self.workspaceID = workspaceID
         self.refreshRuntime = refreshRuntime
     }

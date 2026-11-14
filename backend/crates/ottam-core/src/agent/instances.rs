@@ -113,6 +113,7 @@ pub struct HarnessDefinition {
     pub sign_in_proof: SignInProof,
     pub terminal_login_args: Option<&'static [&'static str]>,
     pub mcp_connections: McpConnections,
+    pub catalog_probe: super::ProbeCleanup,
 }
 
 impl HarnessDefinition {
@@ -132,6 +133,7 @@ impl HarnessDefinition {
             sign_in_proof: definition.sign_in_proof,
             terminal_login_args: definition.terminal_login_args,
             mcp_connections: definition.mcp_connections,
+            catalog_probe: definition.catalog_probe,
         }
     }
 
@@ -151,6 +153,7 @@ impl HarnessDefinition {
             sign_in_proof: self.sign_in_proof,
             terminal_login_args: self.terminal_login_args,
             mcp_connections: self.mcp_connections,
+            catalog_probe: self.catalog_probe,
             instance: Some(instance),
         }
     }
@@ -171,6 +174,7 @@ impl HarnessDefinition {
             sign_in_proof: self.sign_in_proof,
             terminal_login_args: self.terminal_login_args,
             mcp_connections: self.mcp_connections,
+            catalog_probe: self.catalog_probe,
             instance: None,
         }
     }

@@ -224,6 +224,9 @@ pub struct AgentDefinition {
     /// one.
     pub terminal_login_args: Option<&'static [&'static str]>,
     pub mcp_connections: McpConnections,
+    /// How the model-catalog probe keeps its session out of the agent's
+    /// history. Rests on adapter internals: recheck at every pin bump.
+    pub catalog_probe: super::ProbeCleanup,
 }
 
 /// What shows an agent without `auth_status` updates is signed in.
@@ -372,6 +375,7 @@ impl AgentDefinition {
             sign_in_proof: SignInProof::Session,
             terminal_login_args: None,
             mcp_connections: McpConnections::PerSession,
+            catalog_probe: super::ProbeCleanup::Nothing,
         }
     }
 }
@@ -449,6 +453,8 @@ pub struct SessionConfigRequest {
     /// MCP servers the session reaches through core's proxy, sent on
     /// `session/new` and on the `session/load` that restores it.
     pub mcp_servers: Vec<McpServerEntry>,
+    /// `_meta` for `session/new`. Only the model-catalog probe sets it.
+    pub meta: Option<serde_json::Map<String, serde_json::Value>>,
 }
 
 /// A model and/or thought level to switch a held session to before its next

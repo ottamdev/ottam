@@ -157,8 +157,15 @@ pub struct EngineSummary {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct EngineListParams {
-    #[serde(rename = "workspaceID")]
-    pub workspace_id: WorkspaceID,
+    /// Checked for a usable working root when present. Omitted by a client
+    /// with no workspace yet (first-launch onboarding); the engines listed do
+    /// not depend on it.
+    #[serde(
+        rename = "workspaceID",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub workspace_id: Option<WorkspaceID>,
     /// Re-run Node discovery and version probes instead of using process-local
     /// caches. Intended for an explicit user action after installing or
     /// switching runtimes; ordinary polling omits it.
@@ -178,9 +185,8 @@ pub struct EngineListResult {
 /// listed engines before the probe answered keeps a stale model, mode, and
 /// image-support picture until it happens to re-list for some other reason.
 ///
-/// Deliberately a hint rather than a payload: the summary a client wants is
-/// workspace-scoped and carries live runtime probes, so it can only come from
-/// `engine.list`. Emitted when cached content changes or an install, sign-in,
+/// Deliberately a hint rather than a payload: the summary a client wants
+/// carries live runtime probes, so it can only come from `engine.list`. Emitted when cached content changes or an install, sign-in,
 /// or removal completes, even without a cached catalog. Listing alone does not
 /// emit it; clients can coalesce bursts and re-list without looping.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]

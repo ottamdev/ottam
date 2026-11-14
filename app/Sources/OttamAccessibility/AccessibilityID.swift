@@ -10,6 +10,9 @@ public enum AccessibilityID {
     public static let chooserCoreRetry = "workspace.chooser.core-retry"
     public static let coreDiagnosticsToggle = "core.diagnostics-toggle"
     public static let chooserNewWorkspace = "workspace.chooser.new-workspace"
+    public static let onboardingWindow = "onboarding"
+    public static let onboardingContinue = "onboarding.continue"
+    public static let onboardingBack = "onboarding.back"
 
     public static let routeChat = "route.chat"
 
@@ -251,6 +254,9 @@ public enum AccessibilityID {
         chooserCoreRetry,
         coreDiagnosticsToggle,
         chooserNewWorkspace,
+        onboardingWindow,
+        onboardingContinue,
+        onboardingBack,
         routeChat,
         chatSurface,
         chatTranscript,

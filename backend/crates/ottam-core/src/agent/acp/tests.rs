@@ -776,6 +776,7 @@ impl AcpCommandConnection for ScriptedCommandConnection {
         &self,
         cwd: PathBuf,
         mcp_servers: Vec<McpServerEntry>,
+        meta: Option<serde_json::Map<String, serde_json::Value>>,
     ) -> Pin<
         Box<
             dyn Future<Output = Result<CommandNewSessionResponse, agent_client_protocol::Error>>
@@ -784,8 +785,11 @@ impl AcpCommandConnection for ScriptedCommandConnection {
         >,
     > {
         Box::pin(async move {
+            let meta = meta
+                .map(|meta| format!(" meta={}", serde_json::Value::Object(meta)))
+                .unwrap_or_default();
             self.record(format!(
-                "new:{}{}",
+                "new:{}{}{meta}",
                 cwd.display(),
                 recorded_mcp(&mcp_servers)
             ));
@@ -1470,6 +1474,36 @@ async fn command_loop_keeps_auth_responsive_and_cancels_it_on_shutdown() {
     );
 }
 
+/// The model-catalog probe's `_meta` rides `session/new` unchanged.
+#[tokio::test]
+async fn session_meta_reaches_session_new() {
+    let connection = ScriptedCommandConnection::default();
+    let shared = command_loop_shared();
+    let (command_tx, task) = spawn_command_loop(connection.clone(), Arc::clone(&shared));
+    let meta = serde_json::json!({"claudeCode": {"options": {"persistSession": false}}});
+    let (reply, response) = oneshot::channel();
+    command_tx
+        .send(AdapterCommand::NewSession {
+            cwd: PathBuf::from("/tmp/project"),
+            config: SessionConfigRequest {
+                meta: meta.as_object().cloned(),
+                ..SessionConfigRequest::default()
+            },
+            reply,
+        })
+        .await
+        .expect("queues session creation");
+    response.await.expect("new session response").expect("session opens");
+    drop(command_tx);
+    task.await
+        .expect("command loop task")
+        .expect("command loop exits cleanly");
+    assert_eq!(
+        connection.recorded_calls(),
+        vec![format!("new:/tmp/project meta={meta}")]
+    );
+}
+
 /// A model id picked from a stale catalog reaches `session/new` after the
 /// agent stopped offering it. The session is refused — never inserted, so no
 /// prompt can ride it — while the handshake still counts as proof of
@@ -1503,6 +1537,7 @@ async fn a_stale_selection_refuses_the_session_but_keeps_what_the_handshake_lear
                 mode_id: None,
                 thought_level_id: None,
                 mcp_servers: Vec::new(),
+                meta: None,
             },
             reply,
         })

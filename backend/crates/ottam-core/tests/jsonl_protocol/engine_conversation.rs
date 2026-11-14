@@ -54,6 +54,24 @@ fn engine_list_returns_registered_harness_engines_for_open_project() {
     core.shutdown();
 }
 
+/// First-launch onboarding lists models and modes before any workspace exists.
+#[test]
+fn engine_list_without_workspace_lists_the_same_engines() {
+    let mut core = CoreProcess::new();
+    core.initialize();
+
+    let response = core.send(json!({"id": 47, "method": "engine.list", "params": {}}));
+    let engine_ids = response["result"]["engines"]
+        .as_array()
+        .expect("engines")
+        .iter()
+        .filter_map(|engine| engine["engineID"].as_str())
+        .collect::<Vec<_>>();
+    assert_eq!(engine_ids, ["claude", "codex", "opencode", "omp"]);
+
+    core.shutdown();
+}
+
 /// The launchd-PATH case: the app is started by Launch Services, so it never
 /// sees the PATH a terminal has. `OTTAM_NODE` has to be enough on its own,
 /// because for most users nothing else on the impoverished PATH is.

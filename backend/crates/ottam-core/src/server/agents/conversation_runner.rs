@@ -1371,6 +1371,7 @@ impl ConversationRunCoordinator {
                 mode_id: params.mode_id,
                 thought_level_id: params.thought_level_id,
                 mcp_servers: Vec::new(),
+                meta: None,
             },
             kind: ConversationRunLaunchKind::Initial,
         })
@@ -1849,6 +1850,7 @@ impl ConversationRunCoordinator {
                     mode_id: None,
                     thought_level_id: None,
                     mcp_servers: Vec::new(),
+                    meta: None,
                 },
                 kind: ConversationRunLaunchKind::Followup,
             })
@@ -1895,6 +1897,7 @@ impl ConversationRunCoordinator {
                 mode_id: None,
                 thought_level_id: None,
                 mcp_servers: Vec::new(),
+                meta: None,
             },
             record: interrupted.followup,
             chat: chat.clone(),
@@ -3204,6 +3207,7 @@ impl ConversationPromptInputs {
             mode_id: self.mode_id.clone(),
             thought_level_id: self.thought_level_id.clone(),
             mcp_servers: Vec::new(),
+            meta: None,
         }
     }
 }

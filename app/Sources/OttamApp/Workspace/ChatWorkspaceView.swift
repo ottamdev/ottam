@@ -165,7 +165,6 @@ private struct ChatAgentSetupLanding: View {
     let backend: DiffReviewModel
     @Environment(OttamAppRuntime.self) private var runtime: OttamAppRuntime?
     @Environment(\.openWindow) private var openWindow
-    @State private var showingSetup = false
 
     private var signInEngine: EngineSummary? {
         EngineSummary.defaultSelection(from: model.engines.filter {
@@ -186,20 +185,9 @@ private struct ChatAgentSetupLanding: View {
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
 
-            if let runtime {
-                Button("Set Up an Agent…") { showingSetup = true }
-                    .buttonStyle(.glassProminent)
-                    .controlSize(.large)
-                    .accessibilityIdentifier(AccessibilityID.chatSetUpAgents)
-                    .sheet(isPresented: $showingSetup) {
-                        AgentSetupSheet(runtime: runtime, firstRun: true) { agentID in
-                            Task { @MainActor in
-                                await model.refreshEngines(backend: backend)
-                                model.selectedEngineID = EngineID(agentID.rawValue)
-                            }
-                        }
-                    }
-            } else if let engine = signInEngine {
+            // Onboarding sets agents up; this only finishes a sign-in or points
+            // at Settings, where installs and profiles live.
+            if let engine = signInEngine {
                 let agentID = AgentID(engine.engineID.rawValue)
                 Button(model.signIn.isSigningIn(agentID) ? "Signing In…" : "Sign In to \(engine.displayName)") {
                     model.signIn.signIn(engine: engine)
@@ -216,7 +204,7 @@ private struct ChatAgentSetupLanding: View {
                         .textSelection(.enabled)
                 }
             } else {
-                Button("Set Up an Agent…") {
+                Button("Open Agent Settings…") {
                     runtime?.pendingSettingsPane = .agents
                     openWindow(id: "settings")
                 }
