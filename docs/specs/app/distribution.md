@@ -15,8 +15,8 @@ updater. Repository policy (license, notices, community files) belongs to the
 
 ## Current Status
 
-Ottam can cut a version and produce a notarized, stapled archive locally, but
-nothing is published yet:
+Ottam cuts a version and produces a notarized, stapled archive locally that
+installs and runs on a clean macOS 26 account. Nothing is published yet:
 
 - `scripts/release-app.sh` cuts versions, enforces the release refusals,
   signs, notarizes, staples, and archives; `--rehearsal` builds with Apple
@@ -32,33 +32,6 @@ Development builds must stay cheap and local: no Apple credentials,
 notarization, GitHub access, or Sparkle key.
 
 ## Active
-
-### Milestone 1 — a release build that installs
-
-- [ ] **Clean-account acceptance.** Try it 3 and 5–7 on a clean macOS 26
-  account, with a real notarized archive.
-
-Development and UI-test signing stay unchanged.
-
-Try it:
-
-1. Run the release script on a tagged commit: it produces
-   `Ottam-X.Y.Z.zip`. With the Developer ID identity unavailable or the tag
-   malformed, it stops with a named reason and leaves no archive.
-2. Interrupt it during notarization and rerun: the rerun completes with the
-   same version and build number.
-3. On a clean macOS 26 account, download the zip in a browser, unzip, move
-   the app to Applications, and open it: only the standard first-open dialog
-   appears, with no unverified-developer warning.
-4. Ottam › About Ottam shows the tag's version and build.
-5. In a workspace terminal, run
-   `osascript -e 'tell application "Finder" to get name of home'`: macOS asks
-   to let Ottam control Finder, and allowing it prints the name.
-6. Install an agent from Settings › Agents and run one turn.
-7. Quit and reopen: workspaces and chats are restored.
-8. `./scripts/run-app.sh` still builds and launches with no credentials.
-
-## Next
 
 ### Milestone 2 — update from inside the app
 
@@ -95,11 +68,15 @@ at assembly:
    Skip This Version: automatic checks stop offering N+1; a manual check
    still does.
 4. Install and Relaunch while idle: the app relaunches as N+1 (About shows
-   it) with workspaces, chats, and settings intact.
+   it) with workspaces, chats, and settings intact. Record whether the
+   workspace windows reopen with "Close windows when quitting an
+   application" on and off.
 5. Repeat with an agent mid-turn and a terminal running: the install waits on
    the same quit behavior as ⌘Q, and nothing is killed outside it.
 6. Offline, Check for Updates… reports the failure and the app stays usable.
 7. A `run-app.sh` build has no Check for Updates… item and requests no feed.
+
+## Next
 
 ### Milestone 3 — first public release
 
@@ -125,8 +102,10 @@ at assembly:
 
 Try it:
 
-1. Publish X, download it from the GitHub Release on a clean macOS 26
-   account, and repeat the Milestone 1 install checks.
+1. Publish X and download it from the GitHub Release in a browser on a clean
+   macOS 26 account. Opening it shows only the standard downloaded-app dialog,
+   About shows X, onboarding installs an agent that completes a turn, and
+   chats survive a quit.
 2. Start publishing X+1 and interrupt before step 9: the public feed is
    unchanged and X finds no update. Rerun to completion.
 3. In the installed X, Check for Updates… offers X+1 with its notes, installs

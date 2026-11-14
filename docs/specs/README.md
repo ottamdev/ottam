@@ -13,7 +13,7 @@ current.
 ## Release
 
 - [Open Source Release Readiness](operations/open-source-release.md) — active — Next: first-run sequencing, payload database upgrade protections, distribution
-- [App Update And Distribution](app/distribution.md) — active — Milestone 1: clean-account acceptance
+- [App Update And Distribution](app/distribution.md) — active — Milestone 2: the Sparkle updater
 
 ## Agents (ACP)
 
@@ -32,7 +32,7 @@ current.
 
 ## Backend
 
-- [Agent Runtime And Setup Acceptance](backend/agent-runtime-setup.md) — active — clean-machine first-install acceptance
+- [Agent Runtime And Setup Acceptance](backend/agent-runtime-setup.md) — active — real-provider lifecycle, then download and runtime repair
 - [Permission Changes In Existing Conversations](backend/live-session-configuration.md) — active — probe a generating turn and a pending permission, then two-client ordering
 - [SQLite Payload Storage](backend/sqlite-payload-storage.md) — active — pick A or B on the incompressible-write tradeoff, then guard payload database upgrades
 - [Tool Permissions](backend/tool-permissions.md) — active — finish the P1 walkthrough on oh-my-pi

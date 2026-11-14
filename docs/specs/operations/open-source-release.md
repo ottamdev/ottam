@@ -16,9 +16,7 @@ download is listed under Next.
 Needed before a first public download, not before the source is public.
 
 - **First-run sequencing.** Get in Settings › Agents is enabled before Node is
-  ready ([agent onboarding](../app/agent-onboarding.md#next)), and clean-Mac
-  acceptance is open
-  ([agent runtime setup](../backend/agent-runtime-setup.md#remaining-acceptance)).
+  ready ([agent onboarding](../app/agent-onboarding.md#next)).
 - **Payload database upgrade protections.** Newer-schema rejection and the
   pre-migration backup cover only the main database
   ([payload storage](../backend/sqlite-payload-storage.md)).

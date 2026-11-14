@@ -37,6 +37,11 @@ hold UI state only; durable domain authority stays behind the Core protocol
   included, and register as native autosave names only after the restored frame
   is fitted to a display; there are no per-monitor layouts. UI-test and capture
   launches skip restoration (`isEnabledForCurrentLaunch`).
+- Workspace windows reopen only through AppKit state restoration
+  (`WorkspaceWindowRestoration`), so they follow the system "Close windows
+  when quitting an application" setting and ⌥⌘Q; otherwise launch opens the
+  Welcome window. Decided 2026-11-14: Ottam honors the user's system choice
+  rather than reopening workspaces on its own.
 
 ## Sidebar And Toolbar
 
