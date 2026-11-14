@@ -14,10 +14,8 @@ Runtime discovery, managed Node, pinned adapter installs, sign-in, and the
 onboarding window ship; the contract is
 [ACP › Runtime Resolution And Installation](../../architecture/backend/acp.md#runtime-resolution-and-installation)
 and [§ Managed Adapter Lifecycle And Setup UI](../../architecture/backend/acp.md#managed-adapter-lifecycle-and-setup-ui).
-A notarized build on a clean macOS user installs managed Node and an adapter
-through onboarding and completes a turn; its environment record is still
-open. This spec owns the remaining acceptance: that record, live-provider
-lifecycle, and failure recovery.
+This spec owns the remaining acceptance: the first-install environment
+record, live-provider lifecycle, and failure recovery.
 
 Known gap: **Get** in Settings › Agents is enabled for an uninstalled
 Node-launched adapter whatever Node's state; core then fails the install
@@ -32,7 +30,7 @@ as item 4 in [agent onboarding](../app/agent-onboarding.md#next).
   Record architecture, OS, app build, resolved runtime/adapter versions,
   Git/Command Line Tools availability, screenshots and AX. Left: the
   environment record (OS build, resolved Node and adapter versions,
-  Git/Command Line Tools, AX); the run itself passed.
+  Git/Command Line Tools, AX).
 - [ ] **Real-provider lifecycle.** For each built-in pin: signed-out and
   expired-auth states, sign-in dismissal/reopen, cancellation, restart,
   reinstall, both removal choices, and cold-launch readiness after reopen. Use
