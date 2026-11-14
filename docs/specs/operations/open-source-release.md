@@ -11,11 +11,6 @@ The source is public at `ottamdev/ottam` under Apache 2.0, with its community
 files and private vulnerability reporting. What remains before a first public
 download is listed under Next.
 
-## Active
-
-- [ ] **Confirm UI validation.** `full-tests` runs here; two consecutive
-  `macos-ui-validation` dispatches have not been observed.
-
 ## Next
 
 Needed before a first public download, not before the source is public.
