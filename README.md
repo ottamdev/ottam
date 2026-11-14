@@ -9,7 +9,7 @@ Codex, OpenCode and oh-my-pi into one local workspace: talk to any of them,
 review what they change, and hand work between them, while Ottam asks for as
 little of your attention as it can.
 
-Everything runs on your Mac. Agents run through their ACP adapters, signed in
+Everything runs locally on your Mac. Agents run through their ACP adapters, signed in
 with your own accounts; there is no Ottam account. A Rust core owns state,
 Git, terminals and agent processes, and the SwiftUI/AppKit app talks to it
 over a local JSONL protocol.
