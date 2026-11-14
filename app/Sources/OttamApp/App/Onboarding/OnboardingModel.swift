@@ -71,6 +71,17 @@ final class OnboardingModel {
         }
     }
 
+    /// Why the agent list never loaded, while it has not: every step needs
+    /// it, and the later reloads wait for a first success.
+    var agentListError: String? { agents.didLoadOnce ? nil : agents.errorText }
+
+    func retryAgentList() async {
+        await agents.load()
+        guard agents.didLoadOnce else { return }
+        do { try await agents.detectSetups() } catch { errorText = error.localizedDescription }
+        if step == .install { await prepareInstall() }
+    }
+
     /// Leaves the intro for wherever a resumed onboarding should pick up.
     func finishIntro() async {
         while !agents.didLoadOnce, agents.errorText == nil, !Task.isCancelled {
@@ -112,7 +123,9 @@ final class OnboardingModel {
     var canContinueFromChoose: Bool { !selected.isEmpty && agents.didLoadOnce && !isPreparing }
 
     func continueFromChoose() {
-        save()
+        // Unrecorded, a relaunch could not resume this choice; stay with the
+        // error instead.
+        guard save() else { return }
         enter(.install)
     }
 
@@ -327,8 +340,15 @@ final class OnboardingModel {
         OnboardingRecord(status: .inProgress, selectedHarnessIDs: selected, cliSetupHarnessIDs: selected.filter(cliSetup.contains))
     }
 
-    private func save() {
-        do { try runtime.onboardingStore.save(record) } catch { errorText = error.localizedDescription }
+    @discardableResult
+    private func save() -> Bool {
+        do {
+            try runtime.onboardingStore.save(record)
+            return true
+        } catch {
+            errorText = error.localizedDescription
+            return false
+        }
     }
 
     private func enter(_ next: OnboardingStep) {

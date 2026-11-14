@@ -1447,6 +1447,14 @@ impl AgentRegistry {
         definition.launch.arguments.extend(extra_arguments);
         let adapter = self.factory.create(definition, 1);
         self.track_adapter(&adapter);
+        // After tracking: shutdown sets the flag before it snapshots live
+        // adapters, so either that snapshot holds this one or this sees it.
+        if self.is_shutting_down() {
+            return Err(HarnessError::new(
+                HarnessErrorKind::RequestCancelled,
+                "Ottam is quitting",
+            ));
+        }
         Ok(adapter)
     }
 

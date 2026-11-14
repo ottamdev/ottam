@@ -107,6 +107,21 @@ struct OnboardingProgressTests {
         #expect(OnboardingProgress.resumeStep(record: record, agents: agents) == .install)
     }
 
+    @Test("a Node-launched agent without a working runtime resumes at Install, where Node installs")
+    func missingNodeResumesAtInstall() {
+        let record = OnboardingRecord(status: .inProgress, selectedHarnessIDs: ["codex"])
+        var codex = agent("codex", authState: .ready)
+        codex.runtime = AgentRuntimeStatus(
+            availability: .missing, component: nil, foundMajor: nil, minimumMajor: nil,
+            nodeVersion: nil, npxVersion: nil
+        )
+        #expect(OnboardingProgress.resumeStep(record: record, agents: [codex]) == .install)
+        // A prebuilt binary has nothing for Install to fix.
+        var binary = agent("codex", source: .binary, authState: .ready)
+        binary.runtime = codex.runtime
+        #expect(OnboardingProgress.resumeStep(record: record, agents: [binary]) != .install)
+    }
+
     @Test("a CLI setup whose layout is not set yet resumes at Install")
     func layoutPendingResumesAtInstall() {
         let record = OnboardingRecord(status: .inProgress, selectedHarnessIDs: ["codex"], cliSetupHarnessIDs: ["codex"])

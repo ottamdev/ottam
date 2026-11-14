@@ -196,6 +196,12 @@ private struct OnboardingStepPage: View {
                 case .signIn: OnboardingSignIn(model: model)
                 case .namedAgent: OnboardingNamedAgents(model: model, editing: $editingNamedAgent)
                 }
+                if let agentListError = model.agentListError {
+                    Section {
+                        Text(agentListError).foregroundStyle(.red).textSelection(.enabled)
+                        Button("Try Again") { Task { await model.retryAgentList() } }
+                    }
+                }
                 if let errorText = model.errorText {
                     Section { Text(errorText).foregroundStyle(.red).textSelection(.enabled) }
                 }

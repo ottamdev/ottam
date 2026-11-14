@@ -24,11 +24,18 @@ final class NamedAgentsSettingsModel {
         self.client = client
     }
 
+    /// Bumped by each save and delete, so a load that listed before one
+    /// landed keeps the newer list instead.
+    private var mutations = 0
+
     func load(workspaceID: WorkspaceID?) async {
+        let mutationsAtStart = mutations
         do {
             let listed = try await client.listNamedAgents()
             engines = (try? await client.listEngines(workspaceID: workspaceID).engines) ?? engines
-            namedAgents = listed.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+            if mutations == mutationsAtStart {
+                namedAgents = listed.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+            }
             errorText = nil
             didLoadOnce = true
         } catch {
@@ -46,6 +53,7 @@ final class NamedAgentsSettingsModel {
         } else {
             try await client.createNamedAgent(config)
         }
+        mutations += 1
         namedAgents.removeAll { $0.namedAgentID == saved.namedAgentID }
         namedAgents.append(saved)
         namedAgents.sort { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
@@ -54,6 +62,7 @@ final class NamedAgentsSettingsModel {
 
     func delete(_ namedAgentID: NamedAgentID) async throws {
         try await client.deleteNamedAgent(namedAgentID: namedAgentID)
+        mutations += 1
         namedAgents.removeAll { $0.namedAgentID == namedAgentID }
         NotificationCenter.default.post(name: Self.changedNotification, object: nil)
     }

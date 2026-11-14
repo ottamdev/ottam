@@ -47,10 +47,13 @@ def opencode_sessions(database: Path) -> int:
 
 
 def omp_handles(agent_dir: Path) -> int:
+    path = agent_dir / "acp-session-handles.json"
     try:
-        return len(json.loads((agent_dir / "acp-session-handles.json").read_text()))
-    except (OSError, ValueError):
+        return len(json.loads(path.read_text()))
+    except FileNotFoundError:
         return 0
+    except (OSError, ValueError) as error:
+        raise SystemExit(f"cannot count Oh-My-Pi session handles in {path}: {error}") from error
 
 
 def counts(harness: str, home: Path, opencode_database: Path | None = None) -> dict[str, int]:

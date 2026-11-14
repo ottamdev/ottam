@@ -81,8 +81,11 @@ enum OnboardingProgress {
         }
         guard chosen.allSatisfy({ $0 != nil }) else { return .install }
         let instances = chosen.compactMap(\.self)
+        // Install is where Node installs, so a missing runtime resumes there.
         if instances.contains(where: {
-            !isInstalled($0) || needsLayout($0, usesCLISetup: record.cliSetupHarnessIDs.contains($0.harnessID ?? $0.agentID.rawValue))
+            !isInstalled($0)
+                || needsLayout($0, usesCLISetup: record.cliSetupHarnessIDs.contains($0.harnessID ?? $0.agentID.rawValue))
+                || (usesNode($0) && EngineRuntimeProblem(agent: $0) != nil)
         }) {
             return .install
         }

@@ -79,6 +79,12 @@ class ProbeLeftovers(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("cannot count OpenCode sessions", result.stderr)
 
+    def test_an_unreadable_handle_file_fails_instead_of_counting_zero(self):
+        (self.root / "ottam/agents/omp.work/home/acp-session-handles.json").write_text("{not json")
+        result = run("snapshot", "--ottam-home", str(self.root / "ottam"))
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("cannot count Oh-My-Pi session handles", result.stderr)
+
     def test_snapshot_needs_a_home(self):
         self.assertNotEqual(run("snapshot").returncode, 0)
 

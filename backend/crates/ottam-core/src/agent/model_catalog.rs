@@ -986,7 +986,8 @@ impl ModelCatalogService {
     /// [`Self::probe_now`] without waiting: an explicit Recheck that must not
     /// stall on a cold CLI start. It ignores freshness and backoff, since the
     /// user may have just changed the agent outside Ottam, but honors the
-    /// test gate.
+    /// test gate. Like a sign-in, it drops live provenance first, so the
+    /// probe's answer replaces what an earlier session advertised.
     pub(crate) fn reprobe_in_background(
         self: &Arc<Self>,
         registry: &Arc<AgentRegistry>,
@@ -995,6 +996,7 @@ impl ModelCatalogService {
         if background_probes_off() {
             return;
         }
+        self.forget_live_observations(agent_id);
         let catalog = Arc::clone(self);
         let registry = Arc::clone(registry);
         let agent_id = agent_id.clone();
