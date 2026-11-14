@@ -1,11 +1,31 @@
 #!/usr/bin/env bash
 # What a release bundle signs, and with which identity.
 
+RELEASE_SPARKLE="Contents/Frameworks/Sparkle.framework"
+
 # Prints bundle-relative paths of the separately signed code, innermost first.
-# The bundle itself is signed last and covers its main executable. Adding a
-# binary to the bundle means adding it here, or verify-release-app.sh refuses
-# the build.
+# The bundle itself is signed last and covers its main executable. Every Mach-O
+# file must be one of these or sit inside one, or verify-release-app.sh refuses
+# the build. Sparkle's part follows its manual re-signing order:
+# https://sparkle-project.org/documentation/sandboxing/
 release_nested_code() {
+  echo "$RELEASE_SPARKLE/Versions/B/XPCServices/Installer.xpc"
+  echo "$RELEASE_SPARKLE/Versions/B/XPCServices/Downloader.xpc"
+  echo "$RELEASE_SPARKLE/Versions/B/Autoupdate"
+  echo "$RELEASE_SPARKLE/Versions/B/Updater.app"
+  echo "$RELEASE_SPARKLE"
+  echo "Contents/MacOS/ottam-core"
+}
+
+# Sparkle signs its Downloader service keeping whatever entitlements upstream
+# gave it. The verifier still requires that set to be empty, so an upstream
+# change surfaces as a failed release rather than shipping silently.
+release_preserves_entitlements() {
+  [ "$1" = "$RELEASE_SPARKLE/Versions/B/XPCServices/Downloader.xpc" ]
+}
+
+# Binaries Ottam builds itself, checked for leaked build-machine paths.
+release_own_binaries() {
   echo "Contents/MacOS/ottam-core"
 }
 

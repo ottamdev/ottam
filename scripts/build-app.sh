@@ -203,16 +203,32 @@ fi
 
 SWIFT_EXECUTABLE="$SWIFT_BUILD_DIR/$SWIFT_CONFIGURATION/OttamApp"
 CORE_EXECUTABLE="$CARGO_TARGET_ROOT/$CARGO_PROFILE_DIR/ottam-core"
-if [ ! -x "$SWIFT_EXECUTABLE" ] || [ ! -x "$CORE_EXECUTABLE" ]; then
+SPARKLE_FRAMEWORK="$SWIFT_BUILD_DIR/$SWIFT_CONFIGURATION/Sparkle.framework"
+if [ ! -x "$SWIFT_EXECUTABLE" ] || [ ! -x "$CORE_EXECUTABLE" ] || [ ! -d "$SPARKLE_FRAMEWORK" ]; then
   echo "Missing build products; run without --skip-build first." >&2
   exit 66
 fi
 
 rm -rf "$APP_BUNDLE_DIR"
-mkdir -p "$MACOS_DIR" "$RESOURCES_DIR"
+mkdir -p "$MACOS_DIR" "$RESOURCES_DIR" "$CONTENTS_DIR/Frameworks"
 
 cp "$SWIFT_EXECUTABLE" "$MACOS_DIR/$EXECUTABLE_NAME"
 cp "$CORE_EXECUTABLE" "$MACOS_DIR/ottam-core"
+# Every bundle embeds Sparkle because the executable links it; only release
+# assembly gives it a feed. ditto keeps the framework's version symlinks.
+ditto "$SPARKLE_FRAMEWORK" "$CONTENTS_DIR/Frameworks/Sparkle.framework"
+# SwiftPM also links absolute build-directory rpaths; the bundle resolves
+# Sparkle only through @executable_path/../Frameworks.
+absolute_rpaths="$(
+  otool -l "$MACOS_DIR/$EXECUTABLE_NAME" |
+    awk '$1 == "cmd" && $2 == "LC_RPATH" { getline; getline; print $2 }' |
+    grep '^/' || true
+)"
+while read -r rpath; do
+  [ -n "$rpath" ] || continue
+  # It warns that the edit invalidates the linker signature; signing follows.
+  install_name_tool -delete_rpath "$rpath" "$MACOS_DIR/$EXECUTABLE_NAME" 2>/dev/null
+done <<< "$absolute_rpaths"
 cp "$APP_PACKAGE_DIR/Resources/Info.plist" "$CONTENTS_DIR/Info.plist"
 plutil -replace CFBundleIdentifier -string "$BUNDLE_IDENTIFIER" "$CONTENTS_DIR/Info.plist"
 plutil -replace CFBundleName -string "$DISPLAY_NAME" "$CONTENTS_DIR/Info.plist"

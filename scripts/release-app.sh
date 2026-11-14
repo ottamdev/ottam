@@ -16,6 +16,13 @@ RELEASE_OUTPUT="$ROOT_DIR/.build/release"
 VERSION=""
 BUNDLE_ID=""
 USE_ENTITLEMENTS=1
+# The one address baked into every shipped build; it must outlive any host.
+PRODUCTION_FEED_URL="https://updates.ottam.dev/appcast.xml"
+FEED_URL=""
+FEED_URL_OVERRIDE=""
+# Sparkle's Ed25519 public key, base64. Public by design; the private half
+# stays in the maintainer's keychain.
+UPDATE_PUBLIC_KEY_FILE="$ROOT_DIR/app/Signing/sparkle-public-key"
 
 usage() {
   cat <<'USAGE'
@@ -23,17 +30,21 @@ Usage:
   scripts/release-app.sh --cut
       Pick the next version, bump Cargo, commit, and tag locally. Never pushes.
 
-  scripts/release-app.sh [--identity <sha1-or-name>]
+  scripts/release-app.sh [--identity <sha1-or-name>] [--feed-url <https-url>]
       Build, sign, notarize, and staple the release tagged at HEAD, then
       verify the extracted archive. Writes .build/release/Ottam-<version>.zip
-      only when every step passes.
+      only when every step passes. The bundle updates from the production
+      feed; --feed-url points it at a test feed instead, and such a build
+      must never be published.
 
-  scripts/release-app.sh --rehearsal --version <YY.M.N> --bundle-id <id> [--no-entitlements]
+  scripts/release-app.sh --rehearsal --version <YY.M.N> --bundle-id <id> [--no-entitlements] [--feed-url <https-url>]
       Hardened build signed with Apple Development, for testing without
       Developer ID. Skips the tag checks and notarization. Not distributable.
+      It has no updater unless --feed-url is given.
 
 OTTAM_RELEASE_IDENTITY is the default for --identity. OTTAM_NOTARY_PROFILE
-names the notarytool keychain profile (default: ottam-notary).
+names the notarytool keychain profile (default: ottam-notary). A feed also
+needs Sparkle's public key in app/Signing/sparkle-public-key.
 USAGE
 }
 
@@ -68,6 +79,10 @@ while [ "$#" -gt 0 ]; do
       USE_ENTITLEMENTS=0
       shift
       ;;
+    --feed-url)
+      FEED_URL_OVERRIDE="${2:?--feed-url requires a URL}"
+      shift 2
+      ;;
     -h|--help)
       usage
       exit 0
@@ -83,6 +98,15 @@ done
 if [ "$MODE" != rehearsal ] && { [ -n "$VERSION" ] || [ -n "$BUNDLE_ID" ] || [ "$USE_ENTITLEMENTS" = 0 ]; }; then
   echo "--version, --bundle-id, and --no-entitlements are rehearsal-only; a release takes its version from the tag." >&2
   exit 64
+fi
+if [ -n "$FEED_URL_OVERRIDE" ] && [ "$MODE" = cut ]; then
+  echo "--feed-url applies to a build, not a cut." >&2
+  exit 64
+fi
+if [ "$MODE" = release ]; then
+  FEED_URL="${FEED_URL_OVERRIDE:-$PRODUCTION_FEED_URL}"
+else
+  FEED_URL="$FEED_URL_OVERRIDE"
 fi
 
 require_clean_tree() {
@@ -138,6 +162,28 @@ head_release_version() {
   echo "$found"
 }
 
+# Refuses before any build when the bundle would get a feed it can't verify.
+require_update_feed() {
+  [ -n "$FEED_URL" ] || return 0
+  [[ "$FEED_URL" == https://* ]] || refuse "the feed must be an https URL: $FEED_URL"
+  [ -s "$UPDATE_PUBLIC_KEY_FILE" ] ||
+    refuse "no Sparkle public key at ${UPDATE_PUBLIC_KEY_FILE#"$ROOT_DIR"/}; generate the keypair first"
+  if [ "$FEED_URL" != "$PRODUCTION_FEED_URL" ]; then
+    echo "Warning: this build updates from $FEED_URL, not the production feed. Never publish it." >&2
+  fi
+}
+
+# Signed feeds and pre-extraction verification are required. Automatic checks
+# stay unset so Sparkle asks for consent on the second launch.
+inject_update_feed() {
+  local plist="$1/Contents/Info.plist" key
+  key="$(tr -d '[:space:]' < "$UPDATE_PUBLIC_KEY_FILE")"
+  plutil -insert SUFeedURL -string "$2" "$plist"
+  plutil -insert SUPublicEDKey -string "$key" "$plist"
+  plutil -insert SURequireSignedFeed -bool YES "$plist"
+  plutil -insert SUVerifyUpdateBeforeExtraction -bool YES "$plist"
+}
+
 build_and_sign() {
   local version="$1" identity="$2" authority="$3" output="$4" app_name="$5" bundle_id="$6"
   local app="$output/$app_name.app" relative_path
@@ -147,13 +193,22 @@ build_and_sign() {
   else
     verify_args+=(--no-entitlements)
   fi
+  [ -z "$FEED_URL" ] || verify_args+=(--feed-url "$FEED_URL")
 
   "$ROOT_DIR/scripts/build-app.sh" --release --version "$version" --no-sign \
     --output-root "$output" --app-name "$app_name" --bundle-id "$bundle_id"
 
+  [ -z "$FEED_URL" ] || inject_update_feed "$app" "$FEED_URL"
+
   xattr -cr "$app"
+  local preserve_args
   while read -r relative_path; do
-    codesign --force --options runtime --timestamp --sign "$identity" "$app/$relative_path"
+    preserve_args=()
+    if release_preserves_entitlements "$relative_path"; then
+      preserve_args=(--preserve-metadata=entitlements)
+    fi
+    codesign --force --options runtime --timestamp \
+      "${preserve_args[@]+"${preserve_args[@]}"}" --sign "$identity" "$app/$relative_path"
   done < <(release_nested_code)
   codesign --force --options runtime --timestamp \
     "${entitlement_args[@]+"${entitlement_args[@]}"}" --sign "$identity" "$app"
@@ -165,6 +220,7 @@ rehearse() {
   release_version_is_valid "$VERSION" || refuse "invalid version: $VERSION"
   [ -n "$BUNDLE_ID" ] || refuse "a rehearsal needs its own --bundle-id"
   [ "$BUNDLE_ID" != "dev.ottam.Ottam" ] || refuse "a rehearsal can't use the production bundle id"
+  require_update_feed
 
   local identity
   identity="$(release_resolve_identity "Apple Development" "$IDENTITY")"
@@ -225,6 +281,7 @@ release() {
   archive_name="Ottam-$version.zip"
   [ ! -e "$RELEASE_OUTPUT/$archive_name" ] ||
     refuse "$RELEASE_OUTPUT/$archive_name already exists; a version is built once"
+  require_update_feed
   identity="$(release_resolve_identity "Developer ID Application" "$IDENTITY")"
   # Fail before the build, not after it, when the notary credentials don't work.
   xcrun notarytool history --keychain-profile "$NOTARY_PROFILE" >/dev/null 2>&1 || {
@@ -248,7 +305,7 @@ release() {
   mkdir "$work_dir/extracted"
   ditto -x -k "$work_dir/$archive_name" "$work_dir/extracted"
   "$ROOT_DIR/scripts/verify-release-app.sh" "$work_dir/extracted/Ottam.app" \
-    --version "$version" --distribution
+    --version "$version" --feed-url "$FEED_URL" --distribution
 
   mkdir -p "$RELEASE_OUTPUT"
   mv "$work_dir/$archive_name" "$RELEASE_OUTPUT/$archive_name"

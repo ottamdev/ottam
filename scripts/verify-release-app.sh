@@ -14,6 +14,8 @@ VERSION=""
 AUTHORITY="Developer ID Application"
 CHECK_ENTITLEMENTS=1
 DISTRIBUTION=0
+FEED_URL=""
+UPDATE_PUBLIC_KEY_FILE="$ROOT_DIR/app/Signing/sparkle-public-key"
 
 usage() {
   cat <<'USAGE'
@@ -23,6 +25,8 @@ Options:
   --authority <kind>   Required certificate kind (default: Developer ID Application)
   --no-entitlements    Expect the app to carry no entitlements
   --distribution       Also require Gatekeeper acceptance and a stapled ticket
+  --feed-url <url>     Require this Sparkle feed, the repository's public key,
+                       and signed-feed enforcement; without it, require no feed
 USAGE
 }
 
@@ -43,6 +47,10 @@ while [ "$#" -gt 0 ]; do
     --distribution)
       DISTRIBUTION=1
       shift
+      ;;
+    --feed-url)
+      FEED_URL="${2:?--feed-url requires a URL}"
+      shift 2
       ;;
     -h|--help)
       usage
@@ -83,28 +91,56 @@ plist_value() {
 MAIN_EXECUTABLE="Contents/MacOS/$(plist_value CFBundleExecutable)"
 NESTED_CODE="$(release_nested_code)"
 
-# Anything Mach-O must be on the signing list, so a new binary can't ship
-# signed only by accident.
-expected_code="$(printf '%s\n%s\n' "$MAIN_EXECUTABLE" "$NESTED_CODE" | LC_ALL=C sort)"
-actual_code="$(
+while read -r relative_path; do
+  [ -e "$APP_DIR/$relative_path" ] || fail "signing list entry missing from the bundle: $relative_path"
+done <<< "$NESTED_CODE"
+
+# Anything Mach-O must be on the signing list, or inside a bundle on it, so a
+# new binary can't ship signed only by accident.
+uncovered="$(
   cd "$APP_DIR"
   find Contents -type f -print0 |
     xargs -0 file -F '|' |
     sed -nE 's/^(.*)\|[[:space:]]*Mach-O.*$/\1/p' |
-    LC_ALL=C sort
+    LC_ALL=C sort |
+    while read -r binary; do
+      covered=0
+      while read -r unit; do
+        if [ "$binary" = "$unit" ] || [[ "$binary" == "$unit/"* ]]; then
+          covered=1
+          break
+        fi
+      done <<< "$(printf '%s\n%s\n' "$MAIN_EXECUTABLE" "$NESTED_CODE")"
+      [ "$covered" = 1 ] || echo "$binary"
+    done
 )"
-if [ "$expected_code" != "$actual_code" ]; then
-  fail "bundle's Mach-O files don't match the signing list
-expected:
-$expected_code
-found:
-$actual_code"
-fi
+[ -z "$uncovered" ] || fail "Mach-O files outside the signing list:
+$uncovered"
 
 [ "$(plist_value CFBundleShortVersionString)" = "$VERSION" ] ||
   fail "CFBundleShortVersionString is not $VERSION"
 [ "$(plist_value CFBundleVersion)" = "$VERSION" ] ||
   fail "CFBundleVersion is not $VERSION"
+
+# Empty when the key is absent.
+plist_optional() {
+  plutil -extract "$1" raw -o - "$APP_DIR/Contents/Info.plist" 2>/dev/null || true
+}
+actual_feed="$(plist_optional SUFeedURL)"
+if [ -n "$FEED_URL" ]; then
+  [ "$actual_feed" = "$FEED_URL" ] || fail "SUFeedURL is '$actual_feed', not $FEED_URL"
+  [ -s "$UPDATE_PUBLIC_KEY_FILE" ] || fail "no Sparkle public key to compare against"
+  [ "$(plist_optional SUPublicEDKey)" = "$(tr -d '[:space:]' < "$UPDATE_PUBLIC_KEY_FILE")" ] ||
+    fail "SUPublicEDKey doesn't match ${UPDATE_PUBLIC_KEY_FILE#"$ROOT_DIR"/}"
+  [ "$(plist_optional SURequireSignedFeed)" = true ] || fail "SURequireSignedFeed is not set"
+  [ "$(plist_optional SUVerifyUpdateBeforeExtraction)" = true ] ||
+    fail "SUVerifyUpdateBeforeExtraction is not set"
+  [ -z "$(plist_optional SUEnableAutomaticChecks)" ] ||
+    fail "SUEnableAutomaticChecks is set; Sparkle must ask for consent"
+  echo "Update feed: $actual_feed"
+elif [ -n "$actual_feed$(plist_optional SUPublicEDKey)" ]; then
+  fail "bundle carries an update feed or key but none was expected"
+fi
 
 verify_signature() {
   local path="$1" details
@@ -116,9 +152,18 @@ verify_signature() {
     fail "not signed by $AUTHORITY: $path"
 }
 
+# Prints the entitlement keys, or nothing. Sparkle's Downloader ships an empty
+# <dict/> that --preserve-metadata keeps; it grants nothing.
+entitlement_keys() {
+  local xml
+  xml="$(codesign -d --entitlements - --xml "$1" 2>/dev/null)"
+  [ -n "$xml" ] || return 0
+  plutil -convert json -o - - <<< "$xml" | grep -v '^{}$' || true
+}
+
 while read -r relative_path; do
   verify_signature "$APP_DIR/$relative_path"
-  if [ -n "$(codesign -d --entitlements - --xml "$APP_DIR/$relative_path" 2>/dev/null)" ]; then
+  if [ -n "$(entitlement_keys "$APP_DIR/$relative_path")" ]; then
     fail "unexpected entitlements on $relative_path"
   fi
 done <<< "$NESTED_CODE"
@@ -137,7 +182,7 @@ elif [ -n "$actual_entitlements" ]; then
   fail "app carries entitlements but none were expected"
 fi
 
-for relative_path in "$MAIN_EXECUTABLE" $NESTED_CODE; do
+for relative_path in "$MAIN_EXECUTABLE" $(release_own_binaries); do
   leaks="$(strings -a "$APP_DIR/$relative_path" | grep -F -- "$HOME" || true)"
   [ -z "$leaks" ] || fail "$relative_path embeds the build machine's home path:
 $(head -3 <<< "$leaks")"

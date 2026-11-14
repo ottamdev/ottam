@@ -22,8 +22,12 @@ installs and runs on a clean macOS 26 account. Nothing is published yet:
   signs, notarizes, staples, and archives; `--rehearsal` builds with Apple
   Development for local testing. `scripts/verify-release-app.sh` checks the
   build and the extracted archive.
-- No appcast or Sparkle dependency. No workflow has a tag or release trigger
-  or uses secrets.
+- Sparkle is pinned and embedded in every bundle. Release assembly gives the
+  bundle its feed and public key (`--feed-url` points a test build at another
+  feed), and only then does the app start an updater and show **Check for
+  Updates…**. The Sparkle public key is `app/Signing/sparkle-public-key`.
+  There is no appcast or publish script yet. No workflow has a tag or release
+  trigger or uses secrets.
 - `scripts/smoke-app-bundle.sh` validates development bundles; `--release`
   also checks a release build for test seams, which the release verifier
   repeats on the shipped bundle.
@@ -35,28 +39,24 @@ notarization, GitHub access, or Sparkle key.
 
 ### Milestone 2 — update from inside the app
 
-- Pin an exact Sparkle 2 release, 2.9 or later (signed feeds need 2.9), in
-  `app/Package.swift` for `OttamApp`.
-- Embed it in the hand-built bundle: copy `Sparkle.framework` to
-  `Contents/Frameworks` without dereferencing symlinks, add an
-  `@executable_path/../Frameworks` runpath, keep its helper apps and XPC
-  services, and sign nested Sparkle code, `ottam-core`, the executable, the
-  framework, then the app.
-- Release assembly injects `SUFeedURL`, `SUPublicEDKey`,
-  `SURequireSignedFeed = YES`, and `SUVerifyUpdateBeforeExtraction = YES`.
-  Keep Sparkle's second-launch consent prompt for automatic checks.
-- One `SPUStandardUpdaterController` for the process lifetime, owned at the
-  app seam, not a workspace window, and built only when the bundle has a feed
-  URL. **Check for Updates…** sits in the standard application command group,
-  enabled by Sparkle's state.
-- An install quits through the normal path, so the shutdown-readiness gate in
-  `applicationShouldTerminate`
-  (`app/Sources/OttamApp/App/Main.swift`) applies; prove Sparkle waits for it
-  rather than assuming.
-- Log updater lifecycle under the app's subsystem, never feed contents,
-  signed URLs, or secrets.
-- Generate and back up the Ed25519 keypair; extend bundle smoke for the
-  framework and helpers.
+- [~] **Sparkle key backup.** The private key lives in the maintainer's login
+  keychain under the `ottam` account (Sparkle's tools are under
+  `.build/swift/artifacts/sparkle/Sparkle/bin/` after a build; `sign_update`
+  takes the same `--account`). Left: export a backup with
+  `generate_keys --account ottam -x <file>` and store it apart from the
+  Developer ID backup.
+  - Why: a lost key stops releases until a key rotation ships.
+  - Done when: the maintainer confirms the backup exists.
+- [ ] **Update walkthrough.** Try it 1–6 below.
+  - Why: an install quits through the normal path, so the shutdown-readiness
+    gate in `applicationShouldTerminate`
+    (`app/Sources/OttamApp/App/Main.swift`) applies. Prove Sparkle waits for
+    it rather than assuming.
+  - Needs: two throwaway-tagged Developer ID builds N < N+1, built with
+    `--feed-url` pointing at a test appcast served over HTTPS, and N+1's
+    archive and appcast signed with `sign_update`. Never add an ATS exception
+    to reach a local feed.
+  - Done when: steps 1–6 pass in real windows with screenshots and AX.
 
 Try it, with two Developer ID-signed builds N and N+1 and a test feed injected
 at assembly:
@@ -83,7 +83,8 @@ at assembly:
 - Serve the feed from a project-owned domain
   (`https://updates.ottam.dev/appcast.xml`), hosted on GitHub Pages by CNAME.
 - A local publish script; the appcast is the commit point:
-  1. Validate a signed `vX.Y.Z` tag newer than the stable feed.
+  1. Validate a signed `vX.Y.Z` tag newer than the stable feed, and refuse
+     a build whose `SUFeedURL` isn't the production feed.
   2. Build and test the tagged source.
   3. Assemble, sign, notarize, staple, archive.
   4. Extract the archive and re-verify the bundle.

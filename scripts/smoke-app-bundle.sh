@@ -51,6 +51,23 @@ check_bundle_layout() {
   # Ghostty's shell-integration scripts are GPL and unused (shell-integration = none).
   test ! -e "$resources_dir/shell-integration"
   test ! -e "$resources_dir/ghostty/shell-integration"
+  # Sparkle is linked by every bundle; a dereferenced copy breaks its seal.
+  local sparkle="$contents_dir/Frameworks/Sparkle.framework"
+  test -L "$sparkle/Versions/Current"
+  test -L "$sparkle/Sparkle"
+  test -x "$sparkle/Versions/B/Sparkle"
+  test -x "$sparkle/Versions/B/Autoupdate"
+  test -d "$sparkle/Versions/B/Updater.app"
+  test -d "$sparkle/Versions/B/XPCServices/Installer.xpc"
+  test -d "$sparkle/Versions/B/XPCServices/Downloader.xpc"
+  local load_commands
+  load_commands="$(otool -l "$contents_dir/MacOS/Ottam")"
+  grep -q '@executable_path/../Frameworks' <<< "$load_commands"
+  # Only release assembly gives a bundle a feed.
+  if [ -n "$(plutil -extract SUFeedURL raw -o - "$contents_dir/Info.plist" 2>/dev/null)" ]; then
+    echo "$app_dir carries an update feed; only release assembly adds one." >&2
+    return 1
+  fi
 
   codesign --verify --deep --strict --verbose=2 "$app_dir"
 }

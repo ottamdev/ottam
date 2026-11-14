@@ -112,6 +112,8 @@ new_repo() {
   chmod +x "$repo/scripts/build-app.sh"
   printf '[workspace.package]\nedition = "2021"\nversion = "%s"\n' "$cargo_version" > "$repo/backend/Cargo.toml"
   printf 'version = 4\n' > "$repo/backend/Cargo.lock"
+  mkdir -p "$repo/app/Signing"
+  printf 'cHVibGljLWtleQ==\n' > "$repo/app/Signing/sparkle-public-key"
   printf '.build/\n' > "$repo/.gitignore"
   git init -q -b main "$repo"
   git -C "$repo" config user.name Test
@@ -147,6 +149,17 @@ expect_status 65 "uncommitted changes" release_app "$repo"
 rm "$repo/uncommitted"
 
 expect_status 69 "Developer ID Application" release_app "$repo"
+
+# A release always gets a feed, so it needs the key and an https URL first.
+expect_status 65 "must be an https URL" release_app "$repo" --feed-url http://feed.invalid/appcast.xml
+expect_status 69 "Never publish it" release_app "$repo" --feed-url https://feed.invalid/appcast.xml
+git -C "$repo" rm -q app/Signing/sparkle-public-key
+git -C "$repo" commit -q -m "no key"
+git -C "$repo" tag -f v26.11.0 >/dev/null
+expect_status 65 "no Sparkle public key" release_app "$repo"
+git -C "$repo" reset -q --hard HEAD~1
+git -C "$repo" tag -f v26.11.0 >/dev/null
+expect_status 64 "not a cut" release_app "$repo" --cut --feed-url https://feed.invalid/appcast.xml
 
 mkdir -p "$repo/.build/release"
 touch "$repo/.build/release/Ottam-26.11.0.zip"
@@ -223,6 +236,13 @@ app="$test_root/Fake.app"
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
 cp /usr/bin/true "$app/Contents/MacOS/Ottam"
 cp /usr/bin/true "$app/Contents/MacOS/ottam-core"
+sparkle="$app/Contents/Frameworks/Sparkle.framework/Versions/B"
+for helper in XPCServices/Installer.xpc/Contents/MacOS/Installer \
+  XPCServices/Downloader.xpc/Contents/MacOS/Downloader \
+  Updater.app/Contents/MacOS/Updater Autoupdate Sparkle; do
+  mkdir -p "$(dirname "$sparkle/$helper")"
+  cp /usr/bin/true "$sparkle/$helper"
+done
 plutil -create xml1 "$app/Contents/Info.plist"
 plutil -insert CFBundleExecutable -string Ottam "$app/Contents/Info.plist"
 plutil -insert CFBundleShortVersionString -string 26.11.0 "$app/Contents/Info.plist"
@@ -241,7 +261,41 @@ fi
 expect_status 1 "CFBundleShortVersionString is not" verify --version 26.11.1
 
 cp /usr/bin/true "$app/Contents/Resources/extra-helper"
-expect_status 1 "don't match the signing list" verify --version 26.11.0
+expect_status 1 "outside the signing list" verify --version 26.11.0
 rm "$app/Contents/Resources/extra-helper"
+
+# Code inside a listed bundle is covered by that bundle's signature.
+cp /usr/bin/true "$sparkle/Updater.app/Contents/MacOS/extra"
+expect_status 1 "Release verification failed" verify --version 26.11.0
+if grep -Fq "signing list" "$test_root/output.log"; then
+  fail "code inside a signed bundle was rejected"
+fi
+rm "$sparkle/Updater.app/Contents/MacOS/extra"
+
+mv "$sparkle/Autoupdate" "$test_root/Autoupdate"
+expect_status 1 "missing from the bundle: Contents/Frameworks/Sparkle.framework/Versions/B/Autoupdate" \
+  verify --version 26.11.0
+mv "$test_root/Autoupdate" "$sparkle/Autoupdate"
+
+# A feed ships only when the release asked for one, and only fully enforced.
+plutil -insert SUFeedURL -string https://feed.invalid/appcast.xml "$app/Contents/Info.plist"
+expect_status 1 "carries an update feed" verify --version 26.11.0
+mkdir -p "$verifier/app/Signing"
+printf 'cHVibGljLWtleQ==\n' > "$verifier/app/Signing/sparkle-public-key"
+expect_status 1 "not https://other.invalid/appcast.xml" \
+  verify --version 26.11.0 --feed-url https://other.invalid/appcast.xml
+expect_status 1 "SUPublicEDKey doesn't match" \
+  verify --version 26.11.0 --feed-url https://feed.invalid/appcast.xml
+plutil -insert SUPublicEDKey -string cHVibGljLWtleQ== "$app/Contents/Info.plist"
+expect_status 1 "SURequireSignedFeed is not set" \
+  verify --version 26.11.0 --feed-url https://feed.invalid/appcast.xml
+plutil -insert SURequireSignedFeed -bool YES "$app/Contents/Info.plist"
+plutil -insert SUVerifyUpdateBeforeExtraction -bool YES "$app/Contents/Info.plist"
+plutil -insert SUEnableAutomaticChecks -bool YES "$app/Contents/Info.plist"
+expect_status 1 "must ask for consent" \
+  verify --version 26.11.0 --feed-url https://feed.invalid/appcast.xml
+plutil -remove SUEnableAutomaticChecks "$app/Contents/Info.plist"
+expect_status 1 "Update feed: https://feed.invalid/appcast.xml" \
+  verify --version 26.11.0 --feed-url https://feed.invalid/appcast.xml
 
 echo "Release script contract passed"
