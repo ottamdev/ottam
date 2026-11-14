@@ -80,8 +80,10 @@ at assembly:
 
 ### Milestone 3 — first public release
 
-- Serve the feed from a project-owned domain
-  (`https://updates.ottam.dev/appcast.xml`), hosted on GitHub Pages by CNAME.
+- Serve the feed at `https://updates.ottam.dev/appcast.xml` from the
+  `ottamdev/updates` repository through Cloudflare Pages. Publishing is a
+  push to that repository, which holds only signed appcasts; `test/` holds
+  walkthrough feeds.
 - A local publish script; the appcast is the commit point:
   1. Validate a signed `vX.Y.Z` tag newer than the stable feed, and refuse
      a build whose `SUFeedURL` isn't the production feed.
@@ -173,6 +175,11 @@ archive extraction. Update matrix, with real independently signed builds:
 - **The feed lives on a project-owned domain** (2026-11-09). `SUFeedURL` is
   the one address baked into every shipped build, and a `github.io` URL
   breaks on a repository rename or transfer.
+- **Cloudflare Pages serves the feed from its own repository** (2026-11-14).
+  The domain, its DNS, and the planned private website are already on
+  Cloudflare, and git-integrated deploys need no release token. The feed
+  stays out of the website's project so no site deploy can touch it.
+  Archives stay on GitHub Releases, since Pages caps files at 25 MiB.
 - **Release notes are embedded in the appcast** (2026-11-09), so the archive
   and the appcast are the only signed artifacts.
 - **The updater exists only in release bundles** (2026-11-09). Development,
