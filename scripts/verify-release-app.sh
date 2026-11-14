@@ -152,20 +152,22 @@ verify_signature() {
     fail "not signed by $AUTHORITY: $path"
 }
 
-# Prints the entitlement keys, or nothing. Sparkle's Downloader ships an empty
-# <dict/> that --preserve-metadata keeps; it grants nothing.
+# Prints the entitlements as JSON, or nothing when there are none. Sparkle's
+# Downloader ships an empty <dict/> that --preserve-metadata keeps; it grants
+# nothing. Fails when they can't be read, so unreadable never passes as none.
 entitlement_keys() {
-  local xml
-  xml="$(codesign -d --entitlements - --xml "$1" 2>/dev/null)"
+  local xml json
+  xml="$(codesign -d --entitlements - --xml "$1" 2>/dev/null)" || return 1
   [ -n "$xml" ] || return 0
-  plutil -convert json -o - - <<< "$xml" | grep -v '^{}$' || true
+  json="$(plutil -convert json -o - - <<< "$xml")" || return 1
+  [ "$json" = "{}" ] || echo "$json"
 }
 
 while read -r relative_path; do
   verify_signature "$APP_DIR/$relative_path"
-  if [ -n "$(entitlement_keys "$APP_DIR/$relative_path")" ]; then
-    fail "unexpected entitlements on $relative_path"
-  fi
+  keys="$(entitlement_keys "$APP_DIR/$relative_path")" ||
+    fail "couldn't read the entitlements of $relative_path"
+  [ -z "$keys" ] || fail "unexpected entitlements on $relative_path"
 done <<< "$NESTED_CODE"
 
 verify_signature "$APP_DIR"

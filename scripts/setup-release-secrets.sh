@@ -10,7 +10,7 @@ REPO="ottamdev/ottam"
 UPDATES_REPO="ottamdev/updates"
 ENVIRONMENT="release"
 SPARKLE_ACCOUNT="ottam"
-SPARKLE_BIN="$ROOT_DIR/.build/swift/artifacts/sparkle/Sparkle/bin"
+SPARKLE_BIN=""
 DEPLOY_KEY_TITLE="ottam release workflow"
 P12=""
 API_KEY=""
@@ -56,7 +56,16 @@ fail() {
 [ -n "$P12" ] && [ -n "$API_KEY" ] && [ -n "$KEY_ID" ] && [ -n "$ISSUER" ] || { usage >&2; exit 64; }
 [ -f "$P12" ] || fail "no such file: $P12"
 [ -f "$API_KEY" ] || fail "no such file: $API_KEY"
-[ -x "$SPARKLE_BIN/generate_keys" ] || fail "Sparkle tools missing; run a swift build first"
+# Any build fetches Sparkle's tools: release builds into swift-release, the
+# others into swift.
+for build_dir in swift-release swift; do
+  candidate="$ROOT_DIR/.build/$build_dir/artifacts/sparkle/Sparkle/bin"
+  if [ -x "$candidate/generate_keys" ]; then
+    SPARKLE_BIN="$candidate"
+    break
+  fi
+done
+[ -n "$SPARKLE_BIN" ] || fail "Sparkle tools missing; build the app first"
 gh auth status >/dev/null 2>&1 || fail "gh is not signed in"
 
 WORK="$(mktemp -d)"
@@ -110,15 +119,17 @@ keychain_public="$("$SPARKLE_BIN/generate_keys" --account "$SPARKLE_ACCOUNT" -p)
 set_secret SPARKLE_ED_PRIVATE_KEY < "$WORK/sparkle"
 
 echo "Feed deploy key on $UPDATES_REPO"
-gh repo deploy-key list --repo "$UPDATES_REPO" --json id,title \
-  -q ".[] | select(.title == \"$DEPLOY_KEY_TITLE\") | .id" |
-  while read -r old_id; do
-    gh repo deploy-key delete "$old_id" --repo "$UPDATES_REPO" >/dev/null
-    echo "  removed the previous key"
-  done
+# The new key is added and stored before the old one is revoked, so a failure
+# never leaves the secret holding a key GitHub no longer accepts.
+old_key_ids="$(gh repo deploy-key list --repo "$UPDATES_REPO" --json id,title \
+  -q ".[] | select(.title == \"$DEPLOY_KEY_TITLE\") | .id")"
 ssh-keygen -q -t ed25519 -N "" -C "$DEPLOY_KEY_TITLE" -f "$WORK/deploy"
 gh repo deploy-key add "$WORK/deploy.pub" --repo "$UPDATES_REPO" --allow-write --title "$DEPLOY_KEY_TITLE" >/dev/null
 set_secret UPDATES_DEPLOY_KEY < "$WORK/deploy"
+for old_id in $old_key_ids; do
+  gh repo deploy-key delete "$old_id" --repo "$UPDATES_REPO" >/dev/null
+  echo "  revoked the previous key"
+done
 
 echo "Done. Secrets in '$ENVIRONMENT':"
 gh secret list --repo "$REPO" --env "$ENVIRONMENT"

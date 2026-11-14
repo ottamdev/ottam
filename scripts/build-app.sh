@@ -219,15 +219,25 @@ cp "$CORE_EXECUTABLE" "$MACOS_DIR/ottam-core"
 ditto "$SPARKLE_FRAMEWORK" "$CONTENTS_DIR/Frameworks/Sparkle.framework"
 # SwiftPM also links absolute build-directory rpaths; the bundle resolves
 # Sparkle only through @executable_path/../Frameworks.
+# otool prints "path <rpath> (offset N)"; the rpath itself may contain spaces.
 absolute_rpaths="$(
   otool -l "$MACOS_DIR/$EXECUTABLE_NAME" |
-    awk '$1 == "cmd" && $2 == "LC_RPATH" { getline; getline; print $2 }' |
+    awk '$1 == "cmd" && $2 == "LC_RPATH" {
+      getline; getline
+      sub(/^[[:space:]]*path[[:space:]]+/, ""); sub(/[[:space:]]+\(offset [0-9]+\)$/, "")
+      print
+    }' |
     grep '^/' || true
 )"
-while read -r rpath; do
+while IFS= read -r rpath; do
   [ -n "$rpath" ] || continue
-  # It warns that the edit invalidates the linker signature; signing follows.
-  install_name_tool -delete_rpath "$rpath" "$MACOS_DIR/$EXECUTABLE_NAME" 2>/dev/null
+  # Success only warns that the edit invalidates the linker signature, which
+  # signing replaces; a failure prints everything.
+  rpath_output="$(install_name_tool -delete_rpath "$rpath" "$MACOS_DIR/$EXECUTABLE_NAME" 2>&1)" || {
+    echo "$rpath_output" >&2
+    echo "Couldn't remove the build rpath $rpath from $EXECUTABLE_NAME." >&2
+    exit 1
+  }
 done <<< "$absolute_rpaths"
 cp "$APP_PACKAGE_DIR/Resources/Info.plist" "$CONTENTS_DIR/Info.plist"
 plutil -replace CFBundleIdentifier -string "$BUNDLE_IDENTIFIER" "$CONTENTS_DIR/Info.plist"

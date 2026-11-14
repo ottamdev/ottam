@@ -31,7 +31,6 @@ jobs:
     environment: release
     env:
       FEED: ${{ inputs.feed }}
-      TEST_FEED_URL: https://updates.ottam.dev/test/appcast.xml
     steps:
       - name: Require a release tag
         if: github.ref_type != 'tag'
@@ -105,7 +104,8 @@ jobs:
           OTTAM_NOTARY_KEYCHAIN: ${{ env.RELEASE_KEYCHAIN }}
         run: |
           if [ "$FEED" = test ]; then
-            ./scripts/release-app.sh --feed-url "$TEST_FEED_URL"
+            source scripts/lib/release-feed.sh
+            ./scripts/release-app.sh --feed-url "$RELEASE_TEST_FEED_URL"
           else
             ./scripts/release-app.sh
           fi
