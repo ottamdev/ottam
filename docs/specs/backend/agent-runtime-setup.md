@@ -11,11 +11,11 @@ developer-provided Node installation.
 ## Current Status
 
 Runtime discovery, managed Node, pinned adapter installs, sign-in, and the
-first-run setup sheet ship; the contract is
+onboarding window ship; the contract is
 [ACP › Runtime Resolution And Installation](../../architecture/backend/acp.md#runtime-resolution-and-installation)
 and [§ Managed Adapter Lifecycle And Setup UI](../../architecture/backend/acp.md#managed-adapter-lifecycle-and-setup-ui).
-This spec owns the acceptance runs, none of which has happened on a fresh
-machine or against live providers.
+This spec owns the remaining acceptance: the first-install environment
+record, live-provider lifecycle, and failure recovery.
 
 Known gap: **Get** in Settings › Agents is enabled for an uninstalled
 Node-launched adapter whatever Node's state; core then fails the install
@@ -24,11 +24,13 @@ as item 4 in [agent onboarding](../app/agent-onboarding.md#next).
 
 ## Remaining Acceptance
 
-- [ ] **First install without developer runtimes.** Launch a packaged app from
+- [~] **First install without developer runtimes.** Launch a packaged app from
   Finder in a clean macOS user with no Node, version managers or Ottam state.
   Install managed Node and one pinned adapter, sign in, complete a prompt.
   Record architecture, OS, app build, resolved runtime/adapter versions,
-  Git/Command Line Tools availability, screenshots and AX.
+  Git/Command Line Tools availability, screenshots and AX. Left: the
+  environment record (OS build, resolved Node and adapter versions,
+  Git/Command Line Tools, AX).
 - [ ] **Real-provider lifecycle.** For each built-in pin: signed-out and
   expired-auth states, sign-in dismissal/reopen, cancellation, restart,
   reinstall, both removal choices, and cold-launch readiness after reopen. Use
