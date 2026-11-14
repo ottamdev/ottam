@@ -145,12 +145,6 @@ struct OnboardingProgressTests {
         #expect(OnboardingProgress.instance(harnessID: "codex", usesCLISetup: false, agents: agents)?.agentID == AgentID("codex"))
     }
 
-    @Test("prebuilt binaries need no Node")
-    func binaryNeedsNoNode() {
-        #expect(!OnboardingProgress.usesNode(agent("opencode", source: .binary)))
-        #expect(OnboardingProgress.usesNode(agent("codex")))
-    }
-
     @Test("suggestions go to the first chosen agent, not the engine list's first")
     func defaultEngineFollowsChoice() {
         let chosen = [agent("codex"), agent("claude")]

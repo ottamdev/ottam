@@ -230,6 +230,10 @@ public enum AccessibilityID {
 
     /// Matches the native SwiftUI scene identifier exposed on the AXWindow.
     public static let settingsWindow = "settings"
+    /// An agent page's adapter button: Get, Try Again, Update Now or Retry.
+    public static let settingsAgentAdapterAction = "settings.agents.adapterAction"
+    /// Reinstall, beside an installed adapter's status.
+    public static let settingsAgentReinstall = "settings.agents.reinstall"
     /// DEBUG-only markdown engine lab window (parity gallery + the cards spike).
     public static let markdownEngineLab = "markdown-engine-lab"
     /// Lab Cards tab: the label that reports the last hosted-card decision.
@@ -316,6 +320,8 @@ public enum AccessibilityID {
         sidebarHistorySection,
         chatWorkingRootMenu,
         settingsWindow,
+        settingsAgentAdapterAction,
+        settingsAgentReinstall,
         markdownEngineLab,
         markdownEngineLabCardResolved,
         coreRecoverySheet,

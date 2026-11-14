@@ -30,7 +30,7 @@ public extension UIScenarioDefinition {
             fixtureRequirements: [.deterministicProject]
         )
     ) { context in
-        let action = context.element(id: "settings.agents.adapterAction")
+        let action = context.element(id: AccessibilityID.settingsAgentAdapterAction)
         let setUpAgents = context.element(id: AccessibilityID.chatSetUpAgents)
         try await context.waitFor(.exists(setUpAgents), timeout: 30)
         try await context.press(setUpAgents)

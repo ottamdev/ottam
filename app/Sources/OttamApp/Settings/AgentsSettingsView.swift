@@ -1,4 +1,5 @@
 import AppKit
+import OttamAccessibility
 import OttamBackendClient
 import OttamPresentationLogic
 import OttamWorkspaceLogic
@@ -497,7 +498,7 @@ struct AgentSettingsDetail: View {
                                             adapterInstall.install(agentID: adapterID)
                                         }
                                         .disabled(!adapterPresentation.isActionEnabled)
-                                        .accessibilityIdentifier("settings.agents.adapterAction")
+                                        .accessibilityIdentifier(AccessibilityID.settingsAgentAdapterAction)
                                     } else if let statusText = adapterPresentation.statusText {
                                         Text(statusText)
                                             .foregroundStyle(.secondary)
@@ -508,7 +509,8 @@ struct AgentSettingsDetail: View {
                                         Button("Reinstall") {
                                             adapterInstall.install(agentID: adapterID)
                                         }
-                                        .disabled(isRemoving || presentation.adapterRuntimeProblem != nil)
+                                        .disabled(isRemoving || !adapterPresentation.isReinstallEnabled)
+                                        .accessibilityIdentifier(AccessibilityID.settingsAgentReinstall)
                                     }
                                 }
                                 .accessibilityElement(children: .contain)

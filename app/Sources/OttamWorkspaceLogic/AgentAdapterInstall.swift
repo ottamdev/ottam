@@ -32,16 +32,19 @@ public struct AgentAdapterInstall: Equatable, Sendable {
 /// steady state `agent.list` reports.
 public struct AgentAdapterInstallPresentation: Equatable, Sendable {
     /// The button, when there is something to press.
-    public let actionTitle: String?
-    public let isActionEnabled: Bool
+    public private(set) var actionTitle: String?
+    public private(set) var isActionEnabled: Bool
     /// The plain status when no action applies (already installed).
-    public let statusText: String?
+    public private(set) var statusText: String?
+    /// Reinstall sits beside the status: the same `agent.install`, so it
+    /// waits for Node like every other action.
+    public private(set) var isReinstallEnabled = false
     /// A footer line, only when the title cannot carry the news — today that
     /// is the failure explanation.
-    public let detail: String?
-    /// Why the action is disabled when Node is the blocker. A plain
+    public private(set) var detail: String?
+    /// Why the actions are disabled when Node is the blocker. A plain
     /// requirement, not a failure, so it reads as secondary text.
-    public let requirement: String?
+    public private(set) var requirement: String?
 
     /// - Parameters:
     ///   - installedVersion: The version launching now, from `agent.list`.
@@ -60,21 +63,18 @@ public struct AgentAdapterInstallPresentation: Equatable, Sendable {
         update: AgentUpdateStatus? = nil,
         runtimeProblem: EngineRuntimeProblem? = nil
     ) {
-        let unblocked = Self(
+        self.init(
             ignoringRuntime: installState,
             install: install,
             installedVersion: installedVersion,
             update: update
         )
-        guard runtimeProblem != nil, unblocked.isActionEnabled else {
-            self = unblocked
-            return
-        }
+        isReinstallEnabled = actionTitle == nil && statusText != nil
+        guard runtimeProblem != nil, isActionEnabled || isReinstallEnabled else { return }
         // A failure here is most likely core's own Node refusal, so the
         // requirement replaces it rather than repeating it in orange.
-        actionTitle = unblocked.actionTitle
         isActionEnabled = false
-        statusText = unblocked.statusText
+        isReinstallEnabled = false
         detail = nil
         requirement = Self.nodeRequirement
     }
@@ -91,7 +91,6 @@ public struct AgentAdapterInstallPresentation: Equatable, Sendable {
             self = Self(update: update, installedVersion: installedVersion, install: install)
             return
         }
-        requirement = nil
         // The live flow wins over the possibly stale list snapshot.
         switch install.phase {
         case .starting:
@@ -209,6 +208,5 @@ public struct AgentAdapterInstallPresentation: Equatable, Sendable {
         isActionEnabled = enabled
         statusText = status
         self.detail = detail
-        requirement = nil
     }
 }
