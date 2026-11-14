@@ -308,3 +308,194 @@ fn payload_full_replacement_with_held_reader_fits_maintenance_reserve() {
         std::fs::write(report,serde_json::json!({"before_bytes":before,"held_reader_peak_bytes":peak.load(Ordering::Relaxed),"growth_bytes":growth,"reserve_bytes":quota::MAINTENANCE_RESERVE}).to_string()).unwrap();
     }
 }
+
+/// The payload migrations a later binary embeds: the shipped set plus one.
+struct NextPayloadSchema;
+struct UpgradeProbe;
+
+impl std::fmt::Display for UpgradeProbe {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("00000000000002_upgrade_probe")
+    }
+}
+impl diesel::migration::MigrationName for UpgradeProbe {
+    fn version(&self) -> diesel::migration::MigrationVersion<'_> {
+        "00000000000002".into()
+    }
+}
+impl diesel::migration::MigrationMetadata for UpgradeProbe {}
+impl diesel::migration::Migration<diesel::sqlite::Sqlite> for UpgradeProbe {
+    fn run(
+        &self,
+        connection: &mut dyn diesel::connection::BoxableConnection<diesel::sqlite::Sqlite>,
+    ) -> diesel::migration::Result<()> {
+        connection.batch_execute("CREATE TABLE upgrade_probe (id INTEGER PRIMARY KEY);")?;
+        Ok(())
+    }
+    fn revert(
+        &self,
+        connection: &mut dyn diesel::connection::BoxableConnection<diesel::sqlite::Sqlite>,
+    ) -> diesel::migration::Result<()> {
+        connection.batch_execute("DROP TABLE upgrade_probe;")?;
+        Ok(())
+    }
+    fn metadata(&self) -> &dyn diesel::migration::MigrationMetadata {
+        self
+    }
+    fn name(&self) -> &dyn diesel::migration::MigrationName {
+        self
+    }
+}
+impl diesel::migration::MigrationSource<diesel::sqlite::Sqlite> for NextPayloadSchema {
+    fn migrations(
+        &self,
+    ) -> diesel::migration::Result<Vec<Box<dyn diesel::migration::Migration<diesel::sqlite::Sqlite>>>>
+    {
+        let mut migrations =
+            diesel::migration::MigrationSource::<diesel::sqlite::Sqlite>::migrations(&MIGRATIONS)?;
+        migrations.push(Box::new(UpgradeProbe));
+        Ok(migrations)
+    }
+}
+
+fn connect(path: &std::path::Path) -> SqliteConnection {
+    let mut connection = SqliteConnection::establish(path.to_str().unwrap()).unwrap();
+    connection
+        .batch_execute("PRAGMA busy_timeout=5000;")
+        .unwrap();
+    connection
+}
+
+fn applied_versions(connection: &mut SqliteConnection) -> Vec<String> {
+    diesel::sql_query("SELECT version AS value FROM __diesel_schema_migrations ORDER BY version")
+        .load::<Json>(connection)
+        .unwrap()
+        .into_iter()
+        .map(|row| row.value)
+        .collect()
+}
+
+fn verified_backups(home: &std::path::Path) -> Vec<PathBuf> {
+    let Ok(entries) = std::fs::read_dir(home.join("backups")) else {
+        return Vec::new();
+    };
+    entries
+        .map(|entry| entry.unwrap().path())
+        .filter(|path| path.join("verified").is_file())
+        .collect()
+}
+
+#[test]
+fn payload_schema_newer_than_the_binary_is_refused_before_either_database_migrates() {
+    let (home, _, _) = stored_payload();
+    connect(&home.path().join("payloads.sqlite"))
+        .batch_execute(
+            "INSERT INTO __diesel_schema_migrations (version) VALUES ('99999999999999');",
+        )
+        .unwrap();
+    // Main is pending too, so a payload check that ran late would migrate or
+    // back up main before refusing.
+    connect(&home.path().join("ottam.sqlite"))
+        .batch_execute("DELETE FROM __diesel_schema_migrations;")
+        .unwrap();
+
+    let error = crate::storage::Database::open(home.path().to_owned())
+        .err()
+        .expect("a newer payload schema must refuse startup");
+    assert_eq!(error.kind, "storageMigrationFailed");
+    assert_eq!(error.message, crate::storage::database::NEWER_PAYLOAD);
+
+    let error = Repository::open(home.path())
+        .err()
+        .expect("a newer payload schema must refuse the writer");
+    let error = error
+        .downcast_ref::<crate::storage::StorageError>()
+        .expect("the writer's refusal stays typed");
+    assert_eq!(error.kind, "storageMigrationFailed");
+
+    assert!(verified_backups(home.path()).is_empty());
+    assert!(applied_versions(&mut connect(&home.path().join("ottam.sqlite"))).is_empty());
+    assert_eq!(
+        applied_versions(&mut connect(&home.path().join("payloads.sqlite"))),
+        ["00000000000001", "99999999999999"]
+    );
+}
+
+#[test]
+fn payload_upgrade_backs_up_the_pair_and_the_restored_pair_keeps_committed_history() {
+    let (home, key, bytes) = stored_payload();
+    drop(crate::storage::Database::open(home.path().to_owned()).unwrap());
+    // Bootstrap holds the Core ownership lock while it backs up.
+    let lock = std::fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .open(home.path().join("core.lock"))
+        .unwrap();
+    fs2::FileExt::lock_exclusive(&lock).unwrap();
+    let mut main = connect(&home.path().join("ottam.sqlite"));
+    main.batch_execute(
+        "PRAGMA journal_mode=WAL; UPDATE conversations SET title = 'Committed before upgrade';",
+    )
+    .unwrap();
+    assert!(home.path().join("ottam.sqlite-wal").is_file());
+
+    crate::storage::database::prepare_upgrade(home.path(), &mut main, &NextPayloadSchema).unwrap();
+    let backups = verified_backups(home.path());
+    assert_eq!(backups.len(), 1);
+    assert_eq!(
+        std::fs::read_to_string(backups[0].join("verified")).unwrap(),
+        "ottam.sqlite\npayloads.sqlite\n"
+    );
+    backup::verify_snapshot(&backups[0]).unwrap();
+    // Main had nothing pending, so no main-only snapshot either.
+    assert!(!std::fs::read_dir(home.path()).unwrap().any(|entry| entry
+        .unwrap()
+        .file_name()
+        .to_string_lossy()
+        .starts_with("ottam-before-")));
+
+    let mut upgraded = Repository::open_with(home.path(), NextPayloadSchema).unwrap();
+    assert_eq!(
+        applied_versions(&mut upgraded.connection),
+        ["00000000000001", "00000000000002"]
+    );
+    drop(upgraded);
+    crate::storage::database::prepare_upgrade(home.path(), &mut main, &NextPayloadSchema).unwrap();
+    assert_eq!(
+        verified_backups(home.path()).len(),
+        1,
+        "nothing pending, no new backup"
+    );
+    drop(main);
+    drop(lock);
+
+    // No automatic downgrade: the shipped binary refuses the upgraded pair.
+    let error = crate::storage::Database::open(home.path().to_owned())
+        .err()
+        .expect("the shipped binary must refuse the upgraded payload schema");
+    assert_eq!(error.kind, "storageMigrationFailed");
+
+    let restored = tempfile::tempdir().unwrap();
+    for name in ["ottam.sqlite", "payloads.sqlite"] {
+        std::fs::copy(backups[0].join(name), restored.path().join(name)).unwrap();
+    }
+    let _restored_database = crate::storage::Database::open(restored.path().to_owned()).unwrap();
+    assert_eq!(
+        diesel::sql_query("SELECT title AS value FROM conversations")
+            .get_result::<Json>(&mut connect(&restored.path().join("ottam.sqlite")))
+            .unwrap()
+            .value,
+        "Committed before upgrade"
+    );
+    assert_eq!(
+        applied_versions(&mut connect(&restored.path().join("payloads.sqlite"))),
+        ["00000000000001"]
+    );
+    assert_eq!(
+        Reader::open(restored.path())
+            .unwrap()
+            .read_sealed(&key, 0, bytes.len() as u64, 0, PAGE)
+            .unwrap(),
+        bytes[..PAGE]
+    );
+}

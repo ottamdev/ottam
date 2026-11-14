@@ -107,7 +107,8 @@ impl Reader {
     }
 }
 
-const MIGRATIONS: EmbeddedMigrations = embed_migrations!("src/storage/payload/migrations");
+pub(in crate::storage) const MIGRATIONS: EmbeddedMigrations =
+    embed_migrations!("src/storage/payload/migrations");
 pub(crate) type Error = Box<dyn std::error::Error + Send + Sync>;
 pub(crate) type Result<T> = std::result::Result<T, Error>;
 fn invalid(message: &str) -> Error {
@@ -173,11 +174,25 @@ impl Repository {
     }
 
     fn open(home: &std::path::Path) -> Result<Self> {
+        Self::open_with(home, MIGRATIONS)
+    }
+
+    /// `Database::open` refuses a newer payload schema before either database
+    /// migrates; this repeats the refusal for every later writer open.
+    fn open_with<S: diesel::migration::MigrationSource<diesel::sqlite::Sqlite>>(
+        home: &std::path::Path,
+        migrations: S,
+    ) -> Result<Self> {
         let path = home.join("payloads.sqlite");
         let mut connection =
             SqliteConnection::establish(path.to_str().ok_or_else(|| invalid("path"))?)?;
         Self::configure_writer(&mut connection)?;
-        connection.run_pending_migrations(MIGRATIONS)?;
+        super::database::check_migrations(
+            &mut connection,
+            &migrations,
+            super::database::NEWER_PAYLOAD,
+        )?;
+        connection.run_pending_migrations(migrations)?;
         Ok(Self {
             accounting: cache::accounting(home, &mut connection)?,
             connection,

@@ -451,7 +451,8 @@ struct AgentSettingsDetail: View {
                     installState: presentation.installState,
                     install: adapterInstall.state(for: adapterID),
                     installedVersion: agent.adapterPackage?.installedVersion,
-                    update: agent.adapterPackage?.update
+                    update: agent.adapterPackage?.update,
+                    runtimeProblem: presentation.adapterRuntimeProblem
                 )
                 Section {
                     switch presentation.package {
@@ -496,6 +497,7 @@ struct AgentSettingsDetail: View {
                                             adapterInstall.install(agentID: adapterID)
                                         }
                                         .disabled(!adapterPresentation.isActionEnabled)
+                                        .accessibilityIdentifier("settings.agents.adapterAction")
                                     } else if let statusText = adapterPresentation.statusText {
                                         Text(statusText)
                                             .foregroundStyle(.secondary)
@@ -506,7 +508,7 @@ struct AgentSettingsDetail: View {
                                         Button("Reinstall") {
                                             adapterInstall.install(agentID: adapterID)
                                         }
-                                        .disabled(isRemoving)
+                                        .disabled(isRemoving || presentation.adapterRuntimeProblem != nil)
                                     }
                                 }
                                 .accessibilityElement(children: .contain)
@@ -548,6 +550,8 @@ struct AgentSettingsDetail: View {
                     if let detail = adapterPresentation.detail {
                         Text(detail)
                             .foregroundStyle(.orange)
+                    } else if let requirement = adapterPresentation.requirement {
+                        Text(requirement)
                     }
                 }
 

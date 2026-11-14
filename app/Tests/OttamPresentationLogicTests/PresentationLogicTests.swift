@@ -696,3 +696,40 @@ struct AgentCompatibilityPresentationTests {
         #expect(row?.agentDetail?.contains("not been started") == true)
     }
 }
+
+/// Which agents' installs wait for Node: npm adapters do, prebuilt binaries
+/// (OpenCode, Oh-My-Pi) never do.
+@Suite("AgentAdapterInstall · Node-launched agents only")
+struct AgentAdapterInstallRuntimeScopeTests {
+    @Test func anNpmAdapterWaitsForAMissingNode() {
+        let codex = agent(
+            id: "codex",
+            runtime: .missing,
+            adapterPackage: AgentAdapterPackage(
+                name: "@zed-industries/codex-acp",
+                version: "1.0.0",
+                source: .npm,
+                installState: .notInstalled
+            )
+        )
+        #expect(AgentSettingsPresentation(agent: codex).adapterRuntimeProblem == .missing(component: "node"))
+    }
+
+    @Test func aPrebuiltBinaryNeverWaits() {
+        let opencode = agent(
+            id: "opencode",
+            runtime: .missing,
+            adapterPackage: AgentAdapterPackage(
+                name: "opencode",
+                version: "1.0.0",
+                source: .binary,
+                installState: .notInstalled
+            )
+        )
+        #expect(AgentSettingsPresentation(agent: opencode).adapterRuntimeProblem == nil)
+    }
+
+    @Test func aReadyRuntimeNeverWaits() {
+        #expect(AgentSettingsPresentation(agent: agent(runtime: .ready)).adapterRuntimeProblem == nil)
+    }
+}

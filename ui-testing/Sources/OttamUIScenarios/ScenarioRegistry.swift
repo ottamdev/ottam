@@ -26,6 +26,7 @@ public enum ScenarioRegistry {
             .chatEngineChecking,
             .settingsAgentCompatibility,
             .settingsAgentUpdate,
+            .settingsAgentInstallNeedsNode,
             .settingsExistingSetups,
             .settingsProfiles,
             .settingsProfileDeleteProbe,

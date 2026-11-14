@@ -159,3 +159,85 @@ struct AgentAdapterUpdatePresentationTests {
         #expect(presentation(state: .updating, phase: .ready).statusText == "Installed")
     }
 }
+
+/// Core refuses every npm install without a working Node, so each action that
+/// would start one waits for it, with a requirement instead of a failure.
+@Suite("AgentAdapterInstallPresentation · runtime not ready")
+struct AgentAdapterInstallRuntimeGateTests {
+    private let missingNode = EngineRuntimeProblem.missing(component: "node")
+
+    private func presentation(
+        installState: AgentAdapterInstallState?,
+        phase: AgentInstallPhase? = nil,
+        error: String? = nil,
+        update: AgentUpdateStatus? = nil,
+        runtimeProblem: EngineRuntimeProblem?
+    ) -> AgentAdapterInstallPresentation {
+        AgentAdapterInstallPresentation(
+            installState: installState,
+            install: AgentAdapterInstall(phase: phase, error: error),
+            installedVersion: update == nil ? nil : "0.85.1",
+            update: update,
+            runtimeProblem: runtimeProblem
+        )
+    }
+
+    @Test func getWaitsForNodeAndSaysWhere() {
+        let presented = presentation(installState: .notInstalled, runtimeProblem: missingNode)
+        #expect(presented.actionTitle == "Get")
+        #expect(!presented.isActionEnabled)
+        #expect(presented.detail == nil)
+        #expect(presented.requirement == AgentAdapterInstallPresentation.nodeRequirement)
+    }
+
+    @Test func everyRuntimeProblemBlocks() {
+        for problem: EngineRuntimeProblem in [
+            .missing(component: "npx"),
+            .invalid(component: "node"),
+            .unsupported(found: 18, minimum: 22),
+        ] {
+            #expect(!presentation(installState: .notInstalled, runtimeProblem: problem).isActionEnabled)
+        }
+    }
+
+    @Test func aReadyRuntimeLeavesGetAlone() {
+        let presented = presentation(installState: .notInstalled, runtimeProblem: nil)
+        #expect(presented.isActionEnabled)
+        #expect(presented.requirement == nil)
+    }
+
+    @Test func aFailureWaitsForNodeInsteadOfRepeatingCoresRefusal() {
+        let presented = presentation(
+            installState: .notInstalled,
+            phase: .failed,
+            error: "a working Node runtime is required to install the adapter",
+            runtimeProblem: missingNode
+        )
+        #expect(presented.actionTitle == "Try Again")
+        #expect(!presented.isActionEnabled)
+        #expect(presented.detail == nil)
+        #expect(presented.requirement != nil)
+    }
+
+    @Test func aPendingUpdateWaitsForNode() {
+        let presented = presentation(
+            installState: .installed,
+            update: AgentUpdateStatus(version: "0.95.0", state: .pending, error: nil),
+            runtimeProblem: missingNode
+        )
+        #expect(presented.actionTitle == "Update Now")
+        #expect(!presented.isActionEnabled)
+        #expect(presented.requirement != nil)
+    }
+
+    @Test func inFlightAndInstalledStatesAreUnchanged() {
+        for phase: AgentInstallPhase in [.starting, .installing, .verifying] {
+            let presented = presentation(installState: .notInstalled, phase: phase, runtimeProblem: missingNode)
+            #expect(presented == presentation(installState: .notInstalled, phase: phase, runtimeProblem: nil))
+            #expect(presented.requirement == nil)
+        }
+        let installed = presentation(installState: .installed, runtimeProblem: missingNode)
+        #expect(installed.statusText == "Installed")
+        #expect(installed.requirement == nil)
+    }
+}

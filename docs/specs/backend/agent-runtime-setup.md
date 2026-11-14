@@ -17,11 +17,6 @@ and [§ Managed Adapter Lifecycle And Setup UI](../../architecture/backend/acp.m
 This spec owns the remaining acceptance: the first-install environment
 record, live-provider lifecycle, and failure recovery.
 
-Known gap: **Get** in Settings › Agents is enabled for an uninstalled
-Node-launched adapter whatever Node's state; core then fails the install
-with "a working Node runtime is required to install the adapter". Tracked
-as item 4 in [agent onboarding](../app/agent-onboarding.md#next).
-
 ## Remaining Acceptance
 
 - [~] **First install without developer runtimes.** Launch a packaged app from

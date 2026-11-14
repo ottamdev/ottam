@@ -12,7 +12,7 @@ current.
 
 ## Release
 
-- [Open Source Release Readiness](operations/open-source-release.md) — active — Next: first-run sequencing, payload database upgrade protections, distribution
+- [Open Source Release Readiness](operations/open-source-release.md) — active — Next: distribution
 - [App Update And Distribution](app/distribution.md) — active — Milestone 2: back up the Sparkle key, then the update walkthrough
 
 ## Agents (ACP)
@@ -34,14 +34,14 @@ current.
 
 - [Agent Runtime And Setup Acceptance](backend/agent-runtime-setup.md) — active — record the first-install environment, then real-provider lifecycle
 - [Permission Changes In Existing Conversations](backend/live-session-configuration.md) — active — probe a generating turn and a pending permission, then two-client ordering
-- [SQLite Payload Storage](backend/sqlite-payload-storage.md) — active — pick A or B on the incompressible-write tradeoff, then guard payload database upgrades
+- [SQLite Payload Storage](backend/sqlite-payload-storage.md) — active — pick A or B on the incompressible-write tradeoff, then consolidate migration backups
 - [Tool Permissions](backend/tool-permissions.md) — active — finish the P1 walkthrough on oh-my-pi
 - [Local Transcript Capture And Persistence](backend/adapter-history-enrichment.md) — deferred — waits on an adapter reasoning-lifecycle signal
 - [Engine-Switch Handoff](backend/engine-switch-handoff.md) — deferred — catch up missed turns after A → B → A
 
 ## App
 
-- [Agent Onboarding](app/agent-onboarding.md) — active — real-window acceptance for items 5–8, then gate Get on Node readiness (item 4)
+- [Agent Onboarding](app/agent-onboarding.md) — active — real-window acceptance for items 5–8
 - [AppKit Workspace Shell](app/workspace-shell.md) — active — open spikes S2, S3, S6, S7 and the Add Tool flicker
 - [Plan Review](app/chat/plan-review.md) — active — M-c, Claude `planFile`
 - [Quote Reply](app/chat/quote-reply.md) — active — M2 in the Plan tab once its Try it is approved

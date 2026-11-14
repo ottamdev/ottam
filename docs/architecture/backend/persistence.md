@@ -71,6 +71,12 @@ Every foreign key declares `ON DELETE` per
 - The former storage-generation check (a marker that forced a development
   home reset on schema change) was removed on purpose; append-only
   migrations with upgrade tests replace it. Do not reintroduce it.
+- `ottam.sqlite` and `payloads.sqlite` upgrade as a pair: startup refuses
+  either one when it records a migration newer than the binary
+  (`storageMigrationFailed`, never a downgrade), checks both before either
+  migrates, and takes one verified coordinated backup before any pending
+  migration on an existing schema (`prepare_upgrade` in
+  `storage/database.rs`).
 - A failed migration or corrupt database refuses database-backed methods
   with a typed startup error (never SQL values or user content) and is never
   silently replaced; reset is a user action and restore is manual.
