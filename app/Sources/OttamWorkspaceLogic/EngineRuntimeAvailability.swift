@@ -27,6 +27,14 @@ public enum EngineRuntimeProblem: Equatable, Sendable {
         self.init(runtime: agent.runtime)
     }
 
+    /// The problem holding back installing the agent's adapter. Core refuses
+    /// an npm install without a ready Node; a prebuilt binary installs and
+    /// runs without one, so it never waits.
+    public init?(adapterOf agent: AgentSummary) {
+        guard agent.adapterPackage?.source != .binary else { return nil }
+        self.init(agent: agent)
+    }
+
     public init?(runtime: AgentRuntimeStatus) {
         switch runtime.availability {
         case .ready, .checking:

@@ -395,7 +395,7 @@ private struct OnboardingInstallRow: View {
             } else if install.phase == .failed || install.phase == .cancelled {
                 Button("Retry") { model.retry(harnessID) }
                 Button("Remove") { model.remove(harnessID) }
-            } else if let agent, OnboardingProgress.usesNode(agent), EngineRuntimeProblem(agent: agent) != nil {
+            } else if let agent, EngineRuntimeProblem(adapterOf: agent) != nil {
                 Text("Waiting for Node.js").foregroundStyle(.secondary)
             } else {
                 ProgressView().controlSize(.small)

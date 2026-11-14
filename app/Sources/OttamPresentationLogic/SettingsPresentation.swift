@@ -99,11 +99,9 @@ public struct AgentSettingsPresentation: Equatable, Sendable {
     public let installState: AgentAdapterInstallState?
     public let nodeVersion: String?
     public let runtimeProblem: EngineRuntimeProblem?
-    /// The Node problem that holds back installing the adapter. A prebuilt
-    /// binary installs without Node, so it never has one.
-    public var adapterRuntimeProblem: EngineRuntimeProblem? {
-        package.needsNode ? runtimeProblem : nil
-    }
+    /// The Node problem that holds back installing the adapter; never one for
+    /// a prebuilt binary.
+    public let adapterRuntimeProblem: EngineRuntimeProblem?
     public let accountFootnote: String?
     public let homeFootnote: String
     /// The terminal sign-in Set Up Providers runs; nil hides the button.
@@ -134,6 +132,7 @@ public struct AgentSettingsPresentation: Equatable, Sendable {
             installState = nil
         }
         nodeVersion = agent.runtime.nodeVersion
+        adapterRuntimeProblem = EngineRuntimeProblem(adapterOf: agent)
         if case .runtimeProblem(let problem) = status {
             runtimeProblem = problem
         } else {

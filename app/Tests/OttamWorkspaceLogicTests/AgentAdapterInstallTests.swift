@@ -230,14 +230,30 @@ struct AgentAdapterInstallRuntimeGateTests {
         #expect(presented.requirement != nil)
     }
 
-    @Test func inFlightAndInstalledStatesAreUnchanged() {
+    @Test func inFlightStatesAreUnchanged() {
         for phase: AgentInstallPhase in [.starting, .installing, .verifying] {
             let presented = presentation(installState: .notInstalled, phase: phase, runtimeProblem: missingNode)
             #expect(presented == presentation(installState: .notInstalled, phase: phase, runtimeProblem: nil))
             #expect(presented.requirement == nil)
+            #expect(!presented.isReinstallEnabled)
         }
+    }
+
+    @Test func reinstallWaitsForNodeAndSaysWhere() {
         let installed = presentation(installState: .installed, runtimeProblem: missingNode)
         #expect(installed.statusText == "Installed")
-        #expect(installed.requirement == nil)
+        #expect(!installed.isReinstallEnabled)
+        #expect(installed.requirement == AgentAdapterInstallPresentation.nodeRequirement)
+
+        let justInstalled = presentation(installState: .notInstalled, phase: .ready, runtimeProblem: missingNode)
+        #expect(!justInstalled.isReinstallEnabled)
+        #expect(justInstalled.requirement != nil)
+    }
+
+    @Test func reinstallIsOfferedOnlyBesideAnInstalledStatus() {
+        #expect(presentation(installState: .installed, runtimeProblem: nil).isReinstallEnabled)
+        #expect(presentation(installState: .installed, runtimeProblem: nil).requirement == nil)
+        #expect(!presentation(installState: .notInstalled, runtimeProblem: nil).isReinstallEnabled)
+        #expect(!presentation(installState: nil, runtimeProblem: nil).isReinstallEnabled)
     }
 }
