@@ -161,6 +161,13 @@ publish() {
       --updates-checkout "$test_root/updates" "$@")
 }
 
+# As the workflow runs it, before the build: no key file and no Sparkle tools.
+preflight() {
+  (cd "$source_repo" && PATH="$stubs:$PATH" OTTAM_SPARKLE_BIN="$test_root/no-sparkle" \
+    /bin/bash scripts/publish-release.sh --preflight \
+      --updates-checkout "$test_root/updates" "$@")
+}
+
 # --- refusals before anything is published
 
 fresh_updates
@@ -202,7 +209,7 @@ rm "$public/release-v26.11.901"
 
 mv "$source_repo/.build/release/Ottam-26.11.901.zip" "$test_root/held.zip"
 expect_status 0 "Preflight passed: v26.11.901 can publish to the test feed" \
-  publish --preflight --version 26.11.901 --feed test
+  preflight --version 26.11.901 --feed test
 mv "$test_root/held.zip" "$source_repo/.build/release/Ottam-26.11.901.zip"
 
 # --- a test-feed release publishes a pre-release, then the feed
@@ -219,7 +226,7 @@ fi
 
 fresh_updates
 expect_status 65 "26.11.901 is not newer than 26.11.901 in the test feed" \
-  publish --preflight --version 26.11.901 --feed test
+  preflight --version 26.11.901 --feed test
 expect_status 65 "26.11.901 is not newer than 26.11.901 in the test feed" \
   publish --version 26.11.901 --feed test
 
