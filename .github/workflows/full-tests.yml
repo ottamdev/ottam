@@ -69,7 +69,9 @@ jobs:
   macos:
     needs: linux
     if: needs.linux.outputs.swift == 'true' || needs.linux.outputs.docs == 'true'
-    runs-on: macos-26
+    # Same preview image as release.yml, so tests and releases share a
+    # toolchain; move to macos-27 when GitHub makes it generally available.
+    runs-on: xcode-27
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4

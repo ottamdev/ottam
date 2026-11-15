@@ -21,6 +21,11 @@ let package = Package(
         .library(name: "OttamTranscriptFixtures", targets: ["OttamTranscriptFixtures"]),
         .library(name: "OttamWorkspaceLogic", targets: ["OttamWorkspaceLogic"])
     ],
+    dependencies: [
+        // In-app updates. Exact pin: the release bundle embeds and signs this
+        // framework's helpers, so a version bump is a reviewed change.
+        .package(url: "https://github.com/sparkle-project/Sparkle", exact: "2.10.1")
+    ],
     targets: [
         .binaryTarget(
             name: "GhosttyKit",
@@ -36,10 +41,15 @@ let package = Package(
                 "OttamInstrumentation",
                 "OttamMarkdownEngine",
                 "OttamPresentationLogic",
-                "OttamWorkspaceLogic"
+                "OttamWorkspaceLogic",
+                .product(name: "Sparkle", package: "Sparkle")
             ],
             resources: [
                 .process("../../Resources")
+            ],
+            linkerSettings: [
+                // scripts/build-app.sh embeds Sparkle.framework here.
+                .unsafeFlags(["-Xlinker", "-rpath", "-Xlinker", "@executable_path/../Frameworks"])
             ]
         ),
         .executableTarget(
