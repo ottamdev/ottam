@@ -91,12 +91,12 @@ old=""
 {
   echo '<?xml version="1.0"?>'
   echo '<rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle"><channel>'
-  for zip in "$dir"/*.zip; do
-    name="$(basename "$zip")"
+  for dmg in "$dir"/*.dmg; do
+    name="$(basename "$dmg")"
     version="${name#Ottam-}"
-    version="${version%.zip}"
+    version="${version%.dmg}"
     echo "<item><sparkle:version>$version</sparkle:version>"
-    echo "<enclosure url=\"$prefix$name\" length=\"$(stat -f %z "$zip")\" sparkle:edSignature=\"c2ln\"/></item>"
+    echo "<enclosure url=\"$prefix$name\" length=\"$(stat -f %z "$dmg")\" sparkle:edSignature=\"c2ln\"/></item>"
   done
   [ -z "$old" ] || echo "$old"
   echo '</channel></rss>'
@@ -114,7 +114,8 @@ source_repo="$test_root/source"
 mkdir -p "$source_repo/scripts/lib" "$source_repo/release-notes" "$source_repo/.build/release"
 cp "$repo_root/scripts/publish-release.sh" "$source_repo/scripts/"
 cp "$repo_root/scripts/lib/release-version.sh" "$repo_root/scripts/lib/release-feed.sh" \
-  "$repo_root/scripts/lib/appcast_items.py" "$source_repo/scripts/lib/"
+  "$repo_root/scripts/lib/release-disk-image.sh" "$repo_root/scripts/lib/appcast_items.py" \
+  "$source_repo/scripts/lib/"
 printf -- '- Walkthrough build.\n' > "$source_repo/release-notes/26.11.901.md"
 printf '.build/\n' > "$source_repo/.gitignore"
 git init -q -b main "$source_repo"
@@ -131,8 +132,9 @@ make_archive() {
   plutil -create xml1 "$app/Contents/Info.plist"
   plutil -insert CFBundleVersion -string "$version" "$app/Contents/Info.plist"
   [ -z "$feed" ] || plutil -insert SUFeedURL -string "$feed" "$app/Contents/Info.plist"
-  rm -f "$source_repo/.build/release/Ottam-$version.zip"
-  ditto -c -k --keepParent "$app" "$source_repo/.build/release/Ottam-$version.zip"
+  rm -f "$source_repo/.build/release/Ottam-$version.dmg"
+  diskutil image create from --format ULFO --volumeName Ottam "$test_root/app-$1" \
+    "$source_repo/.build/release/Ottam-$version.dmg" >/dev/null 2>&1
 }
 
 git init -q --bare -b main "$test_root/updates.git"
@@ -207,17 +209,17 @@ rm "$public/release-v26.11.901"
 
 # --- preflight needs no archive, key, or Sparkle tools
 
-mv "$source_repo/.build/release/Ottam-26.11.901.zip" "$test_root/held.zip"
+mv "$source_repo/.build/release/Ottam-26.11.901.dmg" "$test_root/held.dmg"
 expect_status 0 "Preflight passed: v26.11.901 can publish to the test feed" \
   preflight --version 26.11.901 --feed test
-mv "$test_root/held.zip" "$source_repo/.build/release/Ottam-26.11.901.zip"
+mv "$test_root/held.dmg" "$source_repo/.build/release/Ottam-26.11.901.dmg"
 
 # --- a test-feed release publishes a pre-release, then the feed
 
 expect_status 0 "Published 26.11.901 to the test feed" publish --version 26.11.901 --feed test
 grep -q -- '--prerelease' "$public/release-v26.11.901" || fail "a test-feed release wasn't a pre-release"
 git --git-dir "$test_root/updates.git" show main:public/test/appcast.xml |
-  grep -q 'releases/download/v26.11.901/Ottam-26.11.901.zip' || fail "the test feed doesn't point at the release"
+  grep -q 'releases/download/v26.11.901/Ottam-26.11.901.dmg' || fail "the test feed doesn't point at the release"
 if git --git-dir "$test_root/updates.git" show main:public/appcast.xml >/dev/null 2>&1; then
   fail "a test-feed release touched the production feed"
 fi

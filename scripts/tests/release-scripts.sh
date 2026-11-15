@@ -1,14 +1,17 @@
 #!/usr/bin/env bash
-# Release version rules, build flag validation, release refusals, the cut, and
-# the verifier's signing-list guard. Nothing here compiles or signs.
+# Release version rules, build flag validation, release refusals, the cut, the
+# verifier's signing-list guard, and the release disk image. Nothing here
+# compiles or signs with a real identity.
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)"
 test_root="$(mktemp -d "${TMPDIR:-/tmp}/ottam-release-scripts.XXXXXX")"
-trap 'rm -rf "$test_root"' EXIT
 
 # shellcheck source=scripts/lib/release-version.sh
 source "$repo_root/scripts/lib/release-version.sh"
+# shellcheck source=scripts/lib/release-disk-image.sh
+source "$repo_root/scripts/lib/release-disk-image.sh"
+trap 'release_detach_disk_image "$test_root/mounted"; rm -rf "$test_root"' EXIT
 
 fail() {
   echo "FAILED: $*" >&2
@@ -108,7 +111,8 @@ new_repo() {
   mkdir -p "$repo/scripts/lib" "$repo/backend"
   cp "$repo_root/scripts/release-app.sh" "$repo/scripts/"
   cp "$repo_root/scripts/lib/release-version.sh" "$repo_root/scripts/lib/release-signing.sh" \
-    "$repo_root/scripts/lib/release-feed.sh" "$repo/scripts/lib/"
+    "$repo_root/scripts/lib/release-feed.sh" "$repo_root/scripts/lib/release-disk-image.sh" \
+    "$repo/scripts/lib/"
   printf '#!/bin/sh\necho "build reached" >&2\nexit 99\n' > "$repo/scripts/build-app.sh"
   chmod +x "$repo/scripts/build-app.sh"
   printf '[workspace.package]\nedition = "2021"\nversion = "%s"\n' "$cargo_version" > "$repo/backend/Cargo.toml"
@@ -163,7 +167,7 @@ git -C "$repo" tag -f v26.11.0 >/dev/null
 expect_status 64 "not a cut" release_app "$repo" --cut --feed-url https://feed.invalid/appcast.xml
 
 mkdir -p "$repo/.build/release"
-touch "$repo/.build/release/Ottam-26.11.0.zip"
+touch "$repo/.build/release/Ottam-26.11.0.dmg"
 expect_status 65 "already exists" release_app "$repo"
 rm -r "$repo/.build/release"
 
@@ -231,7 +235,8 @@ expect_status 69 "Developer ID Application" release_app "$repo"
 verifier="$test_root/verifier"
 mkdir -p "$verifier/scripts/lib"
 cp "$repo_root/scripts/verify-release-app.sh" "$verifier/scripts/"
-cp "$repo_root/scripts/lib/release-signing.sh" "$verifier/scripts/lib/"
+cp "$repo_root/scripts/lib/release-signing.sh" "$repo_root/scripts/lib/release-disk-image.sh" \
+  "$verifier/scripts/lib/"
 
 app="$test_root/Fake.app"
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
@@ -298,5 +303,44 @@ expect_status 1 "must ask for consent" \
 plutil -remove SUEnableAutomaticChecks "$app/Contents/Info.plist"
 expect_status 1 "Update feed: https://feed.invalid/appcast.xml" \
   verify --version 26.11.0 --feed-url https://feed.invalid/appcast.xml
+
+# --- the release image holds the app, the Applications link, and the layout
+
+image_root="$test_root/image"
+mkdir "$image_root"
+cp -R "$app" "$image_root/Ottam.app"
+release_create_disk_image "$image_root" "$test_root/Ottam.dmg" "$repo_root" ||
+  fail "release_create_disk_image failed"
+[ ! -e "$test_root/Ottam.dmg.raw.dmg" ] || fail "the writable image was left behind"
+release_attach_disk_image "$test_root/Ottam.dmg" "$test_root/mounted" || fail "couldn't mount the image"
+problem="$(release_check_disk_image "$test_root/mounted" "$repo_root")" ||
+  { release_detach_disk_image "$test_root/mounted"; fail "a fresh image failed its check: $problem"; }
+# A stale layout and an extra item are both refused.
+stale_repo="$test_root/stale-repo"
+mkdir -p "$stale_repo/$RELEASE_DISK_IMAGE_LAYOUT"
+cp "$repo_root/$RELEASE_DISK_IMAGE_LAYOUT/background.tiff" "$stale_repo/$RELEASE_DISK_IMAGE_LAYOUT/"
+printf 'stale' > "$stale_repo/$RELEASE_DISK_IMAGE_LAYOUT/DS_Store"
+problem="$(release_check_disk_image "$test_root/mounted" "$stale_repo")" &&
+  { release_detach_disk_image "$test_root/mounted"; fail "a stale layout passed"; }
+grep -q "isn't the one in" <<< "$problem" || fail "wrong stale-layout message: $problem"
+release_detach_disk_image "$test_root/mounted"
+[ ! -d "$test_root/mounted" ] || fail "the image didn't eject"
+
+extra_root="$test_root/extra"
+mkdir -p "$extra_root/Ottam.app" "$extra_root/.fseventsd"
+release_stage_disk_image "$extra_root" "$repo_root"
+cp "$repo_root/$RELEASE_DISK_IMAGE_LAYOUT/DS_Store" "$extra_root/.DS_Store"
+problem="$(release_check_disk_image "$extra_root" "$repo_root")" && fail "an extra item passed"
+grep -q ".fseventsd" <<< "$problem" || fail "the extra item wasn't named: $problem"
+
+# --- the verifier requires the release identity on the image
+
+verify_image() {
+  /bin/bash "$verifier/scripts/verify-release-app.sh" "$test_root/Ottam.dmg" "$@"
+}
+expect_status 1 "invalid signature: $test_root/Ottam.dmg" verify_image --version 26.11.0
+codesign --sign - "$test_root/Ottam.dmg"
+expect_status 1 "not signed by Developer ID Application: $test_root/Ottam.dmg" \
+  verify_image --version 26.11.0
 
 echo "Release script contract passed"

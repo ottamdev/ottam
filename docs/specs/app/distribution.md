@@ -20,9 +20,11 @@ account, and has a release workflow that has not run yet. Nothing is
 published:
 
 - `scripts/release-app.sh` cuts versions locally, enforces the release
-  refusals, signs, notarizes, staples, and archives; `--rehearsal` builds
-  with Apple Development. `scripts/verify-release-app.sh` checks the build
-  and the extracted archive.
+  refusals, signs, notarizes, and staples the app, and packages it in a disk
+  image beside an Applications link, then signs, notarizes, and staples the
+  image;
+  `--rehearsal` builds with Apple Development. `scripts/verify-release-app.sh`
+  checks the build, then the image and the app mounted from it.
 - Sparkle is pinned and embedded in every bundle. Release assembly gives the
   bundle its feed and public key (`--feed-url` points a test build at another
   feed), and only then does the app start an updater and show **Check for
@@ -58,7 +60,8 @@ notarization, GitHub access, or Sparkle key.
     gate in `applicationShouldTerminate`
     (`app/Sources/OttamApp/App/Main.swift`) applies. Prove Sparkle waits for
     it rather than assuming.
-  - Needs: the release workflow on `main` (dispatch requires it there). N is
+  - Needs: the disk-image release on `main`, so the walkthrough updates the
+    way shipped builds will (dispatch also requires the workflow there). N is
     a local build of throwaway tag `v26.11.900` with `--feed-url` set to the
     test feed; N+1 is throwaway tag `v26.11.901`, published by the workflow
     with `feed=test`, which is also the workflow's first run. Never add an
@@ -99,10 +102,11 @@ at assembly:
 
 Try it:
 
-1. Publish X and download it from the GitHub Release in a browser on a clean
-   macOS 26 account. Opening it shows only the standard downloaded-app dialog,
-   About shows X, onboarding installs an agent that completes a turn, and
-   chats survive a quit.
+1. Publish X and download its disk image from the GitHub Release in a browser
+   on a clean macOS 26 account. The image opens to its background, with an
+   arrow from Ottam to Applications; dragged across and opened, Ottam shows
+   only the standard downloaded-app dialog, About shows X, onboarding
+   installs an agent that completes a turn, and chats survive a quit.
 2. Start publishing X+1 and cancel the run before the appcast push: the
    public feed is unchanged and X finds no update. Delete the release if one
    was created, and rerun to completion.
@@ -111,9 +115,9 @@ Try it:
 
 ### Acceptance
 
-Package checks: strict signature verification of every nested executable
-and the app, `spctl` assessment, `stapler validate`, and a re-inventory after
-archive extraction. Update matrix, with real independently signed builds:
+Package checks: strict signature verification of every nested executable,
+the app, and the disk image; `spctl` assessment; `stapler validate` on the
+image and the app; and a re-inventory of the app as mounted from it. Update matrix, with real independently signed builds:
 
 | Case | Expected |
 |---|---|
@@ -153,7 +157,6 @@ archive extraction. Update matrix, with real independently signed builds:
 - Deltas, once several releases exist and the release script can retrieve
   the exact previous archives (`generate_appcast` needs them).
 - An Updates settings section, if Sparkle's standard UI proves insufficient.
-- Optional `.dmg` for first installs, separate from the Sparkle zip.
 - A Homebrew cask marked `auto_updates`, once releases are regular.
 
 ## Decisions
@@ -184,7 +187,8 @@ archive extraction. Update matrix, with real independently signed builds:
 - **Release notes are embedded in the appcast** (2026-11-09), so the archive
   and the appcast are the only signed artifacts. They are a reviewed
   Markdown file per version, `release-notes/<version>.md`, which also
-  becomes the GitHub Release body.- **The updater exists only in release bundles** (2026-11-09). Development,
+  becomes the GitHub Release body.
+- **The updater exists only in release bundles** (2026-11-09). Development,
   `run-app.sh`, and UI-test bundles carry no feed URL, so they never start
   Sparkle or need its key.
 - **Sparkle 2 is the updater.** Standard controller and UI; no custom
@@ -194,7 +198,7 @@ archive extraction. Update matrix, with real independently signed builds:
 - **Releases host archives; a static appcast is the feed.** GitHub's release
   pages and Atom feeds are not appcasts. Each item points at an immutable
   tag URL
-  (`https://github.com/<owner>/<repo>/releases/download/v26.11.0/Ottam-26.11.0.zip`),
+  (`https://github.com/<owner>/<repo>/releases/download/v26.11.0/Ottam-26.11.0.dmg`),
   never `/releases/latest/download/`. The app embeds only the feed URL and
   has no GitHub API dependency. Assets and feed are public; never embed a
   GitHub token.
@@ -218,8 +222,15 @@ archive extraction. Update matrix, with real independently signed builds:
   `v*` tags deploy and every run waits for the maintainer's approval, so a
   pushed tag alone cannot ship. `scripts/setup-release-secrets.sh` loads and
   rotates them; local runs keep using the keychain.
-- **Full zip archives first**, created with `ditto` so symlinks, permissions,
-  signature xattrs, and the outer app directory survive.
+- **One disk image is both the download and the update** (2026-11-14),
+  replacing the zip, because dragging to Applications keeps people from
+  running Ottam out of Downloads and Sparkle installs from the same image.
+- **The app and the image are each notarized and stapled** (2026-11-14), so
+  Gatekeeper accepts a download opened offline, at the cost of a second
+  notary submission per release.
+- **The image's window layout is committed** (2026-11-14), made once by
+  `scripts/layout-disk-image.sh`, because Finder scripting is unreliable on
+  headless CI and writing `.DS_Store` without Finder needs non-stdlib code.
 - **Trust layers.** HTTPS; Sparkle Ed25519 signatures on the archive and the
   appcast; Developer ID signing of all nested code; notarization and
   stapling. The Sparkle key and Developer ID are separate roots, backed up
