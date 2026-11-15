@@ -5413,7 +5413,7 @@ async fn shutdown_finalizes_multiple_active_runs_and_clears_runtime_bookkeeping(
     env.wait_for_running(&second.conversation_id, &second_started.run.run_id)
         .await;
     assert_eq!(
-        bridge.conversation.active_run_conversations().await,
+        bridge.conversation.working_conversations().await,
         2,
         "quitting would stop both conversations' runs"
     );
@@ -5421,7 +5421,7 @@ async fn shutdown_finalizes_multiple_active_runs_and_clears_runtime_bookkeeping(
     tokio::time::timeout(Duration::from_secs(3), bridge.shutdown())
         .await
         .expect("shutdown remains bounded");
-    assert_eq!(bridge.conversation.active_run_conversations().await, 0);
+    assert_eq!(bridge.conversation.working_conversations().await, 0);
 
     for (conversation_id, run_id) in [
         (&first.conversation_id, &first_started.run.run_id),
@@ -7534,6 +7534,43 @@ async fn autonomous_follow_up_does_not_open_on_an_oversized_first_frame() {
     ));
 }
 
+/// A background task still running after its run completed keeps its
+/// conversation working, which quitting asks about.
+#[tokio::test]
+async fn a_task_that_outlives_its_run_keeps_the_conversation_working() {
+    let mut fixture = AttributionFixture::new().await;
+    let run = fixture.context("run-a");
+    let conversation = run.conversation_id.clone();
+    let attribution = fixture.attribution.clone();
+    let key = session_key("session-1");
+    attribution.apply(AttributionOp::Claim {
+        key: key.clone(),
+        context: run.clone(),
+        generation: 1,
+    });
+    assert!(attribution.conversations_with_live_work().is_empty());
+    attribution.index_tool_call(&key, 1, &run.run_id, &json!({"toolCallId": "call"}));
+    let spawn = AgentUpdate::AsyncTaskSpawned {
+        async_task_id: "task".into(),
+        provider_tool_call_id: Some("call".into()),
+        name: None,
+        task_type: None,
+        description: None,
+        output_file_path: None,
+        show_in_transcript: None,
+        can_stop: None,
+    };
+    let _ = attribution.route_lifecycle(&key, 1, spawn);
+    attribution.apply(AttributionOp::Release {
+        key: key.clone(),
+        run_id: run.run_id,
+        ended: RunEnd::Completed,
+    });
+    assert_eq!(attribution.conversations_with_live_work(), vec![conversation]);
+    attribution.take_lost_tasks(|agent, _, _| agent == key.0);
+    assert!(attribution.conversations_with_live_work().is_empty());
+}
+
 /// A subagent still running after its run completed is the agent's live
 /// work, which a restore or a profile change waits for, until the adapter
 /// restarts without it.
@@ -7541,6 +7578,7 @@ async fn autonomous_follow_up_does_not_open_on_an_oversized_first_frame() {
 async fn native_subagents_are_live_work_until_their_adapter_restarts() {
     let mut fixture = AttributionFixture::new().await;
     let run = fixture.context("run-a");
+    let conversation = run.conversation_id.clone();
     let attribution = fixture.attribution.clone();
     let root = session_key("root");
     attribution.apply(AttributionOp::Claim {
@@ -7556,6 +7594,10 @@ async fn native_subagents_are_live_work_until_their_adapter_restarts() {
     });
     assert!(attribution.agent_has_live_work(&root.0));
     assert!(!attribution.agent_has_live_work("other-agent"));
+    assert_eq!(
+        attribution.conversations_with_live_work(),
+        vec![conversation.clone()]
+    );
     let lose_before = |before: u64| {
         attribution.take_lost_tasks(|agent, _, generation| agent == root.0 && generation < before)
     };

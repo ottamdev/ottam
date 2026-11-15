@@ -2739,21 +2739,21 @@ public struct AgentShutdownReadinessResult: Codable, Equatable, Sendable {
     public var refreshLockPaths: [String]
     /// Ownership remains relevant even when no shared adapter is running.
     public var hasSharedHomes: Bool?
-    /// Conversations with a run in flight, which quitting stops. It never affects `ready`; the app asks the user before stopping them.
-    public var activeRunConversations: Int
+    /// Conversations whose agent is working: a run in flight, or a background task or subagent that outlived its run. Quitting stops them. It never affects `ready`; the app asks the user first.
+    public var workingConversations: Int
 
     public init(
         ready: Bool,
         waitingOn: [String],
         refreshLockPaths: [String],
         hasSharedHomes: Bool? = nil,
-        activeRunConversations: Int
+        workingConversations: Int
     ) {
         self.ready = ready
         self.waitingOn = waitingOn
         self.refreshLockPaths = refreshLockPaths
         self.hasSharedHomes = hasSharedHomes
-        self.activeRunConversations = activeRunConversations
+        self.workingConversations = workingConversations
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -2761,7 +2761,7 @@ public struct AgentShutdownReadinessResult: Codable, Equatable, Sendable {
         case waitingOn
         case refreshLockPaths
         case hasSharedHomes
-        case activeRunConversations
+        case workingConversations
     }
 
     public init(from decoder: Decoder) throws {
@@ -2770,7 +2770,7 @@ public struct AgentShutdownReadinessResult: Codable, Equatable, Sendable {
         waitingOn = try container.decode([String].self, forKey: .waitingOn)
         refreshLockPaths = try container.decode([String].self, forKey: .refreshLockPaths)
         hasSharedHomes = try container.decodeIfPresent(Bool.self, forKey: .hasSharedHomes)
-        activeRunConversations = try container.decodeIfPresent(Int.self, forKey: .activeRunConversations) ?? 0
+        workingConversations = try container.decodeIfPresent(Int.self, forKey: .workingConversations) ?? 0
     }
 }
 

@@ -9,6 +9,6 @@
       "/fixture/.claude/.oauth_refresh.lock"
     ],
     "hasSharedHomes": false,
-    "activeRunConversations": 2
+    "workingConversations": 2
   }
 }

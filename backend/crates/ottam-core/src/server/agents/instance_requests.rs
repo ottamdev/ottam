@@ -68,8 +68,8 @@ impl AgentServer {
                         return response;
                     }
                     let waiting_on = task_bridge.registry().shutdown_waiting_on();
-                    let active_run_conversations =
-                        task_bridge.conversation.active_run_conversations().await;
+                    let working_conversations =
+                        task_bridge.conversation.working_conversations().await;
                     success_response(
                         request.id,
                         AgentShutdownReadinessResult {
@@ -88,7 +88,7 @@ impl AgentServer {
                                 .into_iter()
                                 .map(|path| path.to_string_lossy().into_owned())
                                 .collect(),
-                            active_run_conversations,
+                            working_conversations,
                         },
                     )
                 }

@@ -690,13 +690,16 @@ impl ConversationRunCoordinator {
         handback
     }
 
-    /// Conversations with a run in flight, of any origin.
-    pub(super) async fn active_run_conversations(&self) -> u32 {
-        let runs = self.active_runs().await;
-        let conversations: std::collections::HashSet<_> = runs
+    /// Conversations whose agent is working: a run in flight, of any
+    /// origin, or a background task or subagent that outlived its run.
+    pub(super) async fn working_conversations(&self) -> u32 {
+        let mut conversations: std::collections::HashSet<ConversationID> = self
+            .active_runs()
+            .await
             .values()
-            .map(|run| &run.context.conversation_id)
+            .map(|run| run.context.conversation_id.clone())
             .collect();
+        conversations.extend(self.attribution.conversations_with_live_work());
         u32::try_from(conversations.len()).unwrap_or(u32::MAX)
     }
 

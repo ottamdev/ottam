@@ -115,8 +115,8 @@ final class OttamApplicationDelegate: NSObject, NSApplicationDelegate {
         showQuitProgress(runtime: runtime)
         quitTask = Task { @MainActor in
             do {
-                if asks, let warning = ActiveRunQuitWarning(
-                    activeRunConversations: try await runtime.client.shutdownReadinessIfRunning()?.activeRunConversations ?? 0
+                if asks, let warning = WorkingAgentQuitWarning(
+                    workingConversations: try await runtime.client.shutdownReadinessIfRunning()?.workingConversations ?? 0
                 ) {
                     try Task.checkCancellation()
                     hideQuitProgress()

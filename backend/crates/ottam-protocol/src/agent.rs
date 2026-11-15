@@ -108,10 +108,11 @@ pub struct AgentShutdownReadinessResult {
     /// Ownership remains relevant even when no shared adapter is running.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub has_shared_homes: Option<bool>,
-    /// Conversations with a run in flight, which quitting stops. It never
-    /// affects `ready`; the app asks the user before stopping them.
+    /// Conversations whose agent is working: a run in flight, or a
+    /// background task or subagent that outlived its run. Quitting stops
+    /// them. It never affects `ready`; the app asks the user first.
     #[serde(default)]
-    pub active_run_conversations: u32,
+    pub working_conversations: u32,
 }
 pub const METHOD_AGENT_HOME_INFO: &str = "agent.homeInfo";
 pub const METHOD_AGENT_AUTH_STATE: &str = "agent.authState";

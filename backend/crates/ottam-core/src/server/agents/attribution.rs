@@ -1501,6 +1501,23 @@ impl SessionAttribution {
                 .any(|((agent, _), child)| agent == agent_id && child.live && !child.replay)
     }
 
+    /// Conversations with work that outlives its run: a live background
+    /// task or subagent, which quitting stops like a run.
+    pub(super) fn conversations_with_live_work(&self) -> Vec<ConversationID> {
+        let sessions = self.sessions();
+        let subagents = sessions
+            .children
+            .values()
+            .filter(|child| child.live && !child.replay)
+            .filter_map(|child| child.bound.as_ref().map(|owner| &owner.conversation_id));
+        sessions
+            .tasks
+            .live_conversations()
+            .chain(subagents)
+            .cloned()
+            .collect()
+    }
+
     #[cfg(test)]
     pub(super) fn indexed_tasks(&self, agent_id: &str) -> usize {
         self.sessions().tasks.len(agent_id)

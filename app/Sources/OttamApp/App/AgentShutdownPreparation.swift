@@ -29,19 +29,20 @@ final class AgentShutdownPreparation {
     }
 }
 
-/// What quitting asks while agents are mid-run; quitting stops their runs.
-struct ActiveRunQuitWarning: Equatable {
+/// What quitting asks while agents are working: mid-turn, or on a
+/// background task or subagent that outlived its turn. Quitting stops it.
+struct WorkingAgentQuitWarning: Equatable {
     let message: String
     let detail: String
 
-    init?(activeRunConversations count: Int) {
+    init?(workingConversations count: Int) {
         guard count > 0 else { return nil }
         if count == 1 {
             message = "Quit Ottam while an agent is working?"
-            detail = "Quitting stops its turn. You can continue the chat later."
+            detail = "Quitting stops its work. You can continue the chat later."
         } else {
             message = "Quit Ottam while \(count) agents are working?"
-            detail = "Quitting stops their turns. You can continue the chats later."
+            detail = "Quitting stops their work. You can continue the chats later."
         }
     }
 

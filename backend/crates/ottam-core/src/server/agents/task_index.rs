@@ -573,6 +573,14 @@ impl TaskIndex {
         self.retain(|entry| entry.owner.conversation_id != *conversation);
     }
 
+    /// Conversations owning a live task.
+    pub(super) fn live_conversations(&self) -> impl Iterator<Item = &ConversationID> {
+        self.entries
+            .values()
+            .filter(|entry| entry.live)
+            .map(|entry| &entry.owner.conversation_id)
+    }
+
     pub(super) fn has_live_agent(&self, agent: &str) -> bool {
         self.entries
             .values()
