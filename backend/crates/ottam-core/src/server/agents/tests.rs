@@ -7549,24 +7549,30 @@ async fn a_task_that_outlives_its_run_keeps_the_conversation_working() {
         generation: 1,
     });
     assert!(attribution.conversations_with_live_work().is_empty());
-    attribution.index_tool_call(&key, 1, &run.run_id, &json!({"toolCallId": "call"}));
-    let spawn = AgentUpdate::AsyncTaskSpawned {
-        async_task_id: "task".into(),
-        provider_tool_call_id: Some("call".into()),
-        name: None,
-        task_type: None,
-        description: None,
-        output_file_path: None,
-        show_in_transcript: None,
-        can_stop: None,
-    };
-    let _ = attribution.route_lifecycle(&key, 1, spawn);
+    // Two tasks in one conversation are still one working conversation.
+    for task in ["first", "second"] {
+        attribution.index_tool_call(&key, 1, &run.run_id, &json!({"toolCallId": task}));
+        let spawn = AgentUpdate::AsyncTaskSpawned {
+            async_task_id: task.into(),
+            provider_tool_call_id: Some(task.into()),
+            name: None,
+            task_type: None,
+            description: None,
+            output_file_path: None,
+            show_in_transcript: None,
+            can_stop: None,
+        };
+        let _ = attribution.route_lifecycle(&key, 1, spawn);
+    }
     attribution.apply(AttributionOp::Release {
         key: key.clone(),
         run_id: run.run_id,
         ended: RunEnd::Completed,
     });
-    assert_eq!(attribution.conversations_with_live_work(), vec![conversation]);
+    assert_eq!(
+        attribution.conversations_with_live_work(),
+        std::collections::HashSet::from([conversation])
+    );
     attribution.take_lost_tasks(|agent, _, _| agent == key.0);
     assert!(attribution.conversations_with_live_work().is_empty());
 }
@@ -7596,7 +7602,7 @@ async fn native_subagents_are_live_work_until_their_adapter_restarts() {
     assert!(!attribution.agent_has_live_work("other-agent"));
     assert_eq!(
         attribution.conversations_with_live_work(),
-        vec![conversation.clone()]
+        std::collections::HashSet::from([conversation.clone()])
     );
     let lose_before = |before: u64| {
         attribution.take_lost_tasks(|agent, _, generation| agent == root.0 && generation < before)

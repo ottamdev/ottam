@@ -111,18 +111,21 @@ final class OttamApplicationDelegate: NSObject, NSApplicationDelegate {
         guard quitTask == nil else { return .terminateLater }
         let operationKey = UUID().uuidString
         quitOperationKey = operationKey
-        let asks = !TerminationSignalHandler.quitRequested
-        showQuitProgress(runtime: runtime)
+        showQuitProgress()
         quitTask = Task { @MainActor in
+            var prepareSent = false
             do {
-                if asks, let warning = WorkingAgentQuitWarning(
-                    workingConversations: try await runtime.client.shutdownReadinessIfRunning()?.workingConversations ?? 0
+                let working = try await runtime.client.shutdownReadinessIfRunning()?.workingConversations ?? 0
+                try Task.checkCancellation()
+                if let warning = WorkingAgentQuitWarning(
+                    workingConversations: working,
+                    signalled: TerminationSignalHandler.quitRequested
                 ) {
-                    try Task.checkCancellation()
                     hideQuitProgress()
-                    guard warning.confirm() else { throw CancellationError() }
-                    showQuitProgress(runtime: runtime)
+                    guard confirmQuit(warning) else { throw CancellationError() }
+                    showQuitProgress()
                 }
+                monitorQuit(runtime: runtime)
                 while true {
                     try Task.checkCancellation()
                     let readiness = try await runtime.client.shutdownReadinessIfRunning()
@@ -132,12 +135,16 @@ final class OttamApplicationDelegate: NSObject, NSApplicationDelegate {
                     try await Task.sleep(for: .milliseconds(100))
                 }
                 try Task.checkCancellation()
+                prepareSent = true
                 try await runtime.client.prepareShutdownIfRunning(operationKey: operationKey)
                 try Task.checkCancellation()
                 finishQuitPreparation()
                 sender.reply(toApplicationShouldTerminate: true)
             } catch {
-                Task { try? await runtime.client.cancelAgentShutdown(operationKey: operationKey) }
+                if prepareSent {
+                    Task { try? await runtime.client.cancelAgentShutdown(operationKey: operationKey) }
+                }
+                TerminationSignalHandler.quitCancelled()
                 finishQuitPreparation()
                 sender.reply(toApplicationShouldTerminate: false)
                 if !(error is CancellationError) && !Task.isCancelled {
@@ -151,14 +158,36 @@ final class OttamApplicationDelegate: NSObject, NSApplicationDelegate {
         return .terminateLater
     }
 
-    /// Shows the waiting panel once quitting takes a moment, or as soon as
-    /// an agent holds it up.
-    private func showQuitProgress(runtime: OttamAppRuntime) {
+    /// A signal arriving while the alert is up has nobody to answer it, so
+    /// it answers Quit.
+    private func confirmQuit(_ warning: WorkingAgentQuitWarning) -> Bool {
+        TerminationSignalHandler.answerQuitQuestion = { [weak self] in self?.stopQuitAlert() }
+        defer { TerminationSignalHandler.answerQuitQuestion = nil }
+        let response = warning.makeAlert().runModal()
+        return response == .alertSecondButtonReturn || TerminationSignalHandler.quitRequested
+    }
+
+    /// The signal arrives from a run loop source, not an event, so the modal
+    /// loop needs an event to notice that it stopped.
+    private func stopQuitAlert() {
+        appLifecycleLogger.notice("A termination signal answered the quit question")
+        NSApp.stopModal()
+        if let wake = NSEvent.otherEvent(with: .applicationDefined, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: 0, context: nil, subtype: 0, data1: 0, data2: 0) {
+            NSApp.postEvent(wake, atStart: false)
+        }
+    }
+
+    /// Shows the waiting panel once quitting takes a moment.
+    private func showQuitProgress() {
         quitPanelDelay = Task { @MainActor in
             do { try await Task.sleep(for: .milliseconds(300)) } catch { return }
             guard !Task.isCancelled else { return }
             showWaitingPanel(refreshing: false)
         }
+    }
+
+    /// Shows the refresh wait as soon as an agent holds the quit up.
+    private func monitorQuit(runtime: OttamAppRuntime) {
         quitMonitor = Task { @MainActor in
             while !Task.isCancelled {
                 if let readiness = try? await runtime.client.shutdownReadinessIfRunning(), !Task.isCancelled, !readiness.ready { showWaitingPanel() }

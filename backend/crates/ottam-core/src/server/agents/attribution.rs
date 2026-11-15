@@ -1503,7 +1503,9 @@ impl SessionAttribution {
 
     /// Conversations with work that outlives its run: a live background
     /// task or subagent, which quitting stops like a run.
-    pub(super) fn conversations_with_live_work(&self) -> Vec<ConversationID> {
+    pub(super) fn conversations_with_live_work(
+        &self,
+    ) -> std::collections::HashSet<ConversationID> {
         let sessions = self.sessions();
         let subagents = sessions
             .children

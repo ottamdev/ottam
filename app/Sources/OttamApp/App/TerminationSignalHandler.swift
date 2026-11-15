@@ -16,27 +16,49 @@ import Dispatch
 enum TerminationSignalHandler {
     private static var source: DispatchSourceSignal?
     /// A signalled quit has nobody to answer a question, so it never asks.
+    /// It lasts until that quit is cancelled, so later quits ask again.
     private(set) static var quitRequested = false
+
+    /// Set while quit asks about working agents. AppKit ignores `terminate`
+    /// while a quit is pending, so a signal answers that question instead.
+    static var answerQuitQuestion: (@MainActor () -> Void)?
+
+    static func quitCancelled() {
+        quitRequested = false
+    }
 
     static func install() {
         guard source == nil else { return }
         // The dispatch source only fires once the default disposition is off.
         signal(SIGTERM, SIG_IGN)
-        let source = DispatchSource.makeSignalSource(signal: SIGTERM, queue: .main)
-        source.setEventHandler {
-            // Not from inside this main-queue callout: a deferred quit
-            // (`.terminateLater`) waits on main-actor work, which can't run
-            // until the callout returns, so the quit would deadlock. Common
-            // modes, so a quit also lands while a modal panel or a menu runs
-            // the loop.
-            RunLoop.main.perform(inModes: [.common]) {
-                MainActor.assumeIsolated {
-                    quitRequested = true
-                    NSApplication.shared.terminate(nil)
-                }
-            }
-        }
+        let source = makeSource()
         source.resume()
         self.source = source
+    }
+
+    /// Off the main queue: quit's question runs a modal loop inside a
+    /// main-actor job, and the main queue drains nothing until it returns.
+    /// Nonisolated, so the handler doesn't inherit the main actor.
+    private nonisolated static func makeSource() -> DispatchSourceSignal {
+        let source = DispatchSource.makeSignalSource(signal: SIGTERM, queue: .global())
+        source.setEventHandler {
+            // On the main run loop, not the main queue: a deferred quit
+            // (`.terminateLater`) waits on main-actor work, so it must not
+            // start inside a main-queue callout. Common modes, so a quit also
+            // lands while a modal panel or a menu runs the loop.
+            let main = CFRunLoopGetMain()
+            CFRunLoopPerformBlock(main, CFRunLoopMode.commonModes.rawValue) {
+                MainActor.assumeIsolated {
+                    quitRequested = true
+                    if let answerQuitQuestion {
+                        answerQuitQuestion()
+                    } else {
+                        NSApplication.shared.terminate(nil)
+                    }
+                }
+            }
+            CFRunLoopWakeUp(main)
+        }
+        return source
     }
 }

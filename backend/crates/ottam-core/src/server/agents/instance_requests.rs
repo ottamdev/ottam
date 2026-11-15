@@ -67,9 +67,11 @@ impl AgentServer {
                     {
                         return response;
                     }
-                    let waiting_on = task_bridge.registry().shutdown_waiting_on();
+                    // First: the await must not split waiting_on from the
+                    // lock paths below, which describe the same moment.
                     let working_conversations =
                         task_bridge.conversation.working_conversations().await;
+                    let waiting_on = task_bridge.registry().shutdown_waiting_on();
                     success_response(
                         request.id,
                         AgentShutdownReadinessResult {

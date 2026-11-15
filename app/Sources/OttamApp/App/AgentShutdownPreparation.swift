@@ -35,8 +35,10 @@ struct WorkingAgentQuitWarning: Equatable {
     let message: String
     let detail: String
 
-    init?(workingConversations count: Int) {
-        guard count > 0 else { return nil }
+    /// Nil when nothing is working, or when a signal asked to quit: nobody
+    /// is there to answer.
+    init?(workingConversations count: Int, signalled: Bool) {
+        guard count > 0, !signalled else { return nil }
         if count == 1 {
             message = "Quit Ottam while an agent is working?"
             detail = "Quitting stops its work. You can continue the chat later."
@@ -46,16 +48,16 @@ struct WorkingAgentQuitWarning: Equatable {
         }
     }
 
-    /// Cancel is the default: Return and Escape both keep Ottam running.
+    /// Cancel is the default button. NSAlert binds a first button titled
+    /// Cancel to Escape rather than Return, so Return is set explicitly.
     @MainActor
-    func confirm() -> Bool {
+    func makeAlert() -> NSAlert {
         let alert = NSAlert()
         alert.messageText = message
         alert.informativeText = detail
-        alert.addButton(withTitle: "Cancel")
-        let quit = alert.addButton(withTitle: "Quit")
-        quit.hasDestructiveAction = true
-        return alert.runModal() == .alertSecondButtonReturn
+        alert.addButton(withTitle: "Cancel").keyEquivalent = "\r"
+        alert.addButton(withTitle: "Quit").hasDestructiveAction = true
+        return alert
     }
 }
 

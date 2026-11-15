@@ -693,13 +693,13 @@ impl ConversationRunCoordinator {
     /// Conversations whose agent is working: a run in flight, of any
     /// origin, or a background task or subagent that outlived its run.
     pub(super) async fn working_conversations(&self) -> u32 {
-        let mut conversations: std::collections::HashSet<ConversationID> = self
-            .active_runs()
-            .await
-            .values()
-            .map(|run| run.context.conversation_id.clone())
-            .collect();
-        conversations.extend(self.attribution.conversations_with_live_work());
+        let mut conversations = self.attribution.conversations_with_live_work();
+        conversations.extend(
+            self.active_runs()
+                .await
+                .values()
+                .map(|run| run.context.conversation_id.clone()),
+        );
         u32::try_from(conversations.len()).unwrap_or(u32::MAX)
     }
 
