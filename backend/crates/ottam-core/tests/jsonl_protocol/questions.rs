@@ -251,7 +251,12 @@ fn shutdown_readiness_reports_a_run_in_flight() {
     assert_eq!(readiness(&mut core), json!(1));
     core.write_message(json!({"id": request["id"], "result": {"outcome": "skipped"}}));
     wait_for_status(&mut core, &run, "completed");
-    assert_eq!(readiness(&mut core), json!(0));
+    // The run leaves the active set after its status is stored.
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while readiness(&mut core) != json!(0) {
+        assert!(Instant::now() < deadline, "the finished run still counts as working");
+        std::thread::sleep(Duration::from_millis(10));
+    }
     core.shutdown();
 }
 
