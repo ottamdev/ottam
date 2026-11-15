@@ -29,7 +29,8 @@ agent. The Welcome window opens once onboarding is complete.
 
 Try it:
 
-1. Launch with a fresh `OTTAM_HOME`. Only the Onboarding window opens, not
+1. Launch with a fresh `OTTAM_HOME` (`./scripts/run-app.sh --fresh
+   --onboarding`). Only the Onboarding window opens, not
    the Welcome window. The thread draws in, the wordmark fades in below it,
    and after about 3 s it crossfades to "Choose your agents". With Reduce
    Motion on, the mark is static and the wordmark appears without the fade.

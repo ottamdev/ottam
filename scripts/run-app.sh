@@ -9,6 +9,8 @@ FOREGROUND=0
 LOGS=0
 TELEMETRY=0
 FORCE_ISOLATED=0
+ONBOARDING=0
+CHOOSER=0
 COMMAND="launch"
 BUILD_CONFIGURATION_ARGUMENTS=()
 # The dev loop restarts its own app, so an instance at this exact app URL with
@@ -27,11 +29,18 @@ canonical development identity unless --isolated is supplied.
 An instance already live at this exact app URL is stopped and replaced, even
 without an owner manifest; --strict-ownership refuses instead.
 
+A new isolated home skips onboarding: it gets clones of the installed adapters
+and managed Node from ~/.ottam (or $OTTAM_SEED_HOME), and an agent on each CLI
+setup that is detected (~/.claude, ~/.codex, ...), signed in through the CLI.
+The instance then opens the workspace path's Workspace.
+
 Options:
   --isolated    Force the stable worktree-specific development instance
   --status      Report only this checkout's selected instance
   --stop        Stop only this checkout's selected instance
   --fresh       Recoverably rotate isolated state, then launch
+  --onboarding  Show first-launch onboarding: skip seeding, OTTAM_ONBOARDING=1
+  --chooser     Land in the Welcome window instead of the workspace
   --release     Build the staged app optimized (no DEBUG testing hooks)
   --profile     Build the staged app optimized with the DEBUG hooks kept
   --foreground  Run the exact staged executable with stdout/stderr attached
@@ -72,6 +81,14 @@ while [ "$#" -gt 0 ]; do
     --fresh)
       [ "$COMMAND" = "launch" ] || fail_usage "Choose only one lifecycle command."
       COMMAND="fresh"
+      shift
+      ;;
+    --onboarding)
+      ONBOARDING=1
+      shift
+      ;;
+    --chooser)
+      CHOOSER=1
       shift
       ;;
     --release|--profile)
@@ -265,6 +282,17 @@ mkdir -p "$STATE_DIR" "$LOG_DIR" "$TEMP_DIR"
 print_identity
 echo "OTTAM_WORKSPACE=$WORKSPACE_PATH"
 
+# Seeds only a home that has never started: an existing one keeps its state.
+if [ "$MODE" = "isolated" ] && [ "$ONBOARDING" = "0" ] &&
+   [ ! -e "$STATE_DIR/ottam.sqlite" ] && [ ! -e "$STATE_DIR/onboarding.json" ]; then
+  /usr/bin/python3 "$ROOT_DIR/scripts/lib/seed_dev_home.py" \
+    --home "$STATE_DIR" \
+    --source "${OTTAM_SEED_HOME:-$CANONICAL_HOME}" \
+    --inspect "$ROOT_DIR/scripts/inspect-core.sh" \
+    --core-bin "$APP_DIR/Contents/MacOS/ottam-core" ||
+    echo "Seeding failed; the instance may lack agents. Retry with --fresh, or use --onboarding." >&2
+fi
+
 resolve_ownerless_instances "an exact app appeared while rebuilding"
 LAUNCH_BASELINE_RECORDS="$(running_app_records || true)"
 
@@ -295,9 +323,13 @@ OPEN_ENVIRONMENT=(
   --env "OTTAM_INSTANCE_ID=$WORKTREE_ID"
   --env "TMPDIR=$TEMP_DIR/"
 )
+[ "$ONBOARDING" = "0" ] || OTTAM_ONBOARDING=1
+if [ "$MODE" = "isolated" ] && [ "$ONBOARDING" = "0" ] && [ "$CHOOSER" = "0" ]; then
+  OPEN_ENVIRONMENT+=(--env "OTTAM_DEV_OPEN_WORKSPACE=1")
+fi
 # `open` doesn't pass this shell's environment on, so forward the backend log
-# controls (AGENTS.md, Runtime Logs) explicitly.
-for name in OTTAM_LOG OTTAM_ACP_WIRE_LOG; do
+# controls (AGENTS.md, Runtime Logs) and the onboarding override explicitly.
+for name in OTTAM_LOG OTTAM_ACP_WIRE_LOG OTTAM_ONBOARDING; do
   if [ -n "${!name:-}" ]; then
     OPEN_ENVIRONMENT+=(--env "$name=${!name}")
   fi

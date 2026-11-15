@@ -67,6 +67,8 @@ commands:
 options:
   --home <path>      OTTAM_HOME to inspect (default: $OTTAM_HOME, then ~/.ottam)
   --spawn            spawn a fresh core against a scratch home instead of attaching
+  --spawn-home <path>
+                     spawn against this home instead (created if missing, kept)
   --core-bin <path>  ottam-core binary for --spawn (default: $OTTAM_CORE_PATH, then sibling)
   --keep-home        keep the scratch home after --spawn exits
   --copy-agents      clone <home>/agents (installed adapters) into the scratch home
@@ -78,6 +80,7 @@ struct Options {
     command: Command,
     home: Option<PathBuf>,
     spawn: bool,
+    spawn_home: Option<PathBuf>,
     core_bin: Option<PathBuf>,
     keep_home: bool,
     copy_agents: bool,
@@ -172,6 +175,7 @@ impl Session {
                 copy_agents_from: options
                     .copy_agents
                     .then(|| resolve_home(options.home.as_deref())),
+                home: options.spawn_home.clone(),
             };
             let core = spawn::spawn(&spawn_options, options.timeout)?;
             Ok(Ok(Session::Spawned(core)))
@@ -485,6 +489,7 @@ fn parse_args(args: Vec<String>) -> Result<Options, String> {
     let mut positional = Vec::new();
     let mut home = None;
     let mut spawn = false;
+    let mut spawn_home = None;
     let mut core_bin = None;
     let mut keep_home = false;
     let mut copy_agents = false;
@@ -497,6 +502,10 @@ fn parse_args(args: Vec<String>) -> Result<Options, String> {
         match arg.as_str() {
             "--home" => home = Some(PathBuf::from(required_value(&arg, &mut iter)?)),
             "--spawn" => spawn = true,
+            "--spawn-home" => {
+                spawn = true;
+                spawn_home = Some(PathBuf::from(required_value(&arg, &mut iter)?));
+            }
             "--core-bin" => core_bin = Some(PathBuf::from(required_value(&arg, &mut iter)?)),
             "--keep-home" => keep_home = true,
             "--copy-agents" => copy_agents = true,
@@ -563,11 +572,17 @@ fn parse_args(args: Vec<String>) -> Result<Options, String> {
     if spawn && matches!(command, Command::Listen) {
         return Err("listen only makes sense against a running core (drop --spawn)".to_string());
     }
+    if spawn_home.is_some() && (keep_home || copy_agents) {
+        return Err(
+            "--spawn-home already keeps its home; drop --keep-home and --copy-agents".to_string(),
+        );
+    }
 
     Ok(Options {
         command,
         home,
         spawn,
+        spawn_home,
         core_bin,
         keep_home,
         copy_agents,
@@ -671,6 +686,15 @@ mod tests {
         assert!(parse(&["call"]).is_err());
         assert!(parse(&["call", "x", "not-json"]).is_err());
         assert!(parse(&["listen", "--spawn"]).is_err());
+        assert!(parse(&["status", "--spawn-home", "/h", "--keep-home"]).is_err());
+        assert!(parse(&["status", "--spawn-home"]).is_err());
         assert!(parse(&[]).is_err());
+    }
+
+    #[test]
+    fn spawn_home_implies_spawn() {
+        let options = parse(&["call", "agent.list", "--spawn-home", "/h"]).expect("parses");
+        assert!(options.spawn);
+        assert_eq!(options.spawn_home, Some(PathBuf::from("/h")));
     }
 }
