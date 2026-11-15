@@ -8,6 +8,8 @@ source "$ROOT_DIR/scripts/lib/release-version.sh"
 source "$ROOT_DIR/scripts/lib/release-signing.sh"
 # shellcheck source=scripts/lib/release-feed.sh
 source "$ROOT_DIR/scripts/lib/release-feed.sh"
+# shellcheck source=scripts/lib/release-disk-image.sh
+source "$ROOT_DIR/scripts/lib/release-disk-image.sh"
 
 CARGO_MANIFEST="$ROOT_DIR/backend/Cargo.toml"
 ENTITLEMENTS="$ROOT_DIR/app/Signing/Ottam.entitlements"
@@ -34,9 +36,9 @@ Usage:
       Pick the next version, bump Cargo, commit, and tag locally. Never pushes.
 
   scripts/release-app.sh [--identity <sha1-or-name>] [--feed-url <https-url>]
-      Build, sign, notarize, and staple the release tagged at HEAD, then
-      verify the extracted archive. Writes .build/release/Ottam-<version>.zip
-      only when every step passes. The bundle updates from the production
+      Build and sign the release tagged at HEAD, package it in a disk image,
+      then sign, notarize, staple, and verify the image. Writes
+      .build/release/Ottam-<version>.dmg only when every step passes. The bundle updates from the production
       feed; --feed-url points it at a test feed instead, and such a build
       must never be published.
 
@@ -234,13 +236,12 @@ rehearse() {
   echo "Rehearsal build: $ROOT_DIR/.build/release-rehearsal/Ottam Rehearsal.app"
 }
 
-# Submits the app and waits for Apple's verdict; anything but Accepted prints
-# the notary log and stops the release.
+# Submits a zipped app or a disk image and waits for Apple's verdict; anything
+# but Accepted prints the notary log and stops the release.
 notarize() {
-  local app="$1" work_dir="$2" upload="$2/notarize.zip" result="$2/notary.json"
+  local upload="$1" result="$2/notary.json"
   local status submission_id
 
-  ditto -c -k --keepParent "$app" "$upload"
   echo "Submitting to the notary service (profile $NOTARY_PROFILE); this usually takes a few minutes."
   xcrun notarytool submit "$upload" "${NOTARY_ARGS[@]}" \
     --wait --output-format json > "$result" || true
@@ -278,12 +279,12 @@ staple() {
 
 release() {
   require_clean_tree
-  local version identity cargo_version work_dir app archive_name
+  local version identity cargo_version work_dir image_root dmg archive_name image_problem
   version="$(head_release_version)"
   cargo_version="$(release_cargo_version "$CARGO_MANIFEST")"
   [ "$cargo_version" = "$version" ] ||
     refuse "tag v$version does not match Cargo workspace version $cargo_version"
-  archive_name="Ottam-$version.zip"
+  archive_name="Ottam-$version.dmg"
   [ ! -e "$RELEASE_OUTPUT/$archive_name" ] ||
     refuse "$RELEASE_OUTPUT/$archive_name already exists; a version is built once"
   require_update_feed
@@ -297,19 +298,36 @@ release() {
   mkdir -p "$ROOT_DIR/.build"
   work_dir="$(mktemp -d "$ROOT_DIR/.build/release-work.XXXXXX")"
   # shellcheck disable=SC2064 # The path is fixed now.
-  trap "rm -rf '$work_dir'" EXIT
-  app="$work_dir/build/Ottam.app"
+  # Images mounted under it are ejected first, so rm never reaches into one.
+  trap "release_detach_disk_image '$work_dir/check'
+    release_detach_disk_image '$work_dir/$archive_name.mount'
+    rm -rf '$work_dir'" EXIT
+  # The build directory becomes the image: the app beside an Applications
+  # link, over the committed background and window layout.
+  image_root="$work_dir/image"
   build_and_sign "$version" "$identity" "Developer ID Application" \
-    "$work_dir/build" "Ottam" "dev.ottam.Ottam"
+    "$image_root" "Ottam" "dev.ottam.Ottam"
+  # Both the app and the image carry a stapled ticket, so Gatekeeper accepts
+  # either offline: the app first, then the image that holds it.
+  ditto -c -k --keepParent "$image_root/Ottam.app" "$work_dir/Ottam-app.zip"
+  notarize "$work_dir/Ottam-app.zip" "$work_dir"
+  staple "$image_root/Ottam.app"
+  rm "$work_dir/Ottam-app.zip"
 
-  notarize "$app" "$work_dir"
-  staple "$app"
-  ditto -c -k --sequesterRsrc --keepParent "$app" "$work_dir/$archive_name"
+  dmg="$work_dir/$archive_name"
+  release_create_disk_image "$image_root" "$dmg" "$ROOT_DIR"
+  # Check the layout before spending the image's notarization on it.
+  release_attach_disk_image "$dmg" "$work_dir/check"
+  image_problem="$(release_check_disk_image "$work_dir/check" "$ROOT_DIR")" || true
+  release_detach_disk_image "$work_dir/check"
+  [ -z "$image_problem" ] || refuse "$image_problem"
+  codesign --timestamp --sign "$identity" "$dmg"
 
-  # Verify what ships: the archive's extracted contents, not the build.
-  mkdir "$work_dir/extracted"
-  ditto -x -k "$work_dir/$archive_name" "$work_dir/extracted"
-  "$ROOT_DIR/scripts/verify-release-app.sh" "$work_dir/extracted/Ottam.app" \
+  notarize "$dmg" "$work_dir"
+  staple "$dmg"
+
+  # Verify what ships: the app as mounted from the image, not the build.
+  "$ROOT_DIR/scripts/verify-release-app.sh" "$dmg" \
     --version "$version" --feed-url "$FEED_URL" --distribution
 
   mkdir -p "$RELEASE_OUTPUT"

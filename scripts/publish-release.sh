@@ -11,6 +11,8 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$ROOT_DIR/scripts/lib/release-version.sh"
 # shellcheck source=scripts/lib/release-feed.sh
 source "$ROOT_DIR/scripts/lib/release-feed.sh"
+# shellcheck source=scripts/lib/release-disk-image.sh
+source "$ROOT_DIR/scripts/lib/release-disk-image.sh"
 
 REPO="${OTTAM_RELEASE_REPO:-ottamdev/ottam}"
 # Where release-app.sh's build leaves Sparkle's tools.
@@ -28,13 +30,13 @@ usage() {
   cat <<'USAGE'
 Usage:
   scripts/publish-release.sh --version <YY.M.N> --feed <production|test>
-      --updates-checkout <dir> --ed-key-file <file> [--archive <zip>]
+      --updates-checkout <dir> --ed-key-file <file> [--archive <dmg>]
   scripts/publish-release.sh --preflight --version <YY.M.N> --feed <production|test>
       --updates-checkout <dir>
 
-Publishes the release tagged vYY.M.N at HEAD. The archive defaults to
-.build/release/Ottam-<version>.zip, and its bundle must update from the named
-feed. Release notes come from release-notes/<version>.md. The updates checkout
+Publishes the release tagged vYY.M.N at HEAD. The archive is the disk image
+release-app.sh built, .build/release/Ottam-<version>.dmg by default, and the
+app inside it must update from the named feed. Release notes come from release-notes/<version>.md. The updates checkout
 is a clone of ottamdev/updates whose main can be pushed; the Sparkle private
 key file is what `generate_keys -x` exports. A test-feed release is marked as
 a pre-release.
@@ -73,7 +75,7 @@ feed_entry="$(release_feed "$FEED")" || refuse "unknown feed '$FEED'; use produc
 FEED_URL="${feed_entry% *}"
 FEED_PATH="${feed_entry#* }"
 TAG="v$VERSION"
-ARCHIVE_NAME="Ottam-$VERSION.zip"
+ARCHIVE_NAME="Ottam-$VERSION.dmg"
 ARCHIVE="${ARCHIVE:-$ROOT_DIR/.build/release/$ARCHIVE_NAME}"
 NOTES="$ROOT_DIR/release-notes/$VERSION.md"
 DOWNLOAD_PREFIX="https://github.com/$REPO/releases/download/$TAG/"
@@ -110,17 +112,17 @@ fi
   refuse "Sparkle tools missing from $SPARKLE_BIN; build the app first"
 
 work="$(mktemp -d "${TMPDIR:-/tmp}/ottam-publish.XXXXXX")"
-trap 'rm -rf "$work"' EXIT
+trap 'release_detach_disk_image "$work/volume"; rm -rf "$work"' EXIT
 
 # What ships must update from this feed, at this version.
-mkdir "$work/extracted"
-ditto -x -k "$ARCHIVE" "$work/extracted"
-plist="$work/extracted/Ottam.app/Contents/Info.plist"
+release_attach_disk_image "$ARCHIVE" "$work/volume" || refuse "couldn't mount $ARCHIVE"
+plist="$work/volume/Ottam.app/Contents/Info.plist"
 [ -f "$plist" ] || refuse "the archive holds no Ottam.app"
 bundle_feed="$(plutil -extract SUFeedURL raw -o - "$plist" 2>/dev/null || true)"
+bundle_version="$(plutil -extract CFBundleVersion raw -o - "$plist")"
+release_detach_disk_image "$work/volume"
 [ "$bundle_feed" = "$FEED_URL" ] ||
   refuse "the archive updates from '${bundle_feed:-nothing}', not the $FEED feed $FEED_URL"
-bundle_version="$(plutil -extract CFBundleVersion raw -o - "$plist")"
 [ "$bundle_version" = "$VERSION" ] || refuse "the archive is version $bundle_version, not $VERSION"
 
 mkdir "$work/feed"
@@ -161,9 +163,9 @@ release_args=(--repo "$REPO" --verify-tag --title "Ottam $VERSION" --notes-file 
 gh release create "$TAG" "$ARCHIVE" "${release_args[@]}" >/dev/null
 
 # Clients download without credentials, so check exactly that.
-curl -fsSL --retry 5 --retry-delay 5 -o "$work/public.zip" "$DOWNLOAD_PREFIX$ARCHIVE_NAME" ||
+curl -fsSL --retry 5 --retry-delay 5 -o "$work/public.dmg" "$DOWNLOAD_PREFIX$ARCHIVE_NAME" ||
   refuse "the public asset didn't download; the feed is unchanged. Delete the release and rerun"
-cmp -s "$ARCHIVE" "$work/public.zip" ||
+cmp -s "$ARCHIVE" "$work/public.dmg" ||
   refuse "the public asset differs from the archive; the feed is unchanged. Delete the release and rerun"
 
 echo "Publishing the $FEED feed"
