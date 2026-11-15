@@ -1,4 +1,5 @@
 import Foundation
+import Sparkle
 import Testing
 @testable import OttamApp
 
@@ -30,5 +31,12 @@ struct AppUpdaterTests {
 
     @Test func developmentBundleHasNoUpdater() {
         #expect(AppUpdater.makeIfConfigured() == nil)
+    }
+
+    /// A check that finds nothing is not an error worth logging as one.
+    @Test func noUpdateIsNotAnAbort() {
+        #expect(UpdaterLogDelegate.isNoUpdate(NSError(domain: SUSparkleErrorDomain, code: 1001)))
+        #expect(!UpdaterLogDelegate.isNoUpdate(NSError(domain: SUSparkleErrorDomain, code: 2001)))
+        #expect(!UpdaterLogDelegate.isNoUpdate(NSError(domain: NSURLErrorDomain, code: 1001)))
     }
 }

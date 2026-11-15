@@ -49,13 +49,14 @@ final class AppUpdater {
 
 /// Lifecycle logging only: versions and error codes, never feed contents or
 /// URLs.
-private final class UpdaterLogDelegate: NSObject, SPUUpdaterDelegate {
+final class UpdaterLogDelegate: NSObject, SPUUpdaterDelegate {
     func updater(_ updater: SPUUpdater, didFindValidUpdate item: SUAppcastItem) {
         updaterLogger.notice("update available: \(item.displayVersionString, privacy: .public)")
     }
 
     func updaterDidNotFindUpdate(_ updater: SPUUpdater, error: any Error) {
-        updaterLogger.info("no update available")
+        let reason = (error as NSError).userInfo[SPUNoUpdateFoundReasonKey] as? Int ?? -1
+        updaterLogger.info("no update available: reason \(reason, privacy: .public)")
     }
 
     func updater(_ updater: SPUUpdater, willInstallUpdate item: SUAppcastItem) {
@@ -64,6 +65,13 @@ private final class UpdaterLogDelegate: NSObject, SPUUpdaterDelegate {
 
     func updater(_ updater: SPUUpdater, didAbortWithError error: any Error) {
         let error = error as NSError
+        // Sparkle ends every check that finds nothing here too; the call
+        // above already logged it.
+        guard !Self.isNoUpdate(error) else { return }
         updaterLogger.error("update aborted: \(error.domain, privacy: .public) \(error.code, privacy: .public)")
+    }
+
+    static func isNoUpdate(_ error: NSError) -> Bool {
+        error.domain == SUSparkleErrorDomain && error.code == Int(SUError.noUpdateError.rawValue)
     }
 }
