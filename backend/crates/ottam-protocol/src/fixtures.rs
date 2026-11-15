@@ -750,6 +750,7 @@ pub fn agent_shutdown_readiness_response_fixture() -> ProtocolResponse<AgentShut
             ready: false,
             waiting_on: vec!["Claude — Your setup".into()],
             refresh_lock_paths: vec!["/fixture/.claude/.oauth_refresh.lock".into()],
+            active_run_conversations: 2,
         },
     )
 }

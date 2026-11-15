@@ -111,19 +111,18 @@ final class OttamApplicationDelegate: NSObject, NSApplicationDelegate {
         guard quitTask == nil else { return .terminateLater }
         let operationKey = UUID().uuidString
         quitOperationKey = operationKey
-        quitPanelDelay = Task { @MainActor in
-            do { try await Task.sleep(for: .milliseconds(300)) } catch { return }
-            guard !Task.isCancelled else { return }
-            showWaitingPanel(refreshing: false)
-        }
-        quitMonitor = Task { @MainActor in
-            while !Task.isCancelled {
-                if let readiness = try? await runtime.client.shutdownReadinessIfRunning(), !Task.isCancelled, !readiness.ready { showWaitingPanel() }
-                try? await Task.sleep(for: .milliseconds(100))
-            }
-        }
+        let asks = !TerminationSignalHandler.quitRequested
+        showQuitProgress(runtime: runtime)
         quitTask = Task { @MainActor in
             do {
+                if asks, let warning = ActiveRunQuitWarning(
+                    activeRunConversations: try await runtime.client.shutdownReadinessIfRunning()?.activeRunConversations ?? 0
+                ) {
+                    try Task.checkCancellation()
+                    hideQuitProgress()
+                    guard warning.confirm() else { throw CancellationError() }
+                    showQuitProgress(runtime: runtime)
+                }
                 while true {
                     try Task.checkCancellation()
                     let readiness = try await runtime.client.shutdownReadinessIfRunning()
@@ -152,15 +151,35 @@ final class OttamApplicationDelegate: NSObject, NSApplicationDelegate {
         return .terminateLater
     }
 
-    private func finishQuitPreparation() {
+    /// Shows the waiting panel once quitting takes a moment, or as soon as
+    /// an agent holds it up.
+    private func showQuitProgress(runtime: OttamAppRuntime) {
+        quitPanelDelay = Task { @MainActor in
+            do { try await Task.sleep(for: .milliseconds(300)) } catch { return }
+            guard !Task.isCancelled else { return }
+            showWaitingPanel(refreshing: false)
+        }
+        quitMonitor = Task { @MainActor in
+            while !Task.isCancelled {
+                if let readiness = try? await runtime.client.shutdownReadinessIfRunning(), !Task.isCancelled, !readiness.ready { showWaitingPanel() }
+                try? await Task.sleep(for: .milliseconds(100))
+            }
+        }
+    }
+
+    private func hideQuitProgress() {
         quitMonitor?.cancel()
         quitMonitor = nil
         quitPanelDelay?.cancel()
         quitPanelDelay = nil
-        quitOperationKey = nil
         waitingPanel?.close()
         waitingPanel = nil
         waitingPanelRefreshing = false
+    }
+
+    private func finishQuitPreparation() {
+        hideQuitProgress()
+        quitOperationKey = nil
         quitTask = nil
     }
 

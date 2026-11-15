@@ -15,6 +15,8 @@ import Dispatch
 @MainActor
 enum TerminationSignalHandler {
     private static var source: DispatchSourceSignal?
+    /// A signalled quit has nobody to answer a question, so it never asks.
+    private(set) static var quitRequested = false
 
     static func install() {
         guard source == nil else { return }
@@ -29,6 +31,7 @@ enum TerminationSignalHandler {
             // the loop.
             RunLoop.main.perform(inModes: [.common]) {
                 MainActor.assumeIsolated {
+                    quitRequested = true
                     NSApplication.shared.terminate(nil)
                 }
             }

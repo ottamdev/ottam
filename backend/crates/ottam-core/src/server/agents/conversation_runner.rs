@@ -690,6 +690,16 @@ impl ConversationRunCoordinator {
         handback
     }
 
+    /// Conversations with a run in flight, of any origin.
+    pub(super) async fn active_run_conversations(&self) -> u32 {
+        let runs = self.active_runs().await;
+        let conversations: std::collections::HashSet<_> = runs
+            .values()
+            .map(|run| &run.context.conversation_id)
+            .collect();
+        u32::try_from(conversations.len()).unwrap_or(u32::MAX)
+    }
+
     #[cfg(test)]
     pub(super) async fn contains_run(&self, run_id: &ConversationRunID) -> bool {
         self.active_runs.lock().await.contains_key(run_id)

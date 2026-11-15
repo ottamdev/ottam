@@ -5412,10 +5412,16 @@ async fn shutdown_finalizes_multiple_active_runs_and_clears_runtime_bookkeeping(
         .await;
     env.wait_for_running(&second.conversation_id, &second_started.run.run_id)
         .await;
+    assert_eq!(
+        bridge.conversation.active_run_conversations().await,
+        2,
+        "quitting would stop both conversations' runs"
+    );
 
     tokio::time::timeout(Duration::from_secs(3), bridge.shutdown())
         .await
         .expect("shutdown remains bounded");
+    assert_eq!(bridge.conversation.active_run_conversations().await, 0);
 
     for (conversation_id, run_id) in [
         (&first.conversation_id, &first_started.run.run_id),

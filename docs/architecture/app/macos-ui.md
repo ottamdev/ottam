@@ -42,6 +42,11 @@ hold UI state only; durable domain authority stays behind the Core protocol
   when quitting an application" setting and ⌥⌘Q; otherwise launch opens the
   Welcome window. Decided 2026-11-14: Ottam honors the user's system choice
   rather than reopening workspaces on its own.
+- Quitting stops every agent's run. When Core reports any in flight, quit
+  first asks with a native alert, Cancel by default (`ActiveRunQuitWarning`);
+  that covers ⌘Q, the updater's relaunch and logout alike. A SIGTERM quit
+  never asks. Decided 2026-11-15: quitting mid-turn must not lose work
+  silently, and one gate keeps every quit path the same.
 
 ## Sidebar And Toolbar
 

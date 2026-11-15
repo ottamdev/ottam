@@ -1,3 +1,4 @@
+import AppKit
 import OttamBackendClient
 import Observation
 import SwiftUI
@@ -25,6 +26,35 @@ final class AgentShutdownPreparation {
             waiting = true
             try await Task.sleep(for: .milliseconds(100))
         }
+    }
+}
+
+/// What quitting asks while agents are mid-run; quitting stops their runs.
+struct ActiveRunQuitWarning: Equatable {
+    let message: String
+    let detail: String
+
+    init?(activeRunConversations count: Int) {
+        guard count > 0 else { return nil }
+        if count == 1 {
+            message = "Quit Ottam while an agent is working?"
+            detail = "Quitting stops its turn. You can continue the chat later."
+        } else {
+            message = "Quit Ottam while \(count) agents are working?"
+            detail = "Quitting stops their turns. You can continue the chats later."
+        }
+    }
+
+    /// Cancel is the default: Return and Escape both keep Ottam running.
+    @MainActor
+    func confirm() -> Bool {
+        let alert = NSAlert()
+        alert.messageText = message
+        alert.informativeText = detail
+        alert.addButton(withTitle: "Cancel")
+        let quit = alert.addButton(withTitle: "Quit")
+        quit.hasDestructiveAction = true
+        return alert.runModal() == .alertSecondButtonReturn
     }
 }
 

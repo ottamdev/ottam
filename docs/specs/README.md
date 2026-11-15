@@ -13,7 +13,7 @@ current.
 ## Release
 
 - [Open Source Release Readiness](operations/open-source-release.md) — active — Next: distribution
-- [App Update And Distribution](app/distribution.md) — active — Milestone 2: land the disk-image release, then the update walkthrough as the workflow's first run
+- [App Update And Distribution](app/distribution.md) — active — Milestone 2: finish the update walkthrough (setting-off restore, mid-turn ask, offline)
 
 ## Agents (ACP)
 
