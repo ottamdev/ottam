@@ -27,14 +27,16 @@ release_stage_disk_image() {
 # Builds the release image at $2 from a folder ($1) holding Ottam.app, with the
 # layout committed in the repository at $3. diskutil leaves .DS_Store out of
 # an image made from a folder, so the layout goes into a writable image that
-# is then compressed (APFS, lzfse, as Sparkle recommends).
+# is then compressed (APFS, lzfse, as Sparkle recommends). fseventsd may log
+# to the writable mount; that log is removed before the eject.
 release_create_disk_image() {
   local root="$1" output="$2" repo="$3" raw="$2.raw.dmg" mount="$2.mount"
   release_stage_disk_image "$root" "$repo" || return 1
   release_quietly diskutil image create from --format RAW --volumeName "$RELEASE_VOLUME_NAME" \
     "$root" "$raw" || return 1
   release_quietly diskutil image attach --nobrowse --mountPoint "$mount" "$raw" || return 1
-  if ! cp "$repo/$RELEASE_DISK_IMAGE_LAYOUT/DS_Store" "$mount/.DS_Store"; then
+  if ! cp "$repo/$RELEASE_DISK_IMAGE_LAYOUT/DS_Store" "$mount/.DS_Store" ||
+    ! rm -rf "$mount/.fseventsd"; then
     release_detach_disk_image "$mount"
     return 1
   fi
