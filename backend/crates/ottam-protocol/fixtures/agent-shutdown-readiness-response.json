@@ -8,6 +8,7 @@
     "refreshLockPaths": [
       "/fixture/.claude/.oauth_refresh.lock"
     ],
-    "hasSharedHomes": false
+    "hasSharedHomes": false,
+    "workingConversations": 2
   }
 }

@@ -16,8 +16,8 @@ updater. Repository policy (license, notices, community files) belongs to the
 ## Current Status
 
 Ottam builds notarized archives that install and run on a clean macOS 26
-account, and has a release workflow that has not run yet. Nothing is
-published:
+account, and has a release workflow that has published to the test feed and
+updated a real install. Nothing is published to production:
 
 - `scripts/release-app.sh` cuts versions locally, enforces the release
   refusals, signs, notarizes, and staples the app, and packages it in a disk
@@ -55,19 +55,18 @@ notarization, GitHub access, or Sparkle key.
   Developer ID backup.
   - Why: a lost key stops releases until a key rotation ships.
   - Done when: the maintainer confirms the backup exists.
-- [ ] **Update walkthrough.** Try it 1–6 below.
-  - Why: an install quits through the normal path, so the shutdown-readiness
-    gate in `applicationShouldTerminate`
-    (`app/Sources/OttamApp/App/Main.swift`) applies. Prove Sparkle waits for
-    it rather than assuming.
-  - Needs: the disk-image release on `main`, so the walkthrough updates the
-    way shipped builds will (dispatch also requires the workflow there). N is
-    a local build of throwaway tag `v26.11.900` with `--feed-url` set to the
-    test feed; N+1 is throwaway tag `v26.11.901`, published by the workflow
-    with `feed=test`, which is also the workflow's first run. Never add an
-    ATS exception to reach a local feed.
-  - Done when: steps 1–6 pass in real windows with screenshots and AX, and
-    the walkthrough's pre-release, tag, and test feed are deleted.
+- [~] **Update walkthrough.** Steps 1–4 and the first pass of 5 passed.
+  Left: step 4 with "Close windows when quitting" off, step 5 again now that
+  quit asks first, and step 6.
+  - Why: an install quits through the normal path, so the quit gate in
+    `applicationShouldTerminate` (`app/Sources/OttamApp/App/Main.swift`)
+    applies. Prove Sparkle waits on it rather than assuming.
+  - Needs: a fresh throwaway pair. N is a local build of a throwaway tag with
+    `--feed-url` set to the test feed; N+1 is the next throwaway tag,
+    published by the workflow with `feed=test`. Never add an ATS exception to
+    reach a local feed.
+  - Done when: the remaining steps pass in real windows with screenshots and
+    AX, and the pair's pre-release, tags, and test feed are deleted.
 
 Try it, with two Developer ID-signed builds N and N+1 and a test feed injected
 at assembly:
@@ -82,8 +81,10 @@ at assembly:
    it) with workspaces, chats, and settings intact. Record whether the
    workspace windows reopen with "Close windows when quitting an
    application" on and off.
-5. Repeat with an agent mid-turn and a terminal running: the install waits on
-   the same quit behavior as ⌘Q, and nothing is killed outside it.
+5. Repeat with an agent mid-turn and a terminal running: Install and Relaunch
+   asks the same question as ⌘Q. Cancel keeps N running with the turn intact;
+   Quit installs, and the turn shows Stopped in N+1. Record what Sparkle does
+   with the update after Cancel.
 6. Offline, Check for Updates… reports the failure and the app stays usable.
 7. A `run-app.sh` build has no Check for Updates… item and requests no feed.
 
@@ -128,7 +129,7 @@ image and the app; and a re-inventory of the app as mounted from it. Update matr
 | Wrong Developer ID identity | Rejected. |
 | Offline | Current app stays usable. |
 | Core running | App and core replaced together; clean relaunch. |
-| Agent mid-turn or terminal running | Install waits on the normal quit path. |
+| Agent mid-turn or terminal running | Install asks first, then takes the normal quit path. |
 | Existing database | Startup migrations run; durable state remains. |
 | Adapter pin moved | Old adapter keeps launching until the new pin lands. |
 | Read-only or relocated install | Sparkle's authorization path or a recoverable error. |

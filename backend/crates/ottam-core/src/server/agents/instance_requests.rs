@@ -67,6 +67,10 @@ impl AgentServer {
                     {
                         return response;
                     }
+                    // First: the await must not split waiting_on from the
+                    // lock paths below, which describe the same moment.
+                    let working_conversations =
+                        task_bridge.conversation.working_conversations().await;
                     let waiting_on = task_bridge.registry().shutdown_waiting_on();
                     success_response(
                         request.id,
@@ -86,6 +90,7 @@ impl AgentServer {
                                 .into_iter()
                                 .map(|path| path.to_string_lossy().into_owned())
                                 .collect(),
+                            working_conversations,
                         },
                     )
                 }

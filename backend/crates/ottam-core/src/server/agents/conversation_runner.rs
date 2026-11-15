@@ -690,6 +690,21 @@ impl ConversationRunCoordinator {
         handback
     }
 
+    /// Conversations whose agent is working: a run in flight, of any
+    /// origin, or a background task or subagent that outlived its run.
+    pub(super) async fn working_conversations(&self) -> u32 {
+        // Runs first: a run that ends and leaves a task behind between the
+        // two reads still shows in the attribution read that follows.
+        let mut conversations: std::collections::HashSet<ConversationID> = self
+            .active_runs()
+            .await
+            .values()
+            .map(|run| run.context.conversation_id.clone())
+            .collect();
+        conversations.extend(self.attribution.conversations_with_live_work());
+        u32::try_from(conversations.len()).unwrap_or(u32::MAX)
+    }
+
     #[cfg(test)]
     pub(super) async fn contains_run(&self, run_id: &ConversationRunID) -> bool {
         self.active_runs.lock().await.contains_key(run_id)

@@ -234,6 +234,32 @@ fn stopping_the_run_withdraws_its_question() {
     core.shutdown();
 }
 
+/// A run in flight, here one waiting on its question, is what quit asks
+/// about; readiness reports it on the wire and drops it once the run ends.
+#[test]
+fn shutdown_readiness_reports_a_run_in_flight() {
+    let (_runtime, _repo, mut core, run) = start(FakePromptBehavior::AskQuestion);
+    let request = wait_for_question(&mut core);
+    let readiness = |core: &mut CoreProcess| {
+        let (response, _) = core.send_for_id(
+            json!({"id": 904, "method": "agent.shutdownReadiness", "params": {}}),
+            json!(904),
+        );
+        assert_success_response(&response, &json!(904));
+        response["result"]["workingConversations"].clone()
+    };
+    assert_eq!(readiness(&mut core), json!(1));
+    core.write_message(json!({"id": request["id"], "result": {"outcome": "skipped"}}));
+    wait_for_status(&mut core, &run, "completed");
+    // The run leaves the active set after its status is stored.
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while readiness(&mut core) != json!(0) {
+        assert!(Instant::now() < deadline, "the finished run still counts as working");
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    core.shutdown();
+}
+
 /// The adapter withdrawing its form (`$/cancel_request`) withdraws it from
 /// the client too, and the adapter hears the cancellation.
 #[test]

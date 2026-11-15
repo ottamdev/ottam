@@ -1,3 +1,4 @@
+import AppKit
 import OttamBackendClient
 import Observation
 import SwiftUI
@@ -25,6 +26,38 @@ final class AgentShutdownPreparation {
             waiting = true
             try await Task.sleep(for: .milliseconds(100))
         }
+    }
+}
+
+/// What quitting asks while agents are working: mid-turn, or on a
+/// background task or subagent that outlived its turn. Quitting stops it.
+struct WorkingAgentQuitWarning: Equatable {
+    let message: String
+    let detail: String
+
+    /// Nil when nothing is working, or when a signal asked to quit: nobody
+    /// is there to answer.
+    init?(workingConversations count: Int, signalled: Bool) {
+        guard count > 0, !signalled else { return nil }
+        if count == 1 {
+            message = "Quit Ottam while an agent is working?"
+            detail = "Quitting stops its work. You can continue the chat later."
+        } else {
+            message = "Quit Ottam while \(count) agents are working?"
+            detail = "Quitting stops their work. You can continue the chats later."
+        }
+    }
+
+    /// Cancel is the default button. NSAlert binds a first button titled
+    /// Cancel to Escape rather than Return, so Return is set explicitly.
+    @MainActor
+    func makeAlert() -> NSAlert {
+        let alert = NSAlert()
+        alert.messageText = message
+        alert.informativeText = detail
+        alert.addButton(withTitle: "Cancel").keyEquivalent = "\r"
+        alert.addButton(withTitle: "Quit").hasDestructiveAction = true
+        return alert
     }
 }
 

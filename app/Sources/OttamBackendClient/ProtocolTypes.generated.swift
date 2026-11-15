@@ -2739,17 +2739,38 @@ public struct AgentShutdownReadinessResult: Codable, Equatable, Sendable {
     public var refreshLockPaths: [String]
     /// Ownership remains relevant even when no shared adapter is running.
     public var hasSharedHomes: Bool?
+    /// Conversations whose agent is working: a run in flight, or a background task or subagent that outlived its run. Quitting stops them. It never affects `ready`; the app asks the user first.
+    public var workingConversations: Int
 
     public init(
         ready: Bool,
         waitingOn: [String],
         refreshLockPaths: [String],
-        hasSharedHomes: Bool? = nil
+        hasSharedHomes: Bool? = nil,
+        workingConversations: Int
     ) {
         self.ready = ready
         self.waitingOn = waitingOn
         self.refreshLockPaths = refreshLockPaths
         self.hasSharedHomes = hasSharedHomes
+        self.workingConversations = workingConversations
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case ready
+        case waitingOn
+        case refreshLockPaths
+        case hasSharedHomes
+        case workingConversations
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        ready = try container.decode(Bool.self, forKey: .ready)
+        waitingOn = try container.decode([String].self, forKey: .waitingOn)
+        refreshLockPaths = try container.decode([String].self, forKey: .refreshLockPaths)
+        hasSharedHomes = try container.decodeIfPresent(Bool.self, forKey: .hasSharedHomes)
+        workingConversations = try container.decodeIfPresent(Int.self, forKey: .workingConversations) ?? 0
     }
 }
 
