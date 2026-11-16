@@ -78,7 +78,9 @@ touching production. Never add an ATS exception to reach a local feed.
    Install it from the image with `release_attach_disk_image`
    (`scripts/lib/release-disk-image.sh`) and `ditto` into `/Applications`
    (**ask**: it replaces the installed app).
-3. Tag N+1 the same way, then **ask** and push only that tag, and
+3. Tag N+1 the same way, committing a one-line
+   `release-notes/<N+1>.md` with the version bump: publishing refuses a
+   tag without notes on either feed. Then **ask**, push only that tag, and
    `gh workflow run release.yml --repo ottamdev/ottam --ref v<N+1> -f feed=test`.
    The user approves `release`.
 4. Run the walkthrough with the user. A scheduled check fires at launch once
