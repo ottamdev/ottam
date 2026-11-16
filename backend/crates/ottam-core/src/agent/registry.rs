@@ -63,6 +63,11 @@ pub trait RuntimeProbe: Send + Sync {
     /// Drop probe-specific status caches before an explicit runtime refresh.
     /// Test and custom probes are uncached by default.
     fn invalidate(&self) {}
+
+    /// Ready what a launch reads without probing a runtime: a binary-lane
+    /// adapter needs no Node, but its PATH still comes from the login-shell
+    /// search. Blocking; test and custom probes do nothing.
+    fn warm(&self) {}
 }
 
 /// How long a ready runtime status is reused before re-shelling out.
@@ -173,6 +178,10 @@ impl RuntimeProbe for SystemRuntimeProbe {
             .unwrap_or_else(|poisoned| poisoned.into_inner());
         cache.clear();
         self.invalidations.fetch_add(1, Ordering::AcqRel);
+    }
+
+    fn warm(&self) {
+        self.resolver.resolve();
     }
 }
 
@@ -1839,10 +1848,13 @@ impl AgentRegistry {
         if definition.agent_id.0 == TEST_NATIVE_AGENT_ID {
             return Ok(AgentRuntimeStatus::ready("in-process", "in-process"));
         }
+        let probe = Arc::clone(&self.probe);
         if definition.runs_binary() {
+            // No Node to probe, but the launch reads the login-shell PATH the
+            // Node search captures, so that search has to have run.
+            let _ = tokio::task::spawn_blocking(move || probe.warm()).await;
             return Ok(AgentRuntimeStatus::not_required());
         }
-        let probe = Arc::clone(&self.probe);
         tokio::task::spawn_blocking(move || probe.probe(&definition))
             .await
             .map_err(|error| {
@@ -1946,7 +1958,8 @@ impl AgentRegistry {
     }
 
     /// Stop a running adapter whose launch target has moved — an upgraded
-    /// adapter or Node landed after it started — when nothing is using it, so
+    /// adapter or Node, or a new login-shell PATH, landed after it started —
+    /// when nothing is using it, so
     /// the acquisition that follows starts the new version through the
     /// ordinary stopped-adapter path. A busy adapter keeps running what it
     /// was launched with; its sessions restore on the new version at the
@@ -1979,7 +1992,19 @@ impl AgentRegistry {
         let same_command = running.command == current.launch.command
             || bare(&running.command)
             || bare(&current.launch.command);
-        if same_command && running.arguments == current.launch.arguments {
+        // A new login-shell PATH is a new target too: the agent's shell only
+        // finds a newly installed tool after the adapter restarts on it.
+        let path = |environment: &[(String, String)]| {
+            environment
+                .iter()
+                .rev()
+                .find(|(name, _)| name == "PATH")
+                .map(|(_, value)| value.clone())
+        };
+        if same_command
+            && running.arguments == current.launch.arguments
+            && path(&running.environment) == path(&current.launch.environment)
+        {
             return;
         }
         let busy = self
@@ -3352,6 +3377,67 @@ mod tests {
             !registry.launch_uses(&old_dir),
             "nothing live runs from the superseded version any more"
         );
+    }
+
+    /// A login-shell PATH that changed under a running adapter (the user
+    /// installed a tool and hit Check Again) restarts it once idle, so the
+    /// agent's shell finds the tool; an unchanged PATH keeps it running.
+    #[tokio::test]
+    async fn an_idle_adapter_restarts_onto_a_new_login_path() {
+        let resolver = Arc::new(NodeResolver::default());
+        resolver.store_for_test(NodeResolution::Unresolved);
+        resolver.store_login_path_for_test("/usr/bin:/bin");
+        let factory = Arc::new(FakeFactory::default());
+        let registry = AgentRegistry::with_components_and_resolver(
+            built_in_definitions(),
+            Arc::new(ReadyProbe),
+            factory.clone(),
+            Arc::clone(&resolver),
+        );
+        let agent_id = AgentId::new(OPENCODE_AGENT_ID);
+
+        let first = registry.get_or_start(&agent_id).await.expect("start");
+        let same = registry.get_or_start(&agent_id).await.expect("reacquire");
+        assert!(Arc::ptr_eq(&first, &same), "an unchanged PATH restarted it");
+
+        resolver.store_login_path_for_test("/opt/homebrew/bin:/usr/bin:/bin");
+        let moved = registry.get_or_start(&agent_id).await.expect("restart");
+        assert!(!Arc::ptr_eq(&first, &moved));
+        assert_eq!(
+            launch_path(moved.definition()).as_deref(),
+            Some("/opt/homebrew/bin:/usr/bin:/bin")
+        );
+        assert_eq!(factory.created.load(Ordering::SeqCst), 2);
+    }
+
+    /// A binary-lane adapter probes no Node, but its launch reads the
+    /// login-shell PATH, so a status check still runs the search first.
+    #[tokio::test]
+    async fn a_binary_adapter_status_check_warms_the_login_path() {
+        #[derive(Default)]
+        struct CountingProbe {
+            warms: AtomicUsize,
+        }
+        impl RuntimeProbe for CountingProbe {
+            fn probe(&self, _definition: &AgentDefinition) -> AgentRuntimeStatus {
+                AgentRuntimeStatus::ready("v22.0.0", "10.0.0")
+            }
+            fn warm(&self) {
+                self.warms.fetch_add(1, Ordering::SeqCst);
+            }
+        }
+        let probe = Arc::new(CountingProbe::default());
+        let registry = AgentRegistry::with_components(
+            built_in_definitions(),
+            probe.clone(),
+            Arc::new(FakeFactory::default()),
+        );
+        let status = registry
+            .runtime_status(&AgentId::new(OPENCODE_AGENT_ID))
+            .await
+            .expect("status");
+        assert_eq!(status, AgentRuntimeStatus::not_required());
+        assert_eq!(probe.warms.load(Ordering::SeqCst), 1);
     }
 
     /// Mandatory install: with the store active and nothing installed, a start
