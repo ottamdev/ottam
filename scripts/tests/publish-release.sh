@@ -81,6 +81,8 @@ esac
 STUB
 
 # generate_appcast: keeps existing items, adds one per archive in the folder.
+# Like the real tool, it reads the version from the app inside the image and
+# embeds only the notes whose base name matches the archive's.
 cat > "$sparkle/generate_appcast" <<'STUB'
 #!/bin/bash
 prefix="" dir=""
@@ -100,9 +102,13 @@ old=""
   echo '<rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle"><channel>'
   for dmg in "$dir"/*.dmg; do
     name="$(basename "$dmg")"
-    version="${name#Ottam-}"
-    version="${version%.dmg}"
-    echo "<item><sparkle:version>$version</sparkle:version>"
+    mount="$(mktemp -d)"
+    diskutil image attach --readOnly --nobrowse --mountPoint "$mount" "$dmg" >/dev/null 2>&1 || exit 1
+    version="$(plutil -extract CFBundleVersion raw -o - "$mount/Ottam.app/Contents/Info.plist")"
+    diskutil eject "$mount" >/dev/null 2>&1
+    notes=""
+    [ ! -f "$dir/${name%.dmg}.md" ] || notes="<description>$(cat "$dir/${name%.dmg}.md")</description>"
+    echo "<item><sparkle:version>$version</sparkle:version>$notes"
     echo "<enclosure url=\"$prefix$name\" length=\"$(stat -f %z "$dmg")\" sparkle:edSignature=\"c2ln\"/></item>"
   done
   [ -z "$old" ] || echo "$old"
@@ -236,8 +242,12 @@ mv "$test_root/held.dmg" "$source_repo/.build/release/Ottam-26.11.901.dmg"
 
 expect_status 0 "Published 26.11.901 to the test feed" publish --version 26.11.901 --feed test
 grep -q -- '--prerelease' "$public/release-v26.11.901" || fail "a test-feed release wasn't a pre-release"
-git --git-dir "$test_root/updates.git" show main:public/test/appcast.xml |
-  grep -q 'releases/download/v26.11.901/Ottam-26.11.901.dmg' || fail "the test feed doesn't point at the release"
+[ -f "$public/Ottam.dmg" ] || fail "the release asset isn't named Ottam.dmg"
+git --git-dir "$test_root/updates.git" show main:public/test/appcast.xml > "$test_root/published.xml"
+grep -q 'releases/download/v26.11.901/Ottam.dmg' "$test_root/published.xml" ||
+  fail "the test feed doesn't point at the release"
+grep -q '<description>- Walkthrough build.' "$test_root/published.xml" ||
+  fail "the release notes weren't embedded in the feed"
 if git --git-dir "$test_root/updates.git" show main:public/appcast.xml >/dev/null 2>&1; then
   fail "a test-feed release touched the production feed"
 fi

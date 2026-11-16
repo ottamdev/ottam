@@ -51,7 +51,7 @@ marked **ask**. Never enter, export, or print a credential.
    shows whether it still waits. Watch the run in the background (about 11
    minutes after approval).
 8. **Verify.** `gh release view v<version> --repo ottamdev/ottam` shows the
-   `Ottam-<version>.dmg` asset, and
+   `Ottam.dmg` asset, and
    `curl -fsS https://updates.ottam.dev/appcast.xml` lists the version. For
    package checks, download the image and run
    `./scripts/verify-release-app.sh <dmg> --version <version> --distribution --feed-url https://updates.ottam.dev/appcast.xml`.
