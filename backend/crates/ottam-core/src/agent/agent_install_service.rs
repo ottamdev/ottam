@@ -705,7 +705,7 @@ impl AgentInstallService {
                     &staging,
                     package,
                     &runtime.npm,
-                    runtime.bin_dir(),
+                    Some(self.registry.npm_path(runtime.bin_dir())),
                     node_version.clone(),
                     cancel,
                 )

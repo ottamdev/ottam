@@ -25,7 +25,6 @@ use ottam_protocol::{
     WorkspaceID,
 };
 use std::collections::{HashMap, HashSet};
-use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, Weak};
 use std::time::{Duration, Instant};
@@ -86,9 +85,10 @@ impl SignedOut {
     }
 }
 
-/// The bin directory of the Node runtime agents launch with, if one was
-/// already found. Never searches, as agent launches don't.
-pub(crate) type McpToolchain = Arc<dyn Fn() -> Option<PathBuf> + Send + Sync>;
+/// The PATH local servers run with: the login shell's, led by the Node
+/// runtime agents launch with when one was already found. Never searches, as
+/// agent launches don't.
+pub(crate) type McpToolchain = Arc<dyn Fn() -> Option<std::ffi::OsString> + Send + Sync>;
 
 #[derive(Clone)]
 pub(crate) struct McpRuntime {
@@ -461,8 +461,8 @@ impl McpRuntime {
         }
     }
 
-    /// Put `toolchain`'s directory first on local servers' PATH, so `npx`
-    /// and `node` resolve as they do for agents.
+    /// Give local servers `toolchain`'s PATH, so `npx` and `node` resolve
+    /// to the agents' Node and the user's own tools are found.
     pub(crate) fn set_toolchain(&self, toolchain: McpToolchain) {
         *lock(&self.inner.toolchain) = Some(toolchain);
     }
@@ -617,13 +617,13 @@ impl Inner {
         };
         let toolchain = lock(&self.toolchain).clone();
         // Only local slots hold a workspace.
-        let path_prefix = toolchain
+        let path = toolchain
             .filter(|_| slot.workspace.is_some())
             .and_then(|toolchain| toolchain());
         upstream::connect(
             &server,
             slot.workspace.as_ref(),
-            path_prefix.as_deref(),
+            path.as_deref(),
             hooks,
             oauth,
         )

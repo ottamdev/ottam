@@ -95,6 +95,15 @@ runtime is the standing consent for a new pin
 (`RuntimeInstallService::reconcile`). Only an older
 runtime stands in; a newer one left by a rolled-back app never runs.
 
+Child PATH (decided 2026-11-16, because a Finder launch hands core launchd's
+PATH and agents could not find `gh` or `brew`): children start from the PATH
+of the user's interactive login shell, captured by the same run that finds
+Node. Only PATH is imported; the rest of a shell's environment is session
+state, or exports such as API keys that would quietly change an agent.
+Resolved Node goes last on an adapter's PATH so the user's own `node` wins in
+agent shells, and first wherever npm or npx re-resolve it from their shebang
+(`agent/node_resolver.rs`).
+
 ## Managed Adapter Lifecycle And Setup UI
 
 - Adapters install at an exact pin; `require_runtime` refuses an uninstalled

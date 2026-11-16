@@ -1154,11 +1154,14 @@ mod runtime {
     }
 
     #[tokio::test]
-    async fn local_servers_find_the_agents_node_first_on_path() {
+    async fn local_servers_run_with_the_toolchain_path() {
         let harness = Harness::new(Duration::from_secs(600));
+        let inherited = std::env::var("PATH").unwrap_or_default();
+        let toolchain = format!("/managed/node/bin:/login/bin:{inherited}");
+        let given = toolchain.clone();
         harness
             .runtime
-            .set_toolchain(Arc::new(|| Some(PathBuf::from("/managed/node/bin"))));
+            .set_toolchain(Arc::new(move || Some(given.clone().into())));
         let server = harness.add(local("fixture", &[])).await;
         let workspace = harness.workspace("alpha");
         let _lease = harness
@@ -1172,8 +1175,7 @@ mod runtime {
             .await
             .expect("starts");
         let path = call(&peer, "env", json!({"name": "PATH"})).await;
-        let inherited = std::env::var("PATH").unwrap_or_default();
-        assert_eq!(path, format!("/managed/node/bin:{inherited}"));
+        assert_eq!(path, toolchain);
         harness.runtime.shutdown().await;
     }
 

@@ -131,12 +131,15 @@ impl RuntimeProbe for SystemRuntimeProbe {
         // run the same absolute binaries, so a machine that probes Ready can
         // actually start an adapter.
         let runtime = self.resolver.resolve();
-        // The bin directory rides along for the same reason the launch spec
-        // carries it: npx re-resolves `node` through PATH from its own shebang.
-        let bin_dir = match &runtime {
-            NodeResolution::Resolved(resolved) => resolved.bin_dir().map(Path::to_path_buf),
-            NodeResolution::Unresolved => None,
-        };
+        // The bin directory leads: npx re-resolves `node` through PATH from
+        // its own shebang, and must find the Node just resolved.
+        let path = super::node_resolver::path_with_toolchain_first(
+            &self.resolver.child_path_base(),
+            match &runtime {
+                NodeResolution::Resolved(resolved) => resolved.bin_dir(),
+                NodeResolution::Unresolved => None,
+            },
+        );
         let version_checks_started = Instant::now();
         let mut status = probe_runtime_with(definition, |program, argument| {
             let program = resolved_program(&runtime, program);
@@ -144,7 +147,7 @@ impl RuntimeProbe for SystemRuntimeProbe {
                 &program,
                 &[argument],
                 RUNTIME_PROBE_COMMAND_TIMEOUT,
-                bin_dir.as_deref(),
+                Some(&path),
             )
         });
         // The probe just ran these exact binaries, so it is the one place that
@@ -224,7 +227,7 @@ pub(super) fn command_output_args_with_timeout(
     command_output_with_path(program, arguments, timeout, None)
 }
 
-/// As above, with an optional directory prepended to the child's PATH.
+/// As above, with the child's PATH replaced when one is given.
 ///
 /// Needed because `npx` is a `#!/usr/bin/env node` script: running it by
 /// absolute path is not enough, since its own shebang re-resolves `node`
@@ -234,16 +237,10 @@ pub(super) fn command_output_with_path(
     program: &str,
     arguments: &[&str],
     timeout: Duration,
-    prepend_path: Option<&Path>,
+    path: Option<&std::ffi::OsStr>,
 ) -> io::Result<Output> {
     let mut command = Command::new(program);
-    if let Some(dir) = prepend_path {
-        let inherited = std::env::var("PATH").unwrap_or_default();
-        let path = if inherited.is_empty() {
-            dir.to_string_lossy().into_owned()
-        } else {
-            format!("{}:{inherited}", dir.to_string_lossy())
-        };
+    if let Some(path) = path {
         command.env("PATH", path);
     }
     command.args(arguments);
@@ -1217,6 +1214,22 @@ impl AgentRegistry {
         Some(dir)
     }
 
+    /// PATH for local MCP servers: the login shell's, with the agents' Node
+    /// first so a server configured as `npx …` runs on a Node that satisfies
+    /// it, as `npm install` and the probes do.
+    pub(crate) fn mcp_server_path(&self) -> std::ffi::OsString {
+        super::node_resolver::path_with_toolchain_first(
+            &self.resolver.child_path_base(),
+            self.node_bin_dir().as_deref(),
+        )
+    }
+
+    /// PATH for `npm install`: the login shell's, with `bin_dir` first since
+    /// npm and package install hooks re-resolve `node` through PATH.
+    pub(crate) fn npm_path(&self, bin_dir: Option<&Path>) -> std::ffi::OsString {
+        super::node_resolver::path_with_toolchain_first(&self.resolver.child_path_base(), bin_dir)
+    }
+
     /// The toolchain the resolver last found, without searching. Warm after
     /// any `runtime_status` call; a cold read returns None.
     pub(crate) fn cached_node_runtime(&self) -> Option<ResolvedNodeRuntime> {
@@ -1240,7 +1253,7 @@ impl AgentRegistry {
             .collect()
     }
 
-    /// Point an npm-launched definition at the resolved toolchain.
+    /// Point a definition at the resolved toolchain and the login shell's PATH.
     ///
     /// Every consumer of a definition goes through here — the adapter spawn,
     /// the model-catalog probe, and the sign-in terminal — so the launchd PATH
@@ -1248,8 +1261,8 @@ impl AgentRegistry {
     ///
     /// Reads the resolver cache without ever searching: adapter starts run
     /// `require_runtime` first, which resolves, so the cache is warm by then. A
-    /// cold read leaves the bare `npx` name in place, matching the behaviour
-    /// before the resolver existed.
+    /// cold read leaves the bare `npx` name and core's own PATH in place,
+    /// matching the behaviour before the resolver existed.
     fn resolved_definition(&self, mut definition: AgentDefinition) -> AgentDefinition {
         // The isolated home rides the same everyone-passes-here path as the
         // PATH fix, so the adapter spawn, the model-catalog probe, and the
@@ -1321,6 +1334,18 @@ impl AgentRegistry {
                 .environment
                 .push((plugin.variable.to_string(), value));
         }
+        let runtime = self.resolver.cached_runtime();
+        let bin_dir = runtime.as_ref().and_then(ResolvedNodeRuntime::bin_dir);
+        let login_path = self.resolver.login_path();
+        // With neither, the PATH below would be core's own: leave it inherited.
+        let changes_path = bin_dir.is_some() || login_path.is_some();
+        let base = super::node_resolver::path_base(login_path);
+        // Every lane starts from the login shell's PATH, since the adapter's
+        // environment is what the agent's shell inherits. Resolved Node goes
+        // last there, so the user's own `node` wins in that shell; only the
+        // npx lane below needs it first.
+        let mut path = super::node_resolver::path_with_toolchain_last(&base, bin_dir);
+
         // A binary-lane adapter runs its installed executable directly. Not
         // installed, it is left as declared; `require_runtime` refuses the
         // start before anything spawns.
@@ -1328,30 +1353,28 @@ impl AgentRegistry {
             if let Some(executable) = self.installed_entrypoint(&definition) {
                 definition.launch.command = executable.to_string_lossy().into_owned();
             }
-            return definition;
+        } else if definition.launch.command == "npx" {
+            if let Some(entrypoint) = self.installed_entrypoint(&definition) {
+                // An installed adapter runs `node <entrypoint>` directly: no
+                // npx, no registry, no `.bin/` shim re-resolving through `env`.
+                definition.launch.command = runtime
+                    .as_ref()
+                    .map(|resolved| resolved.node.to_string_lossy().into_owned())
+                    .unwrap_or_else(|| "node".to_string());
+                definition.launch.arguments = vec![entrypoint.to_string_lossy().into_owned()];
+            } else if let Some(runtime) = &runtime {
+                // npx is a `#!/usr/bin/env node` script, so here the resolved
+                // Node must come first.
+                definition.launch.command = runtime.npx.to_string_lossy().into_owned();
+                path = super::node_resolver::path_with_toolchain_first(&base, bin_dir);
+            }
         }
-        if definition.launch.command != "npx" {
-            return definition;
+        if changes_path {
+            definition
+                .launch
+                .environment
+                .push(("PATH".to_string(), path.to_string_lossy().into_owned()));
         }
-        let runtime = self.resolver.cached_runtime();
-
-        // An installed adapter runs `node <entrypoint>` directly: no npx, no
-        // registry, no `.bin/` shim re-resolving through `env`.
-        if let Some(entrypoint) = self.installed_entrypoint(&definition) {
-            definition.launch.command = runtime
-                .as_ref()
-                .map(|resolved| resolved.node.to_string_lossy().into_owned())
-                .unwrap_or_else(|| "node".to_string());
-            definition.launch.arguments = vec![entrypoint.to_string_lossy().into_owned()];
-            prepend_toolchain_path(&mut definition, runtime.as_ref());
-            return definition;
-        }
-
-        let Some(runtime) = runtime else {
-            return definition;
-        };
-        definition.launch.command = runtime.npx.to_string_lossy().into_owned();
-        prepend_toolchain_path(&mut definition, Some(&runtime));
         definition
     }
 
@@ -2230,32 +2253,6 @@ impl Drop for ShutdownOperation<'_> {
     }
 }
 
-/// Lead the child's PATH with the resolved toolchain's bin directory.
-///
-/// An absolute command is not sufficient on its own: npx is a
-/// `#!/usr/bin/env node` script, and the adapters spawn `node` for their own
-/// subprocesses — both re-resolve through PATH.
-fn prepend_toolchain_path(definition: &mut AgentDefinition, runtime: Option<&ResolvedNodeRuntime>) {
-    let Some(bin_dir) = runtime.and_then(ResolvedNodeRuntime::bin_dir) else {
-        return;
-    };
-    let path = toolchain_path(bin_dir).to_string_lossy().into_owned();
-    definition
-        .launch
-        .environment
-        .push(("PATH".to_string(), path));
-}
-
-/// Core's own PATH with `bin_dir` first.
-pub(crate) fn toolchain_path(bin_dir: &Path) -> std::ffi::OsString {
-    let mut path = bin_dir.as_os_str().to_owned();
-    if let Some(inherited) = std::env::var_os("PATH").filter(|path| !path.is_empty()) {
-        path.push(":");
-        path.push(inherited);
-    }
-    path
-}
-
 fn pinned(package: (&str, &str)) -> AdapterPackage {
     AdapterPackage {
         name: package.0.to_string(),
@@ -3077,8 +3074,8 @@ mod tests {
     }
 
     /// The launchd-PATH fix: an npm-launched adapter has to spawn through the
-    /// resolved toolchain, and its bin directory has to lead PATH — npx is a
-    /// `#!/usr/bin/env node` script and the adapter spawns `node` itself.
+    /// resolved toolchain, and on the npx lane its bin directory has to lead
+    /// the login shell's PATH — npx is a `#!/usr/bin/env node` script.
     #[test]
     fn a_resolved_toolchain_rewrites_npm_launch_specs() {
         let resolver = Arc::new(NodeResolver::default());
@@ -3088,6 +3085,7 @@ mod tests {
             npm: PathBuf::from("/opt/homebrew/bin/npm"),
             source: NodeSource::WellKnown,
         }));
+        resolver.store_login_path_for_test("/Users/test/.fnm/bin:/usr/bin");
         let registry = AgentRegistry::with_components_and_resolver(
             built_in_definitions(),
             Arc::new(ReadyProbe),
@@ -3099,14 +3097,43 @@ mod tests {
             .definition(&AgentId::new(CLAUDE_AGENT_ID))
             .expect("claude definition");
         assert_eq!(claude.launch.command, "/opt/homebrew/bin/npx");
-        let path = claude
+        assert_eq!(
+            launch_path(&claude).as_deref(),
+            Some("/opt/homebrew/bin:/Users/test/.fnm/bin:/usr/bin")
+        );
+    }
+
+    fn launch_path(definition: &AgentDefinition) -> Option<String> {
+        definition
             .launch
             .environment
             .iter()
             .find(|(name, _)| name == "PATH")
             .map(|(_, value)| value.clone())
-            .expect("PATH injected");
-        assert!(path.starts_with("/opt/homebrew/bin"));
+    }
+
+    /// Issue #30: under a Finder launch core has launchd's PATH, so every
+    /// adapter, whatever its lane and even with no Node found, starts from
+    /// the login shell's PATH instead; that is what its agent's shell gets.
+    #[test]
+    fn every_adapter_starts_from_the_login_shell_path() {
+        let resolver = Arc::new(NodeResolver::default());
+        resolver.store_for_test(NodeResolution::Unresolved);
+        resolver.store_login_path_for_test("/opt/homebrew/bin:/usr/bin:/bin");
+        let registry = AgentRegistry::with_components_and_resolver(
+            built_in_definitions(),
+            Arc::new(ReadyProbe),
+            Arc::new(FakeFactory::default()),
+            resolver,
+        );
+        for id in [CLAUDE_AGENT_ID, OPENCODE_AGENT_ID] {
+            let definition = registry.definition(&AgentId::new(id)).expect("definition");
+            assert_eq!(
+                launch_path(&definition).as_deref(),
+                Some("/opt/homebrew/bin:/usr/bin:/bin"),
+                "{id}"
+            );
+        }
     }
 
     fn seed_install(
@@ -3141,19 +3168,20 @@ mod tests {
         entrypoint
     }
 
-    /// The installed path: `node <entrypoint>` through the resolved toolchain,
-    /// with the same PATH lead the npx path gets — adapters spawn `node` for
-    /// their own subprocesses either way.
+    /// The installed path: `node <entrypoint>` by absolute path, with the
+    /// resolved toolchain at the end of the login shell's PATH so the agent's
+    /// shell finds the user's own `node` first.
     #[test]
     fn an_installed_adapter_launches_node_on_its_entrypoint() {
         let store = tempfile::tempdir().expect("tempdir");
         let resolver = Arc::new(NodeResolver::default());
         resolver.store_for_test(NodeResolution::Resolved(ResolvedNodeRuntime {
-            node: PathBuf::from("/opt/homebrew/bin/node"),
-            npx: PathBuf::from("/opt/homebrew/bin/npx"),
-            npm: PathBuf::from("/opt/homebrew/bin/npm"),
-            source: NodeSource::WellKnown,
+            node: PathBuf::from("/managed/node/bin/node"),
+            npx: PathBuf::from("/managed/node/bin/npx"),
+            npm: PathBuf::from("/managed/node/bin/npm"),
+            source: NodeSource::Managed,
         }));
+        resolver.store_login_path_for_test("/Users/test/.fnm/bin:/opt/homebrew/bin:/usr/bin");
         let installs =
             super::super::adapter_install::ManagedAdapterInstalls::at(store.path().to_path_buf());
         let registry = AgentRegistry::with_components_and_resolver(
@@ -3173,19 +3201,15 @@ mod tests {
         let claude = registry
             .definition(&AgentId::new(CLAUDE_AGENT_ID))
             .expect("claude definition");
-        assert_eq!(claude.launch.command, "/opt/homebrew/bin/node");
+        assert_eq!(claude.launch.command, "/managed/node/bin/node");
         assert_eq!(
             claude.launch.arguments,
             vec![entrypoint.to_string_lossy().into_owned()]
         );
-        let path = claude
-            .launch
-            .environment
-            .iter()
-            .find(|(name, _)| name == "PATH")
-            .map(|(_, value)| value.clone())
-            .expect("PATH injected");
-        assert!(path.starts_with("/opt/homebrew/bin"));
+        assert_eq!(
+            launch_path(&claude).as_deref(),
+            Some("/Users/test/.fnm/bin:/opt/homebrew/bin:/usr/bin:/managed/node/bin")
+        );
         assert!(!registry.adapter_needs_install(&claude));
     }
 
