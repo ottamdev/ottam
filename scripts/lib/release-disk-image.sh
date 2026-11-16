@@ -34,6 +34,7 @@ release_create_disk_image() {
   release_stage_disk_image "$root" "$repo" || return 1
   release_quietly diskutil image create from --format RAW --volumeName "$RELEASE_VOLUME_NAME" \
     "$root" "$raw" || return 1
+  mkdir -p "$mount" || return 1
   release_quietly diskutil image attach --nobrowse --mountPoint "$mount" "$raw" || return 1
   if ! cp "$repo/$RELEASE_DISK_IMAGE_LAYOUT/DS_Store" "$mount/.DS_Store" ||
     ! rm -rf "$mount/.fseventsd"; then
@@ -78,12 +79,16 @@ release_check_disk_image() {
 }
 
 # Mounts the image read-only at the given path, out of Finder's sight.
+# macOS 26's diskutil refuses a mount point that doesn't exist; 27 makes it.
 release_attach_disk_image() {
+  mkdir -p "$2" || return 1
   diskutil image attach --readOnly --nobrowse --mountPoint "$2" "$1" >/dev/null
 }
 
-# Ejects the image mounted at $1, forcing it if needed; never fails.
+# Ejects the image mounted at $1, forcing it if needed, then removes the
+# mount point, which stays if the eject failed; never fails.
 release_detach_disk_image() {
   [ -d "$1" ] || return 0
   diskutil eject "$1" >/dev/null 2>&1 || diskutil eject force "$1" >/dev/null 2>&1 || true
+  rmdir "$1" 2>/dev/null || true
 }

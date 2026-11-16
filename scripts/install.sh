@@ -71,6 +71,8 @@ main() {
   check_signed "$work/Ottam.dmg" "the disk image"
   spctl --assess --type open --context context:primary-signature "$work/Ottam.dmg" 2>/dev/null ||
     fail "Gatekeeper rejected the disk image."
+  # macOS 26's diskutil refuses a mount point that doesn't exist; 27 makes it.
+  mkdir "$mount" || fail "couldn't make a mount point at $mount."
   diskutil image attach --readOnly --nobrowse --mountPoint "$mount" "$work/Ottam.dmg" >/dev/null ||
     fail "couldn't mount the disk image."
   app="$mount/Ottam.app"
