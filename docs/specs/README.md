@@ -13,7 +13,7 @@ current.
 ## Release
 
 - [Open Source Release Readiness](operations/open-source-release.md) — active — Next: distribution
-- [App Update And Distribution](app/distribution.md) — active — Milestone 2: back up the Sparkle key
+- [App Update And Distribution](app/distribution.md) — active — Milestone 3: publish the first two stable releases
 
 ## Agents (ACP)
 

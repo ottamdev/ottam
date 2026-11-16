@@ -113,6 +113,7 @@ model.
 | UI evidence | `ottam-ui-screenshots` skill; pair pixels with AX evidence |
 | Status update | `now` skill (from commits and specs; no status file) |
 | New or updated spec | `track` skill |
+| Release, or an update walkthrough on the test feed | `release` skill |
 
 Skills live under `.claude/skills/`.
 
