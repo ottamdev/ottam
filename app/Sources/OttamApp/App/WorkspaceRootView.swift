@@ -42,14 +42,13 @@ final class OttamWindowActions {
 
 struct OttamCommands: Commands {
     let runtime: OttamAppRuntime
-    let updater: AppUpdater?
     @Environment(\.openWindow) private var openWindow
 
     private var windowActions: OttamWindowActions? { runtime.windows.activeActions }
 
     var body: some Commands {
         CommandGroup(after: .appInfo) {
-            if let updater {
+            if let updater = runtime.updater {
                 Button("Check for Updates…") {
                     updater.checkForUpdates()
                 }

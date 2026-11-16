@@ -23,6 +23,8 @@ final class OttamAppRuntime {
     let agentInstall: AgentInstallController
     /// Remote MCP servers' sign-ins, which Settings and chat cards share.
     let mcpSignIn: McpSignInController
+    /// Nil outside release bundles, which alone carry a feed URL.
+    let updater: AppUpdater?
     private(set) var connectionState: ConnectionState = .starting
     private(set) var coreExitError: CoreExitError?
     private(set) var workspaces: [WorkspaceListItem] = []
@@ -44,10 +46,12 @@ final class OttamAppRuntime {
         client: OttamCoreProcessClient = OttamCoreProcessClient(
             executableURL: ReviewEnvironment.ottamCoreExecutableURL
         ),
-        onboardingStore: OnboardingStore = .default()
+        onboardingStore: OnboardingStore = .default(),
+        updater: AppUpdater? = nil
     ) {
         self.client = client
         self.onboardingStore = onboardingStore
+        self.updater = updater
         self.onboardingPending = onboardingStore.launchNeedsOnboarding()
         self.runtimeInstall = RuntimeInstallController(client: client)
         self.agentInstall = AgentInstallController(client: client)
@@ -56,6 +60,8 @@ final class OttamAppRuntime {
         // replace the snapshot after startup.
         workspaces = WorkspaceListSnapshotCache.load()
         windows.suppressesDefaultWindow = onboardingPending
+        let windows = self.windows
+        updater?.start(canRemind: { windows.showsSidebar })
     }
 
     var activeWorkspaces: [WorkspaceListItem] {
@@ -326,6 +332,12 @@ final class WorkspaceWindowRegistry {
 
     var openWorkspaceCount: Int {
         controllers.count
+    }
+
+    /// Whether a workspace window is up with its sidebar open: the update
+    /// button's only home.
+    var showsSidebar: Bool {
+        controllers.values.contains { $0.showsSidebar }
     }
 
     private var frontmostWindow: NSWindow? {

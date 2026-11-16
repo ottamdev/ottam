@@ -14,14 +14,12 @@ private let appLifecycleLogger = Logger(
 struct OttamMain: App {
     @NSApplicationDelegateAdaptor(OttamApplicationDelegate.self) private var appDelegate
     @State private var runtime: OttamAppRuntime
-    /// Nil outside release bundles, which alone carry a feed URL.
-    @State private var updater: AppUpdater?
 
     init() {
         // Before anything else can crash or exit, and before this launch's
         // marker replaces the previous session's.
         ExitDiagnostics.install()
-        let runtime = OttamAppRuntime()
+        let runtime = OttamAppRuntime(updater: AppUpdater.makeIfConfigured())
         _runtime = State(initialValue: runtime)
         WorkspaceWindowRestoration.runtime = runtime
         TerminationSignalHandler.install()
@@ -40,7 +38,6 @@ struct OttamMain: App {
         // come up sooner than AppKit's ~1 s. AppKit has no per-view delay;
         // this registered default is app-wide and yields to a user's own value.
         UserDefaults.standard.register(defaults: ["NSInitialToolTipDelay": 400])
-        _updater = State(initialValue: AppUpdater.makeIfConfigured())
         appLifecycleLogger.notice("Ottam app started")
     }
 
@@ -61,7 +58,7 @@ struct OttamMain: App {
         // App-wide; they act on the main workspace window through the
         // registry. Workspace windows are AppKit's (WorkspaceWindowController).
         .commands {
-            OttamCommands(runtime: runtime, updater: updater)
+            OttamCommands(runtime: runtime)
         }
 
         // First launch only. No close button: quitting is the way out, and

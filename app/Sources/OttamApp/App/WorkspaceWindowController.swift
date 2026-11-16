@@ -73,6 +73,13 @@ final class WorkspaceWindowController: NSWindowController, NSWindowDelegate, NST
         fatalError("init(coder:) is unavailable")
     }
 
+    var showsSidebar: Bool {
+        guard let window, window.isVisible, !window.isMiniaturized,
+              let shell = window.contentViewController as? WorkspaceShellViewController
+        else { return false }
+        return !shell.split.sidebarItem.isCollapsed
+    }
+
     /// Offsets the window down and right of `anchor`, as a new document
     /// window would be.
     func cascade(from anchor: NSWindow) {
