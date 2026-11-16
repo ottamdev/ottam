@@ -22,6 +22,7 @@ main() {
 
   feed_url="${OTTAM_FEED_URL:-https://updates.ottam.dev/appcast.xml}"
   install_dir="${OTTAM_INSTALL_DIR:-/Applications}"
+  dest="$install_dir/Ottam.app"
   team_id="22G49YDA3D"
   bundle_id="dev.ottam.Ottam"
   source_url="https://github.com/ottamdev/ottam"
@@ -48,7 +49,6 @@ main() {
   pick_latest "$work/appcast.xml"
   [ -n "$version" ] || no_release
 
-  dest="$install_dir/Ottam.app"
   if [ -d "$dest" ]; then
     installed="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$dest/Contents/Info.plist" 2>/dev/null || true)"
     if [ -n "$installed" ] && ! version_newer "$version" "$installed"; then
@@ -56,6 +56,8 @@ main() {
       exit 0
     fi
   fi
+  # Checked again just before the swap; this one saves a wasted download.
+  ! running || fail "Ottam is running. Quit it and run this again."
 
   say "Downloading Ottam $version"
   curl -fL --retry 3 --progress-bar -o "$work/Ottam.dmg" "$url" ||
@@ -78,21 +80,16 @@ main() {
   check_signed "$app" "Ottam.app" --deep
   spctl --assess --type execute "$app" 2>/dev/null || fail "Gatekeeper rejected Ottam.app."
 
-  if pgrep -f "$dest/Contents/MacOS/" >/dev/null 2>&1; then
-    fail "Ottam is running. Quit it and run this again."
-  fi
-
   say "Installing to $dest"
-  staged="$install_dir/.Ottam.app.installing"
-  rm -rf "$staged"
+  # Per process, so a second installer can't delete this one's copy.
+  staged="$install_dir/.Ottam.app.installing.$$"
   ditto "$app" "$staged" || fail "couldn't copy Ottam.app into $install_dir."
+  ! running || fail "Ottam is running. Quit it and run this again."
   if [ -d "$dest" ]; then
     mv "$dest" "$work/previous.app" || fail "couldn't move the old Ottam.app aside."
   fi
-  if ! mv "$staged" "$dest"; then
-    [ ! -d "$work/previous.app" ] || mv "$work/previous.app" "$dest"
-    fail "couldn't put Ottam.app in place."
-  fi
+  # On failure, cleanup puts the previous app back.
+  mv "$staged" "$dest" || fail "couldn't put Ottam.app in place."
 
   say "Installed Ottam $version. Open it from Applications, or run: open \"$dest\""
 }
@@ -110,12 +107,27 @@ no_release() {
   fail "no release has been published yet. Build Ottam from source: $source_url"
 }
 
+# Runs on every exit, including a signal mid-swap: an old app moved aside
+# goes back into place, and is kept where it is if that fails.
 cleanup() {
+  keep=""
+  if [ -d "$work/previous.app" ] && [ ! -e "$dest" ]; then
+    mv "$work/previous.app" "$dest" 2>/dev/null || {
+      keep=1
+      printf 'ottam: your previous Ottam.app is at %s\n' "$work/previous.app" >&2
+    }
+  fi
   rm -rf "${staged:-}"
   if [ -d "$mount" ]; then
     diskutil eject "$mount" >/dev/null 2>&1 || diskutil eject force "$mount" >/dev/null 2>&1 || true
   fi
-  rm -rf "$work"
+  [ -n "$keep" ] || rm -rf "$work"
+}
+
+# Succeeds when the app at $dest is running. ps prints each executable's full
+# path, and grep -F matches $dest literally, whatever characters it holds.
+running() {
+  ps -axo comm= | grep -Fq "$dest/Contents/MacOS/"
 }
 
 check_platform() {

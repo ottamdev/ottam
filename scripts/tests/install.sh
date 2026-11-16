@@ -14,7 +14,8 @@ fail() {
 }
 
 stubs="$test_root/stubs"
-apps="$test_root/Applications"
+# Parentheses and a dot: the running check must match the path literally.
+apps="$test_root/Apps (test.1)"
 mkdir -p "$stubs"
 
 # --- fake tools
@@ -83,9 +84,28 @@ cat > "$stubs/sw_vers" <<'STUB'
 echo "${FAKE_OS:-26.1}"
 STUB
 
-cat > "$stubs/pgrep" <<'STUB'
+# ps: lists the installed Ottam's executable while it "runs". FAKE_RUNNING=1
+# runs it throughout; =late opens it after the installer's first look.
+cat > "$stubs/ps" <<STUB
 #!/bin/bash
-[ -n "${FAKE_RUNNING:-}" ]
+echo /usr/libexec/somed
+calls="\$(cat "$test_root/ps-calls" 2>/dev/null || echo 0)"
+echo \$((calls + 1)) > "$test_root/ps-calls"
+case "\${FAKE_RUNNING:-}" in
+  1) echo "\$OTTAM_INSTALL_DIR/Ottam.app/Contents/MacOS/Ottam" ;;
+  late) [ "\$calls" = 0 ] || echo "\$OTTAM_INSTALL_DIR/Ottam.app/Contents/MacOS/Ottam" ;;
+esac
+STUB
+
+# mv: real, except FAKE_SIGNAL_SWAP=1 signals the installer as it moves the
+# staged app into place, after the old one is already aside.
+cat > "$stubs/mv" <<'STUB'
+#!/bin/bash
+if [ -n "${FAKE_SIGNAL_SWAP:-}" ] && [[ "$1" == *.installing.* ]]; then
+  kill -TERM "$PPID"
+  exit 1
+fi
+exec /bin/mv "$@"
 STUB
 
 chmod +x "$stubs"/*
@@ -120,7 +140,7 @@ make_feed() {
 }
 
 reset() {
-  rm -rf "$apps" "$test_root/image" "$test_root/downloads"
+  rm -rf "$apps" "$test_root/image" "$test_root/downloads" "$test_root/ps-calls"
   mkdir -p "$apps"
   make_app "$test_root/image/Ottam.app" 26.11.10
 }
@@ -132,6 +152,7 @@ expect() {
   shift 2
   env PATH="$stubs:$PATH" OTTAM_INSTALL_DIR="$apps" FAKE_FEED="$test_root/feed.xml" "$@" \
     /bin/sh "$repo_root/scripts/install.sh" > "$test_root/output.log" 2>&1 || status="$?"
+  rm -f "$test_root/ps-calls"
   if [ "$status" != "$expected" ] || ! grep -Fq -- "$reason" "$test_root/output.log"; then
     cat "$test_root/output.log" >&2
     fail "expected status $expected mentioning <$reason>, got $status: $*"
@@ -143,8 +164,8 @@ installed_version() {
 }
 
 assert_clean() {
-  [ ! -e "$apps/.Ottam.app.installing" ] || fail "left the staged copy behind"
-  ! ls -d "${TMPDIR:-/tmp}"/ottam-install.*/volume >/dev/null 2>&1 || fail "left the disk image mounted"
+  ! ls -d "$apps"/.Ottam.app.installing.* >/dev/null 2>&1 || fail "left the staged copy behind"
+  ! ls -d "${TMPDIR:-/tmp}"/ottam-install.?????? >/dev/null 2>&1 || fail "left its work folder behind"
 }
 
 # --- cases
@@ -178,6 +199,17 @@ reset
 make_app "$apps/Ottam.app" 26.11.2
 expect 1 "Ottam is running" FAKE_RUNNING=1
 [ "$(installed_version)" = 26.11.2 ] || fail "replaced a running app"
+[ ! -e "$test_root/downloads" ] || fail "downloaded although Ottam was running"
+# Opened while the installer staged its copy: the check before the swap
+# catches it.
+expect 1 "Ottam is running" FAKE_RUNNING=late
+[ -e "$test_root/downloads" ] || fail "refused before staging; the late check is untested"
+[ "$(installed_version)" = 26.11.2 ] || fail "replaced an app opened during staging"
+assert_clean
+# A signal after the old app is moved aside puts it back.
+expect 130 "Installing to" FAKE_SIGNAL_SWAP=1
+[ "$(installed_version)" = 26.11.2 ] || fail "an interrupted swap lost the old app"
+assert_clean
 expect 0 "Installed Ottam 26.11.10"
 [ "$(installed_version)" = 26.11.10 ] || fail "didn't replace the older app"
 assert_clean

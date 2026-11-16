@@ -68,10 +68,10 @@ Try it:
    was created, and rerun to completion.
 3. In the installed X, Check for Updates… offers X+1 with its notes, installs
    it, and relaunches into it over unauthenticated HTTPS only.
-4. On a clean account, `curl -fsSL https://ottam.dev/install.sh | sh`
-   installs X+1 into Applications and it opens without a Gatekeeper dialog;
-   a rerun reports it is already installed, and a run with Ottam open asks
-   you to quit it first.
+4. On a clean account, install X from its disk image and leave it open.
+   `curl -fsSL https://ottam.dev/install.sh | sh` asks you to quit it first.
+   Quit it and rerun: it installs X+1 into Applications, which opens
+   without a Gatekeeper dialog. A third run reports it is already installed.
 
 ### Acceptance
 
