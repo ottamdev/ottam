@@ -1,0 +1,168 @@
+#!/bin/sh
+# Installs the latest Ottam release:
+#
+#   curl -fsSL https://ottam.dev/install.sh | sh
+#
+# Reads the stable update feed, downloads the disk image it names, checks that
+# the image and the app are signed by Ottam's Developer ID and notarized, and
+# copies Ottam.app into /Applications. A download with curl carries no
+# quarantine flag, so Gatekeeper never checks the app on first launch; this
+# script runs those checks itself before anything is copied. Updates after
+# that come from Sparkle inside the app.
+#
+# Environment:
+#   OTTAM_INSTALL_DIR  where Ottam.app goes (default: /Applications)
+#   OTTAM_FEED_URL     the appcast to read (default: the stable feed)
+#
+# POSIX sh: macOS runs this with bash 3.2 in sh mode, or whatever /bin/sh is.
+# Everything sits in main, so a download cut short runs nothing.
+
+main() {
+  set -eu
+
+  feed_url="${OTTAM_FEED_URL:-https://updates.ottam.dev/appcast.xml}"
+  install_dir="${OTTAM_INSTALL_DIR:-/Applications}"
+  team_id="22G49YDA3D"
+  bundle_id="dev.ottam.Ottam"
+  source_url="https://github.com/ottamdev/ottam"
+
+  check_platform
+
+  [ -d "$install_dir" ] || fail "$install_dir doesn't exist."
+  [ -w "$install_dir" ] ||
+    fail "can't write to $install_dir. Rerun with OTTAM_INSTALL_DIR=\"\$HOME/Applications\", or as an administrator."
+
+  work="$(mktemp -d "${TMPDIR:-/tmp}/ottam-install.XXXXXX")"
+  mount="$work/volume"
+  trap cleanup EXIT
+  trap 'exit 130' INT TERM
+
+  say "Reading $feed_url"
+  status="$(curl -sSL --retry 3 -o "$work/appcast.xml" -w '%{http_code}' "$feed_url")" ||
+    fail "couldn't reach $feed_url."
+  case "$status" in
+    200) ;;
+    404) no_release ;;
+    *) fail "$feed_url answered HTTP $status." ;;
+  esac
+  pick_latest "$work/appcast.xml"
+  [ -n "$version" ] || no_release
+
+  dest="$install_dir/Ottam.app"
+  if [ -d "$dest" ]; then
+    installed="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$dest/Contents/Info.plist" 2>/dev/null || true)"
+    if [ -n "$installed" ] && ! version_newer "$version" "$installed"; then
+      say "Ottam $installed is already installed at $dest; nothing to do."
+      exit 0
+    fi
+  fi
+
+  say "Downloading Ottam $version"
+  curl -fL --retry 3 --progress-bar -o "$work/Ottam.dmg" "$url" ||
+    fail "couldn't download $url."
+  if [ -n "$length" ]; then
+    size="$(wc -c < "$work/Ottam.dmg" | tr -d ' ')"
+    [ "$size" = "$length" ] || fail "the download is $size bytes; the feed says $length."
+  fi
+
+  say "Checking signatures"
+  check_signed "$work/Ottam.dmg" "the disk image"
+  spctl --assess --type open --context context:primary-signature "$work/Ottam.dmg" 2>/dev/null ||
+    fail "Gatekeeper rejected the disk image."
+  diskutil image attach --readOnly --nobrowse --mountPoint "$mount" "$work/Ottam.dmg" >/dev/null ||
+    fail "couldn't mount the disk image."
+  app="$mount/Ottam.app"
+  [ -d "$app" ] || fail "the disk image holds no Ottam.app."
+  [ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app/Contents/Info.plist" 2>/dev/null)" = "$bundle_id" ] ||
+    fail "the disk image's app isn't $bundle_id."
+  check_signed "$app" "Ottam.app" --deep
+  spctl --assess --type execute "$app" 2>/dev/null || fail "Gatekeeper rejected Ottam.app."
+
+  if pgrep -f "$dest/Contents/MacOS/" >/dev/null 2>&1; then
+    fail "Ottam is running. Quit it and run this again."
+  fi
+
+  say "Installing to $dest"
+  staged="$install_dir/.Ottam.app.installing"
+  rm -rf "$staged"
+  ditto "$app" "$staged" || fail "couldn't copy Ottam.app into $install_dir."
+  if [ -d "$dest" ]; then
+    mv "$dest" "$work/previous.app" || fail "couldn't move the old Ottam.app aside."
+  fi
+  if ! mv "$staged" "$dest"; then
+    [ ! -d "$work/previous.app" ] || mv "$work/previous.app" "$dest"
+    fail "couldn't put Ottam.app in place."
+  fi
+
+  say "Installed Ottam $version. Open it from Applications, or run: open \"$dest\""
+}
+
+say() {
+  printf 'ottam: %s\n' "$*"
+}
+
+fail() {
+  printf 'ottam: %s\n' "$*" >&2
+  exit 1
+}
+
+no_release() {
+  fail "no release has been published yet. Build Ottam from source: $source_url"
+}
+
+cleanup() {
+  rm -rf "${staged:-}"
+  if [ -d "$mount" ]; then
+    diskutil eject "$mount" >/dev/null 2>&1 || diskutil eject force "$mount" >/dev/null 2>&1 || true
+  fi
+  rm -rf "$work"
+}
+
+check_platform() {
+  [ "$(uname -s)" = Darwin ] || fail "Ottam runs only on macOS."
+  # uname -m says x86_64 under Rosetta, so ask the hardware.
+  [ "$(sysctl -n hw.optional.arm64 2>/dev/null || echo 0)" = 1 ] ||
+    fail "Ottam needs a Mac with Apple silicon."
+  os="$(sw_vers -productVersion)"
+  [ "${os%%.*}" -ge 26 ] 2>/dev/null || fail "Ottam needs macOS 26 or later; this Mac runs $os."
+}
+
+# Sets version, url, and length from the feed item with the highest
+# sparkle:version, or leaves version empty when the feed has no items.
+pick_latest() {
+  version="" url="" length=""
+  count="$(xmllint --xpath 'count(//item)' "$1" 2>/dev/null)" || fail "the feed isn't valid XML."
+  i=1
+  while [ "$i" -le "$count" ]; do
+    item_version="$(xmllint --xpath "string(//item[$i]/*[local-name()='version'])" "$1")"
+    item_url="$(xmllint --xpath "string(//item[$i]/enclosure/@url)" "$1")"
+    if [ -n "$item_url" ] && { [ -z "$version" ] || version_newer "$item_version" "$version"; }; then
+      version="$item_version"
+      url="$item_url"
+      length="$(xmllint --xpath "string(//item[$i]/enclosure/@length)" "$1")"
+    fi
+    i=$((i + 1))
+  done
+}
+
+# Succeeds when dotted version $1 is newer than $2 (26.11.10 > 26.11.9).
+version_newer() {
+  a="$1" b="$2"
+  while [ -n "$a" ] || [ -n "$b" ]; do
+    x="${a%%.*}" y="${b%%.*}"
+    [ "${x:-0}" -gt "${y:-0}" ] && return 0
+    [ "${x:-0}" -lt "${y:-0}" ] && return 1
+    case "$a" in *.*) a="${a#*.}" ;; *) a="" ;; esac
+    case "$b" in *.*) b="${b#*.}" ;; *) b="" ;; esac
+  done
+  return 1
+}
+
+# Requires a valid signature on $1 from Ottam's team; $3 adds codesign flags.
+check_signed() {
+  codesign --verify --strict ${3:-} "$1" 2>/dev/null || fail "$2 has an invalid signature."
+  signer="$(codesign --display --verbose=2 "$1" 2>&1 | sed -n 's/^TeamIdentifier=//p')"
+  [ "$signer" = "$team_id" ] || fail "$2 is signed by team ${signer:-none}, not Ottam's ($team_id)."
+}
+
+main "$@"

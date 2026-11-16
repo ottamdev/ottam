@@ -14,8 +14,16 @@ with your own accounts; there is no Ottam account. A Rust core owns state,
 Git, terminals and agent processes, and the SwiftUI/AppKit app talks to it
 over a local JSONL protocol.
 
-Ottam is an early prototype. There is no release build yet; you build it from
-source.
+Ottam is an early prototype. Install the latest release from
+[ottam.dev](https://ottam.dev):
+
+```bash
+curl -fsSL https://ottam.dev/install.sh | sh
+```
+
+Or download the disk image from
+[GitHub Releases](https://github.com/ottamdev/ottam/releases/latest). Ottam
+updates itself from there. To work on Ottam, build it from source below.
 
 ## Features
 
