@@ -176,10 +176,15 @@ image and the app; and a re-inventory of the app as mounted from it. Update matr
 - **Releases host archives; a static appcast is the feed.** GitHub's release
   pages and Atom feeds are not appcasts. Each item points at an immutable
   tag URL
-  (`https://github.com/<owner>/<repo>/releases/download/v26.11.0/Ottam-26.11.0.dmg`),
+  (`https://github.com/<owner>/<repo>/releases/download/v26.11.1/Ottam.dmg`),
   never `/releases/latest/download/`. The app embeds only the feed URL and
   has no GitHub API dependency. Assets and feed are public; never embed a
   GitHub token.
+- **Every release's disk image is named `Ottam.dmg`** (2026-11-16), so
+  `/releases/latest/download/Ottam.dmg` is a stable download link for the
+  website; the tag already keeps each feed URL distinct. Local builds stay
+  `Ottam-<version>.dmg`. 26.11.0 shipped as `Ottam-26.11.0.dmg` and also
+  carries an `Ottam.dmg` copy.
 - **Stable channel only at first** (reaffirmed 2026-11-14). Pre-releases stay
   out of the stable appcast. There is no beta audience yet, and a later
   stable build can add the opt-in, so the first binary doesn't need it.

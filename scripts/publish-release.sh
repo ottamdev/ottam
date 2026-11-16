@@ -78,6 +78,9 @@ FEED_PATH="${feed_entry#* }"
 TAG="v$VERSION"
 ARCHIVE_NAME="Ottam-$VERSION.dmg"
 ARCHIVE="${ARCHIVE:-$ROOT_DIR/.build/release/$ARCHIVE_NAME}"
+# Every release uploads the same asset name, so releases/latest/download/
+# always resolves to the newest image; the tag keeps each URL distinct.
+ASSET_NAME="Ottam.dmg"
 NOTES="$ROOT_DIR/release-notes/$VERSION.md"
 DOWNLOAD_PREFIX="https://github.com/$REPO/releases/download/$TAG/"
 
@@ -144,8 +147,9 @@ if [ -f "$UPDATES/$FEED_PATH" ]; then
 fi
 
 echo "Signing the archive and the candidate $FEED appcast"
-cp "$ARCHIVE" "$work/feed/$ARCHIVE_NAME"
-cp "$NOTES" "$work/feed/Ottam-$VERSION.md"
+cp "$ARCHIVE" "$work/feed/$ASSET_NAME"
+# generate_appcast embeds the notes whose base name matches the archive's.
+cp "$NOTES" "$work/feed/${ASSET_NAME%.dmg}.md"
 "$SPARKLE_BIN/generate_appcast" --ed-key-file "$KEY_FILE" --download-url-prefix "$DOWNLOAD_PREFIX" \
   --embed-release-notes "$work/feed" > "$work/generate.log" 2>&1 || {
   cat "$work/generate.log" >&2
@@ -159,7 +163,7 @@ fi
 item="$(python3 "$ROOT_DIR/scripts/lib/appcast_items.py" "$work/feed/appcast.xml" |
   awk -F '\t' -v version="$VERSION" '$1 == version')"
 IFS="$(printf '\t')" read -r _ item_url item_length item_signature <<< "$item"
-[ "${item_url:-}" = "$DOWNLOAD_PREFIX$ARCHIVE_NAME" ] ||
+[ "${item_url:-}" = "$DOWNLOAD_PREFIX$ASSET_NAME" ] ||
   refuse "the candidate appcast points $VERSION at '${item_url:-nothing}'"
 [ "${item_length:-}" = "$(stat -f %z "$ARCHIVE")" ] || refuse "the candidate appcast has the wrong archive length"
 [ -n "${item_signature:-}" ] || refuse "the candidate appcast has no archive signature"
@@ -171,10 +175,11 @@ IFS="$(printf '\t')" read -r _ item_url item_length item_signature <<< "$item"
 echo "Creating GitHub Release $TAG"
 release_args=(--repo "$REPO" --verify-tag --title "Ottam $VERSION" --notes-file "$NOTES")
 [ "$FEED" = production ] || release_args+=(--prerelease)
-gh release create "$TAG" "$ARCHIVE" "${release_args[@]}" >/dev/null
+# gh names the asset after the file, so upload the copy named $ASSET_NAME.
+gh release create "$TAG" "$work/feed/$ASSET_NAME" "${release_args[@]}" >/dev/null
 
 # Clients download without credentials, so check exactly that.
-curl -fsSL --retry 5 --retry-delay 5 -o "$work/public.dmg" "$DOWNLOAD_PREFIX$ARCHIVE_NAME" ||
+curl -fsSL --retry 5 --retry-delay 5 -o "$work/public.dmg" "$DOWNLOAD_PREFIX$ASSET_NAME" ||
   refuse "the public asset didn't download; the feed is unchanged. Delete the release and rerun"
 cmp -s "$ARCHIVE" "$work/public.dmg" ||
   refuse "the public asset differs from the archive; the feed is unchanged. Delete the release and rerun"
