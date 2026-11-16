@@ -1615,7 +1615,7 @@ dependencies = [
 
 [[package]]
 name = "ottam-core"
-version = "0.1.0"
+version = "26.11.0"
 dependencies = [
  "agent-client-protocol",
  "async-process",
@@ -1656,7 +1656,7 @@ dependencies = [
 
 [[package]]
 name = "ottam-inspect"
-version = "0.1.0"
+version = "26.11.0"
 dependencies = [
  "libc",
  "serde_json",
@@ -1665,7 +1665,7 @@ dependencies = [
 
 [[package]]
 name = "ottam-protocol"
-version = "0.1.0"
+version = "26.11.0"
 dependencies = [
  "schemars 0.8.22",
  "serde",
@@ -1674,7 +1674,7 @@ dependencies = [
 
 [[package]]
 name = "ottam-test-acp"
-version = "0.1.0"
+version = "26.11.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -1682,7 +1682,7 @@ dependencies = [
 
 [[package]]
 name = "ottam-test-mcp"
-version = "0.1.0"
+version = "26.11.0"
 dependencies = [
  "axum",
  "base64 0.22.1",
