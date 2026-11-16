@@ -17,7 +17,8 @@ updater. Repository policy (license, notices, community files) belongs to the
 
 Ottam builds notarized archives that install and run on a clean macOS 26
 account, and has a release workflow that has published to the test feed and
-updated a real install. Nothing is published to production:
+updated a real install. 26.11.0 is the first production release; the second,
+which proves the public update path, is not out yet:
 
 - `scripts/release-app.sh` cuts versions locally, enforces the release
   refusals, signs, notarizes, and staples the app, and packages it in a disk
@@ -49,9 +50,10 @@ notarization, GitHub access, or Sparkle key.
 
 ### Milestone 3 — first public release
 
-- [ ] **First stable releases.** Commit `release-notes/<version>.md` for the
-  next version, cut, push the release commit and tag, wait for `full-tests`
-  to pass on that commit, then
+- [~] **First stable releases.** X is 26.11.0, published; Try it 1 on a
+  clean account and X+1 remain. For each release, commit
+  `release-notes/<version>.md`, cut, push the release commit and tag, wait
+  for `full-tests` to pass on that commit, then
   `gh workflow run release.yml --ref v<version> -f feed=production`.
   Publish two releases before announcing downloads, so the public update
   path is proven from a build that actually shipped.

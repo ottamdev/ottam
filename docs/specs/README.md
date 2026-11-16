@@ -13,7 +13,7 @@ current.
 ## Release
 
 - [Open Source Release Readiness](operations/open-source-release.md) — active — Next: distribution
-- [App Update And Distribution](app/distribution.md) — active — Milestone 3: publish the first two stable releases
+- [App Update And Distribution](app/distribution.md) — active — Milestone 3: clean-account check of 26.11.0, then publish the second release
 
 ## Agents (ACP)
 
