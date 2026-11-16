@@ -82,7 +82,6 @@ image and the app; and a re-inventory of the app as mounted from it. Update matr
 | Tampered archive or appcast | Rejected. |
 | Missing archive | Candidate publication fails; feed unchanged. |
 | Wrong Developer ID identity | Rejected. |
-| Offline | Current app stays usable. |
 | Core running | App and core replaced together; clean relaunch. |
 | Agent mid-turn or terminal running | Install asks first, then takes the normal quit path. |
 | Existing database | Startup migrations run; durable state remains. |
