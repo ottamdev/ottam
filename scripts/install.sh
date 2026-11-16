@@ -39,7 +39,8 @@ main() {
   trap 'exit 130' INT TERM
 
   say "Reading $feed_url"
-  status="$(curl -sSL --retry 3 -o "$work/appcast.xml" -w '%{http_code}' "$feed_url")" ||
+  # HTTPS only, redirects included, so no hop can be read or rewritten.
+  status="$(curl -sSL --proto '=https' --proto-redir '=https' --retry 3 -o "$work/appcast.xml" -w '%{http_code}' "$feed_url")" ||
     fail "couldn't reach $feed_url."
   case "$status" in
     200) ;;
@@ -60,7 +61,7 @@ main() {
   ! running || fail "Ottam is running. Quit it and run this again."
 
   say "Downloading Ottam $version"
-  curl -fL --retry 3 --progress-bar -o "$work/Ottam.dmg" "$url" ||
+  curl -fL --proto '=https' --proto-redir '=https' --retry 3 --progress-bar -o "$work/Ottam.dmg" "$url" ||
     fail "couldn't download $url."
   if [ -n "$length" ]; then
     size="$(wc -c < "$work/Ottam.dmg" | tr -d ' ')"
@@ -79,13 +80,24 @@ main() {
   [ -d "$app" ] || fail "the disk image holds no Ottam.app."
   [ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app/Contents/Info.plist" 2>/dev/null)" = "$bundle_id" ] ||
     fail "the disk image's app isn't $bundle_id."
+  # The feed's version decided this is an upgrade, so the app must be that
+  # version; otherwise a feed could serve an older, still-signed release.
+  app_version="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$app/Contents/Info.plist" 2>/dev/null || true)"
+  [ "$app_version" = "$version" ] ||
+    fail "the disk image holds Ottam ${app_version:-of no version}; the feed says $version."
   check_signed "$app" "Ottam.app" --deep
   spctl --assess --type execute "$app" 2>/dev/null || fail "Gatekeeper rejected Ottam.app."
 
   say "Installing to $dest"
-  # Per process, so a second installer can't delete this one's copy.
-  staged="$install_dir/.Ottam.app.installing.$$"
+  # A fresh private folder on the install volume, so the copy can't merge
+  # into anything already there and the final mv is a rename.
+  stage="$(mktemp -d "$install_dir/.Ottam.app.installing.XXXXXX")" ||
+    fail "couldn't make a staging folder in $install_dir."
+  staged="$stage/Ottam.app"
   ditto "$app" "$staged" || fail "couldn't copy Ottam.app into $install_dir."
+  # The copy is what lands, so it gets the same checks as the original.
+  check_signed "$staged" "the copied Ottam.app" --deep
+  spctl --assess --type execute "$staged" 2>/dev/null || fail "Gatekeeper rejected the copied Ottam.app."
   ! running || fail "Ottam is running. Quit it and run this again."
   if [ -d "$dest" ]; then
     mv "$dest" "$work/previous.app" || fail "couldn't move the old Ottam.app aside."
@@ -119,7 +131,7 @@ cleanup() {
       printf 'ottam: your previous Ottam.app is at %s\n' "$work/previous.app" >&2
     }
   fi
-  rm -rf "${staged:-}"
+  rm -rf "${stage:-}"
   if [ -d "$mount" ]; then
     diskutil eject "$mount" >/dev/null 2>&1 || diskutil eject force "$mount" >/dev/null 2>&1 || true
   fi
@@ -172,9 +184,15 @@ version_newer() {
   return 1
 }
 
-# Requires a valid signature on $1 from Ottam's team; $3 adds codesign flags.
+# Requires a valid Developer ID signature on $1 from Ottam's team, chained to
+# Apple's root; $3 = --deep checks nested code too.
 check_signed() {
-  codesign --verify --strict ${3:-} "$1" 2>/dev/null || fail "$2 has an invalid signature."
+  requirement="=anchor apple generic and certificate 1[field.1.2.840.113635.100.6.2.6] exists and certificate leaf[field.1.2.840.113635.100.6.1.13] exists and certificate leaf[subject.OU] = \"$team_id\""
+  if [ "${3:-}" = --deep ]; then
+    codesign --verify --strict --deep -R "$requirement" "$1" 2>/dev/null || fail "$2 has an invalid signature."
+  else
+    codesign --verify --strict -R "$requirement" "$1" 2>/dev/null || fail "$2 has an invalid signature."
+  fi
   signer="$(codesign --display --verbose=2 "$1" 2>&1 | sed -n 's/^TeamIdentifier=//p')"
   [ "$signer" = "$team_id" ] || fail "$2 is signed by team ${signer:-none}, not Ottam's ($team_id)."
 }

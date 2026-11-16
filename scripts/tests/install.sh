@@ -22,18 +22,33 @@ mkdir -p "$stubs"
 
 # curl: the feed is $FAKE_FEED with status $FAKE_FEED_STATUS; anything else
 # is a download of the fake disk image, logged to $test_root/downloads.
+# --proto and --proto-redir act as real curl's do: a refused protocol, first
+# hop or redirect, exits 1. FAKE_REDIRECT=feed or =dmg sends that request
+# through a redirect to plain http.
 cat > "$stubs/curl" <<STUB
 #!/bin/bash
-out="" format="" url=""
+out="" format="" url="" proto="" proto_redir=""
 while [ "\$#" -gt 0 ]; do
   case "\$1" in
     -o) out="\$2"; shift 2 ;;
     -w) format="\$2"; shift 2 ;;
     --retry) shift 2 ;;
+    --proto) proto="\$2"; shift 2 ;;
+    --proto-redir) proto_redir="\$2"; shift 2 ;;
     -*) shift ;;
     *) url="\$1"; shift ;;
   esac
 done
+refuse() {
+  echo "curl: (1) Protocol \"\${1%%:*}\" disabled" >&2
+  exit 1
+}
+[ "\$proto" != =https ] || [[ "\$url" == https://* ]] || refuse "\$url"
+kind=dmg
+[[ "\$url" != *appcast.xml ]] || kind=feed
+if [ "\${FAKE_REDIRECT:-}" = "\$kind" ] && { [ "\$proto" = =https ] || [ "\$proto_redir" = =https ]; }; then
+  refuse http://redirected.example/
+fi
 case "\$url" in
   *appcast.xml)
     [ "\${FAKE_FEED_STATUS:-200}" != 200 ] || cp "\$FAKE_FEED" "\$out"
@@ -46,17 +61,48 @@ case "\$url" in
 esac
 STUB
 
-cat > "$stubs/codesign" <<'STUB'
+# codesign: logs each verified path. FAKE_CODESIGN fails every verify. The
+# others name one target (dmg, app on the image, or staged copy): there,
+# FAKE_TAMPERED fails every verify; FAKE_NOT_DEVELOPER_ID one that tests a
+# requirement, as a signature from outside Developer ID would; and
+# FAKE_NESTED_INVALID one with --deep, as a broken nested framework would.
+cat > "$stubs/codesign" <<STUB
 #!/bin/bash
-case "$1" in
-  --verify) exit "${FAKE_CODESIGN:-0}" ;;
-  --display) echo "TeamIdentifier=${FAKE_TEAM:-22G49YDA3D}" >&2 ;;
+target() {
+  case "\$1" in
+    dmg) [[ "\$path" == *.dmg ]] ;;
+    app) [[ "\$path" == */volume/Ottam.app ]] ;;
+    staged) [[ "\$path" == */.Ottam.app.installing.* ]] ;;
+    *) false ;;
+  esac
+}
+case "\$1" in
+  --verify)
+    path="\${@: -1}"
+    echo "\$path" >> "$test_root/codesign-log"
+    ! target "\${FAKE_TAMPERED:-}" || exit 1
+    ! target "\${FAKE_NOT_DEVELOPER_ID:-}" || [[ " \$* " != *" -R "* ]] || exit 3
+    ! target "\${FAKE_NESTED_INVALID:-}" || [[ " \$* " != *" --deep "* ]] || exit 1
+    exit "\${FAKE_CODESIGN:-0}"
+    ;;
+  --display) echo "TeamIdentifier=\${FAKE_TEAM:-22G49YDA3D}" >&2 ;;
 esac
 STUB
 
+# spctl: FAKE_SPCTL fails every assessment; FAKE_SPCTL_STAGED only the staged
+# copy's.
 cat > "$stubs/spctl" <<'STUB'
 #!/bin/bash
+[[ "${@: -1}" != */.Ottam.app.installing.* ]] || exit "${FAKE_SPCTL_STAGED:-0}"
 exit "${FAKE_SPCTL:-0}"
+STUB
+
+# ditto: real, but refuses a destination that exists, since real ditto would
+# merge into it.
+cat > "$stubs/ditto" <<'STUB'
+#!/bin/bash
+[ ! -e "${@: -1}" ] || { echo "ditto: ${@: -1} already exists" >&2; exit 1; }
+exec /usr/bin/ditto "$@"
 STUB
 
 # diskutil: attaching puts the stub app in the mount point, which must exist,
@@ -141,7 +187,7 @@ make_feed() {
 }
 
 reset() {
-  rm -rf "$apps" "$test_root/image" "$test_root/downloads" "$test_root/ps-calls"
+  rm -rf "$apps" "$test_root/image" "$test_root/downloads" "$test_root/ps-calls" "$test_root/codesign-log"
   mkdir -p "$apps"
   make_app "$test_root/image/Ottam.app" 26.11.10
 }
@@ -190,6 +236,13 @@ grep -Fxq "https://github.com/ottamdev/ottam/releases/download/v26.11.10/Ottam-2
   "$test_root/downloads" || fail "downloaded the wrong release: $(cat "$test_root/downloads")"
 [ "$(installed_version)" = 26.11.10 ] || fail "installed the wrong app"
 assert_clean
+# The copy was verified where it was staged: a fresh folder in the install
+# folder, not a per-process name another process could have made first.
+staged_checked=""
+while IFS= read -r path; do
+  case "$path" in "$apps"/.Ottam.app.installing.??????/Ottam.app) staged_checked=1 ;; esac
+done < "$test_root/codesign-log"
+[ -n "$staged_checked" ] || fail "didn't verify a privately staged copy: $(cat "$test_root/codesign-log")"
 
 rm "$test_root/downloads"
 expect 0 "Ottam 26.11.10 is already installed"
@@ -221,10 +274,33 @@ expect 1 "the download is 3 bytes; the feed says 10" FAKE_DMG_BYTES=abc
 expect 1 "the disk image has an invalid signature" FAKE_CODESIGN=1
 expect 1 "signed by team ABCDE12345, not Ottam's" FAKE_TEAM=ABCDE12345
 expect 1 "Gatekeeper rejected the disk image" FAKE_SPCTL=3
+expect 1 "the disk image has an invalid signature" FAKE_NOT_DEVELOPER_ID=dmg
+expect 1 "ottam: Ottam.app has an invalid signature" FAKE_NOT_DEVELOPER_ID=app
+expect 1 "ottam: Ottam.app has an invalid signature" FAKE_NESTED_INVALID=app
+# The staged copy is checked again, as fully as the one on the image.
+expect 1 "the copied Ottam.app has an invalid signature" FAKE_TAMPERED=staged
+expect 1 "the copied Ottam.app has an invalid signature" FAKE_NOT_DEVELOPER_ID=staged
+expect 1 "the copied Ottam.app has an invalid signature" FAKE_NESTED_INVALID=staged
+expect 1 "Gatekeeper rejected the copied Ottam.app" FAKE_SPCTL_STAGED=3
+# HTTPS only: an http feed, an http download, or a redirect to http.
+expect 1 "couldn't reach http://updates.ottam.dev/appcast.xml" OTTAM_FEED_URL=http://updates.ottam.dev/appcast.xml
+expect 1 "couldn't reach" FAKE_REDIRECT=feed
+expect 1 "couldn't download" FAKE_REDIRECT=dmg
+sed 's|url="https://|url="http://|' "$test_root/feed.xml" > "$test_root/http-feed.xml"
+expect 1 "couldn't download http://github.com/" FAKE_FEED="$test_root/http-feed.xml"
 rm -rf "$test_root/image"
 make_app "$test_root/image/Ottam.app" 26.11.10 com.example.Other
 expect 1 "isn't dev.ottam.Ottam"
 [ -z "$(ls -A "$apps")" ] || fail "a refused install left files: $(ls -A "$apps")"
+assert_clean
+
+# A feed can't pass off an older signed release as the version it names.
+reset
+make_app "$apps/Ottam.app" 26.11.5
+rm -rf "$test_root/image"
+make_app "$test_root/image/Ottam.app" 26.11.2
+expect 1 "the disk image holds Ottam 26.11.2; the feed says 26.11.10"
+[ "$(installed_version)" = 26.11.5 ] || fail "a mislabeled release replaced the installed app"
 assert_clean
 
 # A download cut short runs nothing.
