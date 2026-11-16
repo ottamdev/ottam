@@ -36,12 +36,8 @@ updated a real install. Nothing is published to production:
   `ottamdev/updates`, which a Cloudflare static-assets Worker serves at
   `updates.ottam.dev` (`public/appcast.xml`, walkthroughs under
   `public/test/`). The feeds are named in `scripts/lib/release-feed.sh`.
-  An update walkthrough pairs a local build N of a throwaway tag, built with
-  `--feed-url` set to the test feed, with the next throwaway tag published
-  by the workflow with `feed=test`; afterwards delete both tags, the
-  pre-release, and the test feed. Never add an ATS exception to reach a
-  local feed. A scheduled check fires at launch once
-  `SULastCheckTime` is more than a day old.
+  The `release` skill drives a release and the throwaway test-feed update
+  walkthrough.
 - `scripts/smoke-app-bundle.sh` validates development bundles; `--release`
   also checks a release build for test seams, which the release verifier
   repeats on the shipped bundle.
@@ -51,26 +47,11 @@ notarization, GitHub access, or Sparkle key.
 
 ## Active
 
-### Milestone 2 — update from inside the app
-
-- [~] **Sparkle key backup.** The private key lives in the maintainer's login
-  keychain under the `ottam` account (Sparkle's tools are under
-  `.build/swift/artifacts/sparkle/Sparkle/bin/` after a build; `sign_update`
-  takes the same `--account`). Left: export a backup with
-  `generate_keys --account ottam -x <file>` and store it apart from the
-  Developer ID backup.
-  - Why: a lost key stops releases until a key rotation ships.
-  - Done when: the maintainer confirms the backup exists.
-
-## Next
-
 ### Milestone 3 — first public release
 
-- [ ] **Release only tested source.** The workflow builds the tag without
-  running tests. Refuse a tag whose commit has no passing `full-tests` run
-  on `main`.
 - [ ] **First stable releases.** Commit `release-notes/<version>.md` for the
-  next version, cut, push the release commit and tag, then
+  next version, cut, push the release commit and tag, wait for `full-tests`
+  to pass on that commit, then
   `gh workflow run release.yml --ref v<version> -f feed=production`.
   Publish two releases before announcing downloads, so the public update
   path is proven from a build that actually shipped.
@@ -144,6 +125,11 @@ image and the app; and a re-inventory of the app as mounted from it. Update matr
   the workflow can be proven on real releases; the logic stays in scripts the
   workflow calls, so a local run remains possible. Dispatch only, so pushing
   a tag never starts a production run.
+- **Production releases ship only tested source** (2026-11-15): publishing
+  to the production feed refuses a tagged commit without a passing
+  `full-tests` push run on `main`, which runs every gate. The workflow does
+  not run tests itself, so a release reuses CI's result rather than running
+  every suite again. Test-feed walkthrough tags sit off `main` and skip it.
 - **CI and releases run on GitHub's `xcode-27` preview image** (2026-11-14),
   until `macos-27` is generally available. Ottam is developed with Xcode 27,
   and a build linked against the 26 SDK behaves differently on macOS 27, so

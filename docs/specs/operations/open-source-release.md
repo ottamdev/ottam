@@ -16,13 +16,13 @@ download is listed under Next.
 Needed before a first public download, not before the source is public.
 
 - **Distribution through the first public release.** A notarized release
-  build, the Sparkle updater, and a locally scripted publication to a signed
+  build, the Sparkle updater, and a release workflow publishing to a signed
   appcast; the first public binary must already update itself
   ([distribution](../app/distribution.md)).
 
 ## Backlog
 
-Not release blockers: a CI release workflow, a universal binary, the usage and cost UI, live
+Not release blockers: a universal binary, the usage and cost UI, live
 PTY restore across Core restarts, the Markdown editor, the streaming CPU goal, and conversation retention or export.
 
 ## Decisions
