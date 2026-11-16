@@ -362,7 +362,8 @@ private struct ChatRoundedComposer: View {
             )
                 .frame(height: editorHeight)
                 .onAppear {
-                    guard autoFocus, !model.isPreparingEngines else { return }
+                    let handedOff = model.takeComposerFocusHandoff()
+                    guard handedOff || autoFocus, !model.isPreparingEngines else { return }
                     DispatchQueue.main.async {
                         isEditorFocused = true
                     }
@@ -714,12 +715,18 @@ private struct ChatRoundedComposer: View {
     private func submitDraft() {
         let sent = attachments
         let sentQuotes = quotes.wrappedValue.map(\.id)
+        // Only the landing autofocuses, and only its send swaps the composer.
+        let handsOffFocus = autoFocus && isEditorFocused
+        model.handOffComposerFocus(handsOffFocus)
         Task {
             if await model.submit(messageText, attachments: sent, backend: backend) {
                 draft = ""
                 quotes.wrappedValue.removeAll { sentQuotes.contains($0.id) }
                 attachments.removeAll { sent.contains($0) }
             }
+            // The thread, if it came, mounted during submit's awaits; a send
+            // that failed, or kept the landing up, leaves nothing to hand to.
+            if handsOffFocus { model.handOffComposerFocus(false) }
         }
     }
 
