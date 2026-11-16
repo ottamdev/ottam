@@ -135,9 +135,14 @@ impl NodeResolver {
     pub fn resolve(&self) -> NodeResolution {
         self.resolve_single_flight(|| {
             let env = |name: &str| std::env::var(name).ok();
-            let shell = user_shell(&env);
-            let probe = probe_login_shell(&shell);
-            self.record_login_path(&shell, &probe);
+            let probe = if login_shell_probe_off(&env) {
+                LoginShellProbe::default()
+            } else {
+                let shell = user_shell(&env);
+                let probe = probe_login_shell(&shell);
+                self.record_login_path(&shell, &probe);
+                probe
+            };
             let resolution = resolve_with(
                 env,
                 |_| probe.answer.node,
@@ -345,6 +350,14 @@ fn user_shell(env: &impl Fn(&str) -> Option<String>) -> String {
         .map(|value| value.trim().to_string())
         .filter(|value| !value.is_empty())
         .unwrap_or_else(|| DEFAULT_SHELL.to_string())
+}
+
+/// `OTTAM_LOGIN_SHELL_PROBE=off` skips the shell run, for tests that must not
+/// start the machine's real login shell; children then start from the
+/// inherited PATH. An `OTTAM_NODE` override does not skip it, because a user
+/// who pins Node still wants their shell's PATH.
+fn login_shell_probe_off(env: &impl Fn(&str) -> Option<String>) -> bool {
+    env("OTTAM_LOGIN_SHELL_PROBE").is_some_and(|value| value == "off")
 }
 
 /// The resolution chain, with every effect injected so the ordering is testable

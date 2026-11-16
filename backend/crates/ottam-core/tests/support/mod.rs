@@ -544,10 +544,15 @@ impl CoreProcess {
 }
 
 /// For a test of Node discovery itself: core treats a blank `OTTAM_NODE` as
-/// unset, so the resolver walks its normal chain. Pair it with a fake `SHELL`;
-/// the real login shell is what [`core_command`] exists to keep out.
-pub fn node_discovery_environment() -> (String, String) {
-    ("OTTAM_NODE".to_string(), String::new())
+/// unset, so the resolver walks its normal chain, starting with the login-shell
+/// probe run against `shell`. Always a fake: the real login shell is what
+/// [`core_command`] exists to keep out.
+pub fn node_discovery_environment(shell: &Path) -> Vec<(String, String)> {
+    vec![
+        ("OTTAM_NODE".to_string(), String::new()),
+        ("OTTAM_LOGIN_SHELL_PROBE".to_string(), "on".to_string()),
+        ("SHELL".to_string(), shell.display().to_string()),
+    ]
 }
 
 /// The hermetic core command every harness process starts from, with piped
@@ -556,12 +561,15 @@ pub fn core_command(ottam_home: &Path) -> Command {
     let mut command = Command::new(env!("CARGO_BIN_EXE_ottam-core"));
     command
         .env("OTTAM_HOME", ottam_home)
-        // An override pointing at nothing, which core takes as authoritative.
-        // Without it the first `agent.list` / `engine.list` runs real
-        // discovery, whose cold login-shell probe can outlast
-        // `DEFAULT_RESPONSE_TIMEOUT` on a loaded runner. A test that wants a
-        // toolchain sets its own: see `FakeAcpRuntime::environment` and
+        // Keep the machine's toolchain out. Without these the first
+        // `agent.list` / `engine.list` runs the real login shell, whose cold
+        // start can outlast `DEFAULT_RESPONSE_TIMEOUT` on a loaded runner, and
+        // finds whatever Node it has. The override points at nothing, which
+        // core takes as authoritative; it does not skip the shell, which also
+        // supplies the child PATH. A test that wants a toolchain sets its
+        // own: see `FakeAcpRuntime::environment` and
         // `node_discovery_environment`.
+        .env("OTTAM_LOGIN_SHELL_PROBE", "off")
         .env("OTTAM_NODE", "/nonexistent/ottam-test-node")
         // Never let tests spawn real npx adapter processes for the
         // background model-catalog probe.
