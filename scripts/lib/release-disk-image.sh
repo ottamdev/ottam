@@ -89,6 +89,7 @@ release_attach_disk_image() {
 # mount point, which stays if the eject failed; never fails.
 release_detach_disk_image() {
   [ -d "$1" ] || return 0
-  diskutil eject "$1" >/dev/null 2>&1 || diskutil eject force "$1" >/dev/null 2>&1 || true
-  rmdir "$1" 2>/dev/null || true
+  if diskutil eject "$1" >/dev/null 2>&1 || diskutil eject force "$1" >/dev/null 2>&1; then
+    rmdir "$1" 2>/dev/null || true
+  fi
 }
