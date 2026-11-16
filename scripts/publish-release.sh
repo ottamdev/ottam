@@ -38,11 +38,12 @@ Publishes the release tagged vYY.M.N at HEAD. The archive is the disk image
 release-app.sh built, .build/release/Ottam-<version>.dmg by default, and the
 app inside it must update from the named feed. Release notes come from release-notes/<version>.md. The updates checkout
 is a clone of ottamdev/updates whose main can be pushed; the Sparkle private
-key file is what `generate_keys -x` exports. A test-feed release is marked as
-a pre-release.
+key file is what `generate_keys -x` exports. A production release needs a
+passing full-tests run for the tagged commit, pushed to main. A test-feed
+release is marked as a pre-release and needs neither.
 
---preflight runs only the refusals that need no build (tag, notes, feed
-version, existing release), so a doomed run stops before building.
+--preflight runs only the refusals that need no build (tag, notes, tests,
+feed version, existing release), so a doomed run stops before building.
 
 OTTAM_RELEASE_REPO overrides the GitHub repository (default ottamdev/ottam).
 USAGE
@@ -82,6 +83,16 @@ DOWNLOAD_PREFIX="https://github.com/$REPO/releases/download/$TAG/"
 
 git -C "$ROOT_DIR" tag --points-at HEAD | grep -qx "$TAG" || refuse "$TAG is not tagged at HEAD"
 [ -s "$NOTES" ] || refuse "no release notes at release-notes/$VERSION.md"
+
+# Production ships only source CI tested: a push to main runs every gate.
+# Walkthrough tags sit off main, so the test feed skips this.
+if [ "$FEED" = production ]; then
+  commit="$(git -C "$ROOT_DIR" rev-parse HEAD)"
+  passed="$(gh api "repos/$REPO/actions/workflows/full-tests.yml/runs?head_sha=$commit&branch=main&event=push&status=success" \
+    --jq .total_count)" || refuse "couldn't read full-tests runs for $commit"
+  [ "${passed:-0}" -gt 0 ] ||
+    refuse "no passing full-tests run on main for $commit; wait for it to pass, then rerun"
+fi
 
 # The candidate must build on the feed as published, so the push below can
 # only fast-forward it.

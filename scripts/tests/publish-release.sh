@@ -36,10 +36,17 @@ mkdir -p "$public" "$stubs" "$sparkle"
 
 # --- fake tools
 
-# gh: a release exists once created; creating one publishes its asset.
+# gh: a release exists once created; creating one publishes its asset. The
+# runs API answers with STUB_PASSED_RUNS passing full-tests runs.
 cat > "$stubs/gh" <<STUB
 #!/bin/bash
 set -e
+if [ "\$1" = api ]; then
+  echo "\$2" >> "$public/api-calls"
+  [ -z "\${STUB_API_FAIL:-}" ] || exit 1
+  echo "\${STUB_PASSED_RUNS:-0}"
+  exit 0
+fi
 [ "\$1" = release ] || exit 2
 case "\$2" in
   view) [ -e "$public/release-\$3" ] ;;
@@ -177,7 +184,18 @@ make_archive 26.11.901 "$test_feed"
 expect_status 64 "" publish --version 26.11.901
 expect_status 65 "unknown feed 'beta'" publish --version 26.11.901 --feed beta
 expect_status 65 "v26.11.902 is not tagged at HEAD" publish --version 26.11.902 --feed test
-expect_status 65 "not the production feed" publish --version 26.11.901 --feed production
+
+# --- production needs the tagged commit tested on main
+
+head="$(git -C "$source_repo" rev-parse HEAD)"
+expect_status 65 "no passing full-tests run on main for $head" preflight --version 26.11.901 --feed production
+grep -Fq "head_sha=$head&branch=main&event=push&status=success" "$public/api-calls" ||
+  fail "the tests query didn't ask for a passing push to main at the tagged commit"
+STUB_API_FAIL=1 expect_status 65 "couldn't read full-tests runs" preflight --version 26.11.901 --feed production
+STUB_PASSED_RUNS=1 expect_status 0 "Preflight passed: v26.11.901 can publish to the production feed" \
+  preflight --version 26.11.901 --feed production
+STUB_PASSED_RUNS=1 expect_status 65 "not the production feed" publish --version 26.11.901 --feed production
+rm "$public/api-calls"
 
 make_archive 26.11.901 ""
 expect_status 65 "updates from 'nothing'" publish --version 26.11.901 --feed test
@@ -223,6 +241,7 @@ git --git-dir "$test_root/updates.git" show main:public/test/appcast.xml |
 if git --git-dir "$test_root/updates.git" show main:public/appcast.xml >/dev/null 2>&1; then
   fail "a test-feed release touched the production feed"
 fi
+[ ! -e "$public/api-calls" ] || fail "a test-feed release asked whether its commit was tested"
 
 # --- a rerun refuses on the feed's version
 

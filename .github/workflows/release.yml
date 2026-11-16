@@ -16,6 +16,8 @@ on:
 
 permissions:
   contents: write
+  # A production release refuses a commit without a passing full-tests run.
+  actions: read
 
 # One publication at a time, never cancelled midway by another.
 concurrency:
