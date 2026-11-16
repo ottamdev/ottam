@@ -6,16 +6,24 @@
 
 Ottam is a native macOS app for running coding agents. It brings Claude Code,
 Codex, OpenCode and oh-my-pi into one local workspace: talk to any of them,
-review what they change, and hand work between them, while Ottam asks for as
-little of your attention as it can.
+review what they change, and hand work between them. Ottam aims to take as
+little of your time as it can, and give back as much as possible.
 
 Everything runs on your Mac. Agents run through their ACP adapters, signed in
 with your own accounts; there is no Ottam account. A Rust core owns state,
 Git, terminals and agent processes, and the SwiftUI/AppKit app talks to it
 over a local JSONL protocol.
 
-Ottam is an early prototype. There is no release build yet; you build it from
-source.
+Ottam is an early prototype. Install the latest release from
+[ottam.dev](https://ottam.dev):
+
+```bash
+curl -fsSL https://ottam.dev/install.sh | sh
+```
+
+Or download the disk image from
+[GitHub Releases](https://github.com/ottamdev/ottam/releases/latest). Ottam
+updates itself from there. To work on Ottam, build it from source below.
 
 ## Features
 

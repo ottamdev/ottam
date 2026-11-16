@@ -68,6 +68,10 @@ Try it:
    was created, and rerun to completion.
 3. In the installed X, Check for Updates… offers X+1 with its notes, installs
    it, and relaunches into it over unauthenticated HTTPS only.
+4. On a clean account, install X from its disk image and leave it open.
+   `curl -fsSL https://ottam.dev/install.sh | sh` asks you to quit it first.
+   Quit it and rerun: it installs X+1 into Applications, which opens
+   without a Gatekeeper dialog. A third run reports it is already installed.
 
 ### Acceptance
 
@@ -97,7 +101,8 @@ image and the app; and a re-inventory of the app as mounted from it. Update matr
   under an old tag or URL.
 - Lost Sparkle key: stop releases and follow Sparkle's key rotation using the
   still-trusted Developer ID. Rotate the Apple identity or the Sparkle key in
-  a release, never both at once.
+  a release, never both at once. `scripts/install.sh` pins the Developer ID
+  team, so a new Apple identity updates it in the same change.
 - Host outage: repoint the feed domain at another HTTPS host and move the
   archives; the appcast names the new archive URLs, so no shipped build
   changes.
@@ -144,6 +149,14 @@ image and the app; and a re-inventory of the app as mounted from it. Update matr
   token, and Cloudflare now treats Pages as legacy. The feed stays out of the
   website's project so no site deploy can touch it. Archives stay on GitHub
   Releases, since static assets cap files at 25 MiB.
+- **ottam.dev offers a `curl | sh` installer** (2026-11-15).
+  `scripts/install.sh` lives here, where it is reviewed and tested; the
+  website repository, a separate Cloudflare static-assets Worker, redirects
+  `/install.sh` to it on `main`. It reads the stable appcast rather than the GitHub API, which has rate limits and no stable
+  filter; with no release in the feed it points to building from source. A
+  curl download carries no quarantine flag, so Gatekeeper never assesses the
+  app; the script checks the image and app signatures, team, and
+  notarization itself before copying.
 - **Release notes are embedded in the appcast** (2026-11-09), so the archive
   and the appcast are the only signed artifacts. They are a reviewed
   Markdown file per version, `release-notes/<version>.md`, which also
