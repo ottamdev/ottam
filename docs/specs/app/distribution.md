@@ -36,6 +36,12 @@ updated a real install. Nothing is published to production:
   `ottamdev/updates`, which a Cloudflare static-assets Worker serves at
   `updates.ottam.dev` (`public/appcast.xml`, walkthroughs under
   `public/test/`). The feeds are named in `scripts/lib/release-feed.sh`.
+  An update walkthrough pairs a local build N of a throwaway tag, built with
+  `--feed-url` set to the test feed, with the next throwaway tag published
+  by the workflow with `feed=test`; afterwards delete both tags, the
+  pre-release, and the test feed. Never add an ATS exception to reach a
+  local feed. A scheduled check fires at launch once
+  `SULastCheckTime` is more than a day old.
 - `scripts/smoke-app-bundle.sh` validates development bundles; `--release`
   also checks a release build for test seams, which the release verifier
   repeats on the shipped bundle.
@@ -55,38 +61,6 @@ notarization, GitHub access, or Sparkle key.
   Developer ID backup.
   - Why: a lost key stops releases until a key rotation ships.
   - Done when: the maintainer confirms the backup exists.
-- [~] **Update walkthrough.** Steps 1–4 and the first pass of 5 passed.
-  Left: step 4 with "Close windows when quitting" off, step 5 again now that
-  quit asks first, and step 6.
-  - Why: an install quits through the normal path, so the quit gate in
-    `applicationShouldTerminate` (`app/Sources/OttamApp/App/Main.swift`)
-    applies. Prove Sparkle waits on it rather than assuming.
-  - Needs: a fresh throwaway pair. N is a local build of a throwaway tag with
-    `--feed-url` set to the test feed; N+1 is the next throwaway tag,
-    published by the workflow with `feed=test`. Never add an ATS exception to
-    reach a local feed.
-  - Done when: the remaining steps pass in real windows with screenshots and
-    AX, and the pair's pre-release, tags, and test feed are deleted.
-
-Try it, with two Developer ID-signed builds N and N+1 and a test feed injected
-at assembly:
-
-1. Launch N a second time: Sparkle asks once whether to check automatically.
-2. Ottam › Check for Updates…: Sparkle's standard window offers N+1 with its
-   release notes.
-3. Choose Remind Me Later: N keeps running untouched. Check again and choose
-   Skip This Version: automatic checks stop offering N+1; a manual check
-   still does.
-4. Install and Relaunch while idle: the app relaunches as N+1 (About shows
-   it) with workspaces, chats, and settings intact. Record whether the
-   workspace windows reopen with "Close windows when quitting an
-   application" on and off.
-5. Repeat with an agent mid-turn and a terminal running: Install and Relaunch
-   asks the same question as ⌘Q. Cancel keeps N running with the turn intact;
-   Quit installs, and the turn shows Stopped in N+1. Record what Sparkle does
-   with the update after Cancel.
-6. Offline, Check for Updates… reports the failure and the app stays usable.
-7. A `run-app.sh` build has no Check for Updates… item and requests no feed.
 
 ## Next
 
@@ -193,7 +167,10 @@ image and the app; and a re-inventory of the app as mounted from it. Update matr
   `run-app.sh`, and UI-test bundles carry no feed URL, so they never start
   Sparkle or need its key.
 - **Sparkle 2 is the updater.** Standard controller and UI; no custom
-  downloader, installer, dialog, badge, restart banner, or privileged helper.
+  downloader, installer, dialog, restart banner, progress indicator, or
+  privileged helper. The one addition is the sidebar update badge, through
+  Sparkle's gentle reminders (2026-11-15): a scheduled check should not cover
+  a workspace with a window, and the badge still opens Sparkle's own.
   Sparkle replaces the whole `.app`. Ottam is not sandboxed, so no
   sandbox-only Sparkle XPC settings.
 - **Releases host archives; a static appcast is the feed.** GitHub's release

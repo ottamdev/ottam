@@ -24,6 +24,7 @@ struct SidebarView: View {
     @Bindable var workspace: WorkspaceStore
     @Bindable var chatWorkspace: ChatWorkspaceModel
     @Bindable var backend: DiffReviewModel
+    let updater: AppUpdater?
     let addProject: () -> Void
 
     /// Sections whose "Show more" fold has been opened. Deliberately not
@@ -111,6 +112,7 @@ struct SidebarView: View {
                 projects: workspace.projects,
                 workspaceFiles: workspace.workspaceFiles,
                 workspaceID: workspace.workspaceSummary?.workspaceID,
+                updater: updater,
                 addProject: addProject
             )
             // macOS 27 draws the `.hard` edge's own boundary; 26 draws none, so
@@ -812,6 +814,8 @@ private struct WorkspaceIdentityBlock: View {
     /// Keys the stored tint. `nil` until the Workspace summary arrives, which is
     /// why the colour section only mounts once there is something stable to key.
     let workspaceID: WorkspaceID?
+    /// Nil outside release bundles, which never show the update button.
+    let updater: AppUpdater?
     let addProject: () -> Void
 
     /// App-local rather than a field on `WorkspaceDetail`: the Workspace model is
@@ -836,6 +840,7 @@ private struct WorkspaceIdentityBlock: View {
         projects: [WorkspaceProjectSummary],
         workspaceFiles: WorkingRootSummary?,
         workspaceID: WorkspaceID?,
+        updater: AppUpdater?,
         addProject: @escaping () -> Void
     ) {
         self.name = name
@@ -843,6 +848,7 @@ private struct WorkspaceIdentityBlock: View {
         self.projects = projects
         self.workspaceFiles = workspaceFiles
         self.workspaceID = workspaceID
+        self.updater = updater
         self.addProject = addProject
         _storedTint = AppStorage(
             wrappedValue: "",
@@ -918,6 +924,12 @@ private struct WorkspaceIdentityBlock: View {
             }
 
             Spacer(minLength: 0)
+
+            // Trailing, so the disc keeps its place under the traffic lights
+            // whether or not an update is waiting.
+            if let updater, let version = updater.availableVersion {
+                updateButton(updater, version: version)
+            }
         }
         // Sitting outside the List means owning this inset by hand: no API
         // reports the sidebar's effective row inset (`listSectionMargins` is
@@ -940,6 +952,31 @@ private struct WorkspaceIdentityBlock: View {
         // below. Weighting it toward the list was tried and reads as a misplaced
         // line rather than as emphasis.
         .padding(.vertical, 10)
+    }
+
+    /// An available update. Clicking brings Sparkle's own window forward; the
+    /// button stays until the update is skipped or no longer offered. Sized
+    /// like the disc so the bar keeps its height.
+    private func updateButton(_ updater: AppUpdater, version: String) -> some View {
+        Button {
+            updater.checkForUpdates()
+        } label: {
+            Image(systemName: "arrow.down.circle.fill")
+                .font(.system(size: 20))
+                // Palette, not hierarchical: hierarchical draws the disc at
+                // reduced opacity, which reads as a dim navy chip in the bar.
+                .symbolRenderingMode(.palette)
+                .foregroundStyle(.white, .tint)
+                .padding(4)
+                .contentShape(.circle)
+        }
+        .buttonStyle(.plain)
+        .pointerStyle(.link)
+        .padding(-4)
+        .help("Ottam \(version) is available")
+        .accessibilityIdentifier(AccessibilityID.sidebarUpdate)
+        .accessibilityLabel("Update Available")
+        .accessibilityValue("Ottam \(version)")
     }
 
     /// The disc, as the affordance for its own colour. It reads as the thing the

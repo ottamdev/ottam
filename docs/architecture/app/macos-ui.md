@@ -46,8 +46,22 @@ hold UI state only; durable domain authority stays behind the Core protocol
   that outlived theirs. When Core reports any, quit first asks with a native
   alert, Cancel by default (`WorkingAgentQuitWarning`);
   that covers ⌘Q, the updater's relaunch and logout alike. A SIGTERM quit
-  never asks, and one arriving while the alert is up answers Quit. Decided 2026-11-15: quitting mid-turn must not lose work
-  silently, and one gate keeps every quit path the same.
+  never asks, and one arriving while the alert is up answers Quit. Cancel on
+  the updater's relaunch keeps the downloaded update: Sparkle closes its
+  window, the sidebar's update button stays, and Check for Updates… offers
+  Install and Relaunch again without downloading. Decided 2026-11-15:
+  quitting mid-turn must not lose
+  work silently, and one gate keeps every quit path the same.
+- A scheduled update check never opens a window over a workspace: it shows an
+  update button at the trailing edge of each sidebar footer, which opens
+  Sparkle's standard window (`AppUpdater`, Sparkle's gentle reminders). Checks
+  the user starts open the window directly, and so do a critical update,
+  which should not wait, and one found while no workspace sidebar is on
+  screen, which has nowhere to show the button. The button stays while the
+  update is available, through Remind Me Later and a closed window; Skip
+  This Version or a check that finds nothing removes it. Decided 2026-11-15:
+  an update can wait, a window over a workspace interrupts reading a turn,
+  and the button is the reminder, so looking at the update must not end it.
 
 ## Sidebar And Toolbar
 

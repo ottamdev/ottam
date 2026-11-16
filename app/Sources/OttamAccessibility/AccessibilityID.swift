@@ -217,6 +217,9 @@ public enum AccessibilityID {
     /// The monogram-tint swatch row inside the identity block's menu. Mounted
     /// only once the Workspace summary supplies an ID to key the choice by.
     public static let sidebarIdentityColorPicker = "sidebar.identity-color-picker"
+    /// The update button trailing the identity block, shown only while a
+    /// scheduled check has found an update the user has not looked at.
+    public static let sidebarUpdate = "sidebar.update"
     /// The trailing "Chats" section header, present only in the 2+-project
     /// shape. A stable marker because per-project section titles are not.
     public static let sidebarChatsSection = "sidebar.chats-section"
@@ -316,6 +319,7 @@ public enum AccessibilityID {
         conversationToolsPickPlan,
         sidebarIdentityBlock,
         sidebarIdentityColorPicker,
+        sidebarUpdate,
         sidebarChatsSection,
         sidebarHistorySection,
         chatWorkingRootMenu,
