@@ -82,10 +82,16 @@ touching production. Never add an ATS exception to reach a local feed.
    `release-notes/<N+1>.md` with the version bump: publishing refuses a
    tag without notes on either feed. Then **ask**, push only that tag, and
    `gh workflow run release.yml --repo ottamdev/ottam --ref v<N+1> -f feed=test`.
-   The user approves `release`.
-4. Run the walkthrough with the user. A scheduled check fires at launch once
-   `SULastCheckTime` is more than a day old
+   The user approves `release`. Wait for the run to succeed and
+   `curl -fsS https://updates.ottam.dev/test/appcast.xml` to list N+1
+   before going on.
+4. Run the walkthrough with the user. A scheduled check needs automatic
+   checks on: release builds leave them unset, so Sparkle asks for consent,
+   and the user answers. Once on, it fires at launch when `SULastCheckTime`
+   is more than a day old
    (`defaults write dev.ottam.Ottam SULastCheckTime -date "<two days ago>"`).
+   Without consent, use **Check for Updates…**, which skips the reminder
+   path.
 5. Clean up, **ask** first: in a clone of `ottamdev/updates`,
    `git rm public/test/appcast.xml`, commit, and push `main`; then
    `gh release delete v<N+1> --repo ottamdev/ottam --cleanup-tag --yes`,
