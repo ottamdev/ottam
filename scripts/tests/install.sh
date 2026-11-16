@@ -59,7 +59,8 @@ cat > "$stubs/spctl" <<'STUB'
 exit "${FAKE_SPCTL:-0}"
 STUB
 
-# diskutil: attaching makes the mount point and puts the stub app in it.
+# diskutil: attaching puts the stub app in the mount point, which must exist,
+# as macOS 26 requires; ejecting empties it.
 cat > "$stubs/diskutil" <<STUB
 #!/bin/bash
 if [ "\$1 \$2" = "image attach" ]; then
@@ -67,10 +68,10 @@ if [ "\$1 \$2" = "image attach" ]; then
     [ "\$1" = --mountPoint ] && mount="\$2"
     shift
   done
-  mkdir -p "\$mount"
+  [ -d "\$mount" ] || { echo "Error: Mount point \$mount doesn't exist" >&2; exit 1; }
   cp -R "$test_root/image/Ottam.app" "\$mount/"
 elif [ "\$1" = eject ]; then
-  rm -rf "\${@: -1}"
+  rm -rf "\${@: -1}"/*
 fi
 STUB
 
