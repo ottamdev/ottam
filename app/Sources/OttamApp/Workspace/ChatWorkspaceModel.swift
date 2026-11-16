@@ -455,6 +455,20 @@ final class ChatWorkspaceModel {
     func focusComposer() {
         composerFocusRequest &+= 1
     }
+
+    /// The landing's first send swaps its composer for the thread's, a new
+    /// view; the caret goes with it when the landing had it. Picking another
+    /// conversation, or New Chat, mid-send drops it: the caret stays put.
+    @ObservationIgnored private var composerFocusHandoff = false
+
+    func handOffComposerFocus(_ handOff: Bool) {
+        composerFocusHandoff = handOff
+    }
+
+    func takeComposerFocusHandoff() -> Bool {
+        defer { composerFocusHandoff = false }
+        return composerFocusHandoff
+    }
     private(set) var selectedDetail: ConversationDetail? {
         didSet { recordAgentNames() }
     }
@@ -2053,6 +2067,7 @@ final class ChatWorkspaceModel {
     }
 
     func select(_ conversationID: ConversationID, backend: DiffReviewModel) {
+        composerFocusHandoff = false
         transcriptLoadError = nil
         // Switching sessions lands on the destination immediately: drop the outgoing
         // thread and flag the load so the view shows a spinner instead of stale
@@ -2173,6 +2188,7 @@ final class ChatWorkspaceModel {
     }
 
     func beginNewConversation(backend: DiffReviewModel) {
+        composerFocusHandoff = false
         showDraftTranscript()
         cancelDetailLoad()
         draftGeneration &+= 1
