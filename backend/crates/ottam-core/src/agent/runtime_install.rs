@@ -238,6 +238,7 @@ impl RuntimeInstallService {
         cancel: CancellationToken,
     ) {
         let service = Arc::clone(self);
+        let started = std::time::Instant::now();
         tokio::spawn(async move {
             let progress_service = Arc::clone(&service);
             let progress_id = install_id.clone();
@@ -285,6 +286,10 @@ impl RuntimeInstallService {
                     );
                 }
                 Err(InstallError::Cancelled) => {
+                    tracing::info!(
+                        elapsed_ms = started.elapsed().as_millis(),
+                        "managed Node install cancelled"
+                    );
                     service.set_outcome(Some(InstallOutcome::Cancelled));
                     service.emit(
                         &install_id,

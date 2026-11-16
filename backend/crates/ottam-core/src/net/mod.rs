@@ -223,8 +223,21 @@ fn partial_path(dest: &Path) -> PathBuf {
     dest.with_file_name(name)
 }
 
+/// reqwest's own message stops at "error sending request for url"; the cause
+/// that tells a blocked host from an untrusted certificate or a dead proxy
+/// lives in the source chain.
 fn network_error(error: reqwest::Error) -> DownloadError {
-    DownloadError::Network(error.to_string())
+    let mut message = error.to_string();
+    let mut source = std::error::Error::source(&error);
+    while let Some(cause) = source {
+        let cause_text = cause.to_string();
+        if !message.contains(&cause_text) {
+            message.push_str(": ");
+            message.push_str(&cause_text);
+        }
+        source = cause.source();
+    }
+    DownloadError::Network(message)
 }
 
 fn io_error(error: std::io::Error) -> DownloadError {
@@ -478,6 +491,34 @@ mod tests {
                 total: Some(body.len() as u64),
             }),
             "the final event must carry the exact byte count"
+        );
+    }
+
+    /// The report a user screenshots has to name the cause, not just
+    /// "error sending request".
+    #[tokio::test]
+    async fn a_network_failure_names_its_underlying_cause() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
+        let address = listener.local_addr().expect("address");
+        drop(listener);
+        let directory = tempfile::tempdir().expect("tempdir");
+        let client = HttpClient::new().expect("client");
+
+        let error = client
+            .download(
+                DownloadRequest::new(format!("http://{address}/artifact"), directory.path().join("a")),
+                &CancellationToken::new(),
+                |_| {},
+            )
+            .await
+            .expect_err("nothing listens there");
+
+        let DownloadError::Network(detail) = error else {
+            panic!("unexpected error: {error}");
+        };
+        assert!(
+            detail.to_lowercase().contains("refused"),
+            "the cause was dropped: {detail}"
         );
     }
 

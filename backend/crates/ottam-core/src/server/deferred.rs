@@ -2,8 +2,10 @@ use crate::server::outbound::{ConnectionId, OutboundSink};
 use serde_json::Value;
 use std::future::Future;
 use std::sync::Arc;
+use std::time::Instant;
 use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 use tokio::task::JoinSet;
+use tracing::Instrument;
 
 /// How many deferred handler tails may run at once.
 ///
@@ -79,10 +81,19 @@ impl DeferredResponseTasks {
         F: Future<Output = Value> + Send + 'static,
     {
         let outbound = self.outbound.clone();
-        self.tasks.spawn(async move {
-            let _permit = permit;
-            let _ = outbound.respond(origin, future.await);
-        });
+        // Spawned from inside `handle_request`'s span: carrying it keeps the
+        // method on the handler's own logs and on the completion line.
+        let span = tracing::Span::current();
+        let started = Instant::now();
+        self.tasks.spawn(
+            async move {
+                let _permit = permit;
+                let response = future.await;
+                super::responses::log_completion(&response, started.elapsed(), None);
+                let _ = outbound.respond(origin, response);
+            }
+            .instrument(span),
+        );
     }
 
     /// Abandon in-flight response work after the owner's dispatch loop has

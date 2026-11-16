@@ -41,9 +41,14 @@ Try it:
    and plugin counts.
    Continue stays disabled until at least one agent is checked. The window
    has no close button.
-3. Tick Codex and Claude Code, then Continue. Node installs first, with a
-   progress row, then both adapters install in parallel. A failed row offers
-   Retry and Remove. Continue is enabled when every remaining row is ready.
+3. Tick Codex and Claude Code, then Continue. While core looks for Node the
+   Node row reads "Looking for Node.js on this Mac…" and Claude's row waits
+   for it. Node then installs first, its caption naming the phase and the
+   downloaded size, with Cancel; then both adapters install in parallel. If
+   Node installs but core still cannot use it, the row names the problem and
+   offers Check Again. A failed row offers Retry and Remove. Continue is
+   enabled when every remaining row is ready. The core log has a timed line
+   for the Node search, download, unpack, and each adapter install.
 4. Sign in. Codex opens the browser. Claude shows a terminal only if its
    login stalls. A row using a CLI setup that is already signed in starts
    ready. Continue is enabled when every row is signed in.
@@ -75,9 +80,10 @@ Try it:
   - Done when: Try it steps 1, 7, and 8 pass.
   - Verify with: `./scripts/test-app.sh --filter Onboarding`, and a
     real-window launch with a fresh `OTTAM_HOME`.
-- [~] 6. Choose, Install, and Sign In steps. Left: Node install and
-  parallel adapters on a fresh home, Retry and Remove after a cancel, and
-  OpenCode's provider terminal inside the window.
+- [~] 6. Choose, Install, and Sign In steps. Left: Retry and Remove after
+  an adapter cancel, the "Looking for Node.js" caption on a Mac with a slow
+  login shell, the Sign In step, and OpenCode's provider terminal inside the
+  window.
   - Done when: Try it steps 2–4 pass, including the missing-Node path.
   - Verify with: a real-window run with live providers, once with
     `OTTAM_NODE` pointing at a missing path.

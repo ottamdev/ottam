@@ -216,17 +216,30 @@ impl ManagedNode {
             .dist_sha256
             .clone()
             .unwrap_or_else(|| release.sha256.to_string());
+        let url = release.url(&self.dist_base);
+        tracing::info!(url = %url, "downloading managed Node runtime");
+        let download_started = std::time::Instant::now();
+        let bytes = std::sync::atomic::AtomicU64::new(0);
         http.download(
-            DownloadRequest::new(release.url(&self.dist_base), &tarball)
-                .expecting_sha256(expected_sha256),
+            DownloadRequest::new(&url, &tarball).expecting_sha256(expected_sha256),
             cancel,
-            |progress| on_progress(InstallProgress::Download(progress)),
+            |progress| {
+                if let DownloadProgress::Received { received, .. } = progress {
+                    bytes.store(received, std::sync::atomic::Ordering::Relaxed);
+                }
+                on_progress(InstallProgress::Download(progress));
+            },
         )
         .await
         .map_err(|error| match error {
             DownloadError::Cancelled => InstallError::Cancelled,
             other => InstallError::Download(other),
         })?;
+        tracing::info!(
+            bytes = bytes.load(std::sync::atomic::Ordering::Relaxed),
+            elapsed_ms = download_started.elapsed().as_millis(),
+            "managed Node runtime downloaded and verified"
+        );
 
         if cancel.is_cancelled() {
             let _ = std::fs::remove_file(&tarball);
@@ -235,12 +248,17 @@ impl ManagedNode {
 
         on_progress(InstallProgress::Extracting);
         let staging = self.staging_dir();
+        let extract_started = std::time::Instant::now();
         let extracted = self.extract(&tarball, &staging).await;
         let _ = std::fs::remove_file(&tarball);
         if let Err(error) = extracted {
             let _ = std::fs::remove_dir_all(&staging);
             return Err(error);
         }
+        tracing::info!(
+            elapsed_ms = extract_started.elapsed().as_millis(),
+            "managed Node runtime unpacked"
+        );
 
         // Extraction is not itself interruptible, so re-check before the
         // rename: without this, Cancel pressed once the UI says "Extracting"

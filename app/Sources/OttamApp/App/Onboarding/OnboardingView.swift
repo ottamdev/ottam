@@ -342,17 +342,29 @@ private struct OnboardingNodeRow: View {
         } caption: {
             if let error = install.error, install.phase == .failed {
                 Text(error).foregroundStyle(.red).textSelection(.enabled)
+            } else if let progress = install.progressCaption {
+                Text(progress).foregroundStyle(.secondary).monospacedDigit()
+            } else if let problem = model.nodeProblemAfterInstall {
+                Text(problem).foregroundStyle(.orange)
+            } else if model.isCheckingNode {
+                Text("Looking for Node.js on this Mac…").foregroundStyle(.secondary)
+            } else if install.phase == .cancelled {
+                Text("Cancelled").foregroundStyle(.secondary)
             } else {
                 Text("Runs Codex and Claude Code").foregroundStyle(.secondary)
             }
         } status: {
             if install.isInFlight {
-                if let total = install.bytesTotal, total > 0 {
-                    ProgressView(value: Double(install.bytesReceived ?? 0), total: Double(total))
-                        .frame(width: 140)
+                if let fraction = install.fractionCompleted {
+                    ProgressView(value: fraction).frame(width: 100)
                 } else {
                     ProgressView().controlSize(.small)
                 }
+                Button("Cancel") { model.cancelNode() }
+            } else if model.nodeProblemAfterInstall != nil {
+                Button("Check Again") { model.recheckNode() }
+            } else if model.isCheckingNode {
+                ProgressView().controlSize(.small)
             } else if !model.needsNode {
                 Label("Ready", systemImage: "checkmark.circle.fill").foregroundStyle(.green)
             } else if install.phase == .failed || install.phase == .cancelled {
@@ -361,6 +373,7 @@ private struct OnboardingNodeRow: View {
                 Text("Waiting").foregroundStyle(.secondary)
             }
         }
+        .accessibilityIdentifier("onboarding.install.node")
     }
 }
 
@@ -372,6 +385,12 @@ private struct OnboardingInstallRow: View {
         let agent = model.instance(harnessID)
         let install = model.runtime.agentInstall.state(for: AgentID(harnessID))
         let name = CLIProvider(harnessID: harnessID)?.displayName ?? harnessID
+        // `agent.list` reports the install before its progress stream ends, so
+        // caption and status both go by this, not by the stream's phase.
+        let installed = agent.map {
+            OnboardingProgress.isInstalled($0)
+                && !OnboardingProgress.needsLayout($0, usesCLISetup: model.usesCLISetup(harnessID))
+        } ?? false
         OnboardingStatusRow(name: name) {
             AgentIconView(brand: model.brand(harnessID), name: name, size: 28)
         } caption: {
@@ -380,14 +399,13 @@ private struct OnboardingInstallRow: View {
                 Text(error).foregroundStyle(.red).textSelection(.enabled)
             } else if install.phase == .cancelled {
                 Text("Cancelled").foregroundStyle(.secondary)
-            } else if install.isInFlight {
+            } else if install.isInFlight, !installed {
                 Text(install.phase == .verifying ? "Verifying…" : "Installing…").foregroundStyle(.secondary)
             } else {
                 Text(model.usesCLISetup(harnessID) ? "Your CLI setup" : "Ottam profile").foregroundStyle(.secondary)
             }
         } status: {
-            if let agent, OnboardingProgress.isInstalled(agent),
-               !OnboardingProgress.needsLayout(agent, usesCLISetup: model.usesCLISetup(harnessID)) {
+            if installed {
                 Label("Installed", systemImage: "checkmark.circle.fill").foregroundStyle(.green)
             } else if install.isInFlight {
                 ProgressView().controlSize(.small)
@@ -395,7 +413,7 @@ private struct OnboardingInstallRow: View {
             } else if install.phase == .failed || install.phase == .cancelled {
                 Button("Retry") { model.retry(harnessID) }
                 Button("Remove") { model.remove(harnessID) }
-            } else if let agent, EngineRuntimeProblem(adapterOf: agent) != nil {
+            } else if let agent, EngineRuntimeProblem(adapterOf: agent) != nil || OnboardingModel.isCheckingNode(agent) {
                 Text("Waiting for Node.js").foregroundStyle(.secondary)
             } else {
                 ProgressView().controlSize(.small)
