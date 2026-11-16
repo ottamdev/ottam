@@ -1445,7 +1445,8 @@ impl AgentRegistry {
     }
 
     /// Whether a live adapter was launched out of `directory` — its command
-    /// or entrypoint lives there.
+    /// or entrypoint lives there, or its PATH lists it (a binary-lane adapter
+    /// carries Node's bin dir only there).
     fn adapter_launched_from(&self, directory: &Path) -> bool {
         self.live_adapter_snapshot().iter().any(|adapter| {
             // A stopped or dead adapter may still be referenced, but runs
@@ -1457,9 +1458,16 @@ impl AgentRegistry {
                 return false;
             }
             let launch = &adapter.definition().launch;
+            let path_entries = launch
+                .environment
+                .iter()
+                .filter(|(name, _)| name == "PATH")
+                .flat_map(|(_, value)| std::env::split_paths(value));
             std::iter::once(&launch.command)
                 .chain(launch.arguments.iter())
-                .any(|part| std::path::Path::new(part).starts_with(directory))
+                .map(PathBuf::from)
+                .chain(path_entries)
+                .any(|part| part.starts_with(directory))
         })
     }
 
@@ -3306,6 +3314,34 @@ mod tests {
         assert!(!registry.launch_uses(&other));
         drop(lease);
         assert!(!registry.launch_uses(&runtime));
+    }
+
+    /// A binary-lane adapter lists the managed Node only on its PATH; a live
+    /// one still holds that runtime against pruning.
+    #[tokio::test]
+    async fn a_live_adapter_holds_a_runtime_its_path_lists() {
+        let runtime = PathBuf::from("/ottam/runtime/node/v24.19.0");
+        let resolver = Arc::new(NodeResolver::default());
+        resolver.store_for_test(NodeResolution::Resolved(ResolvedNodeRuntime {
+            node: runtime.join("bin/node"),
+            npx: runtime.join("bin/npx"),
+            npm: runtime.join("bin/npm"),
+            source: NodeSource::Managed,
+        }));
+        resolver.store_login_path_for_test("/usr/bin:/bin");
+        let registry = AgentRegistry::with_components_and_resolver(
+            built_in_definitions(),
+            Arc::new(ReadyProbe),
+            Arc::new(FakeFactory::default()),
+            resolver,
+        );
+        assert!(!registry.launch_uses(&runtime));
+        let _adapter = registry
+            .get_or_start(&AgentId::new(OPENCODE_AGENT_ID))
+            .await
+            .expect("start");
+        assert!(registry.launch_uses(&runtime));
+        assert!(!registry.launch_uses(Path::new("/ottam/runtime/node/v24.0.0")));
     }
 
     /// When the pin lands under a running adapter, the next acquisition that
