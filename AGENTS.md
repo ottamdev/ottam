@@ -61,8 +61,10 @@ Adapter pins live in `backend/crates/ottam-core/src/agent/registry.rs`.
 - Prefer platform-native APIs and standard macOS patterns; justify custom UI.
 - Preserve unrelated edits. Checkpoint before risky work; do not commit or push
   unless asked, and state the branch or PR target when publishing.
-- Contributed commits need a DCO sign-off (`CONTRIBUTING.md`). It is the human
-  submitter's certification, so use `git commit -s` only when they ask.
+- Commits need a DCO sign-off (`CONTRIBUTING.md`). When the git user is the
+  maintainer (`theaj`), always use `git commit -s`: they authorized agents to
+  certify in their name (2026-11-16) so no commit lands unsigned. For anyone
+  else, add `-s` only when they ask.
 - After about three failed attempts, investigate the cause and change approach.
   After a rejected tool call, explain the changed approach before retrying.
 - Support success claims with actual results. UI claims need inspected rendered

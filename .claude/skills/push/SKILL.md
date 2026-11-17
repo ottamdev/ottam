@@ -51,8 +51,7 @@ Scan uncommitted changes, group them by unit of work, commit, and push the curre
    - `chore: ...`
    - `refactor: ...`
 
-   Add `-s` only when the user asks; the DCO sign-off is their certification
-   (see `CONTRIBUTING.md`).
+   Sign off with `-s` as `AGENTS.md` says (DCO, see `CONTRIBUTING.md`).
 
 8. Push:
 
