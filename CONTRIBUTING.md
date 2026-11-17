@@ -63,5 +63,6 @@ sign-off, which certifies you have the right to submit the work:
 git commit -s
 ```
 
-The sign-off is yours even when a coding agent wrote the change. No automated
+The sign-off is yours even when a coding agent wrote the change; agents
+following `AGENTS.md` add it by default. No automated
 check enforces it; missing sign-offs are caught in review.
