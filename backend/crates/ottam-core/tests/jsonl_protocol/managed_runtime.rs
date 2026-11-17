@@ -151,12 +151,12 @@ fn installing_the_managed_runtime_makes_an_unsupported_engine_ready() {
     let system = TempDir::new().expect("system runtime directory");
     let shell = fake_login_shell(system.path(), &system_node(system.path()));
 
-    let mut core = CoreProcess::new_with_env(vec![
-        node_discovery_environment(),
-        ("SHELL".to_string(), shell.display().to_string()),
+    let mut environment = node_discovery_environment(&shell);
+    environment.extend([
         ("OTTAM_NODE_DIST_BASE".to_string(), server.base_url),
         ("OTTAM_NODE_DIST_SHA256".to_string(), digest),
     ]);
+    let mut core = CoreProcess::new_with_env(environment);
     core.initialize();
     let opened = core.open_path(repo.path());
     let project_id = opened["project"]["projectID"]
@@ -260,15 +260,12 @@ fn a_moved_node_pin_upgrades_in_the_background_on_launch() {
     write_executable(&older.join("bin/npx"), "#!/bin/sh\necho 11.0.0\n");
     write_executable(&older.join("bin/npm"), "#!/bin/sh\necho 11.0.0\n");
 
-    let mut core = CoreProcess::new_in_home_with_env(
-        home.path(),
-        vec![
-            node_discovery_environment(),
-            ("SHELL".to_string(), shell.display().to_string()),
-            ("OTTAM_NODE_DIST_BASE".to_string(), server.base_url),
-            ("OTTAM_NODE_DIST_SHA256".to_string(), digest),
-        ],
-    );
+    let mut environment = node_discovery_environment(&shell);
+    environment.extend([
+        ("OTTAM_NODE_DIST_BASE".to_string(), server.base_url),
+        ("OTTAM_NODE_DIST_SHA256".to_string(), digest),
+    ]);
+    let mut core = CoreProcess::new_in_home_with_env(home.path(), environment);
     core.initialize();
 
     // No `runtime.install` request: the upgrade starts on connect.
@@ -326,19 +323,16 @@ fn an_older_managed_runtime_stands_in_when_the_upgrade_cannot_download() {
     write_executable(&older.join("bin/npx"), "#!/bin/sh\necho 11.0.0\n");
     write_executable(&older.join("bin/npm"), "#!/bin/sh\necho 11.0.0\n");
 
-    let mut core = CoreProcess::new_in_home_with_env(
-        home.path(),
-        vec![
-            node_discovery_environment(),
-            ("SHELL".to_string(), shell.display().to_string()),
-            // Nothing listens here: the download fails like an offline Mac.
-            (
-                "OTTAM_NODE_DIST_BASE".to_string(),
-                "http://127.0.0.1:9/dist".to_string(),
-            ),
-            ("OTTAM_NODE_DIST_SHA256".to_string(), "0".repeat(64)),
-        ],
-    );
+    let mut environment = node_discovery_environment(&shell);
+    environment.extend([
+        // Nothing listens here: the download fails like an offline Mac.
+        (
+            "OTTAM_NODE_DIST_BASE".to_string(),
+            "http://127.0.0.1:9/dist".to_string(),
+        ),
+        ("OTTAM_NODE_DIST_SHA256".to_string(), "0".repeat(64)),
+    ]);
+    let mut core = CoreProcess::new_in_home_with_env(home.path(), environment);
     core.initialize();
 
     let deadline = Instant::now() + Duration::from_secs(60);

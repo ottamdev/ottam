@@ -40,7 +40,6 @@ pub(crate) use model_catalog::pinned_adapter_package;
 pub(crate) use model_catalog::CatalogChangeSink;
 pub use model_catalog::ModelCatalogService;
 pub(crate) use plan_usage::{PlanUsageService, PlanUsageSink};
-pub(crate) use registry::toolchain_path;
 #[cfg(test)]
 pub(crate) use registry::AdapterFactory;
 pub(crate) use registry::ReplayAdmission;

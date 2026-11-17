@@ -7,8 +7,11 @@
 //! reports the same "node is required" as a machine that genuinely lacks it.
 //!
 //! Resolution therefore walks its own chain and hands absolute paths to both
-//! the version probe and the adapter spawn.
+//! the version probe and the adapter spawn. The same login-shell run also
+//! captures the user's PATH, the base for adapters and the Node tooling core
+//! runs for them (see `docs/architecture/backend/acp.md`, Runtime Resolution).
 
+use std::ffi::{OsStr, OsString};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex as StdMutex;
@@ -67,11 +70,8 @@ pub(crate) struct ResolvedNodeRuntime {
 }
 
 impl ResolvedNodeRuntime {
-    /// The directory to prepend to the child's PATH.
-    ///
-    /// An absolute `npx` path is not enough on its own: `npx` is a
-    /// `#!/usr/bin/env node` script, and the adapters themselves spawn `node`
-    /// for subprocesses. Both re-resolve through PATH.
+    /// The directory that goes on a child's PATH, first or last depending on
+    /// the child ([`path_with_toolchain_first`], [`path_with_toolchain_last`]).
     pub fn bin_dir(&self) -> Option<&Path> {
         self.node.parent()
     }
@@ -106,6 +106,9 @@ pub(crate) struct NodeResolver {
     /// Absent in test registries and when the user has opted out, which is
     /// exactly the pre-managed-runtime behaviour.
     managed: Option<super::managed_node::ManagedNode>,
+    /// The login shell's PATH from the last search that got one. A later
+    /// probe that fails keeps it: a timeout is no reason to drop a good PATH.
+    login_path: StdMutex<Option<OsString>>,
 }
 
 impl NodeResolver {
@@ -124,11 +127,25 @@ impl NodeResolver {
     /// Resolve, consulting the cache. May block for up to
     /// `LOGIN_SHELL_PROBE_TIMEOUT` on a cold miss, so callers must already be
     /// on a blocking-capable thread.
+    ///
+    /// The search also captures the login shell's PATH. Folding it in here
+    /// rather than capturing it separately is what keeps a spawn from racing
+    /// it: every adapter start resolves first, so by the time anything reads
+    /// `child_path_base`, the shell has answered or given up.
     pub fn resolve(&self) -> NodeResolution {
         self.resolve_single_flight(|| {
-            resolve_with(
-                |name| std::env::var(name).ok(),
-                login_shell_node,
+            let env = |name: &str| std::env::var(name).ok();
+            let probe = if login_shell_probe_off(&env) {
+                LoginShellProbe::default()
+            } else {
+                let shell = user_shell(&env);
+                let probe = probe_login_shell(&shell);
+                self.record_login_path(&shell, &probe);
+                probe
+            };
+            let resolution = resolve_with(
+                env,
+                |_| probe.answer.node,
                 is_executable_file,
                 || {
                     self.managed
@@ -136,8 +153,64 @@ impl NodeResolver {
                         .and_then(|managed| managed.usable_node())
                 },
                 system_node_major,
-            )
+            );
+            // A miss re-searches every `UNRESOLVED_CACHE_TTL` while polled,
+            // so only an answer is worth an info line.
+            match &resolution {
+                NodeResolution::Resolved(runtime) => tracing::info!(
+                    source = ?runtime.source,
+                    node = %runtime.node.display(),
+                    "resolved Node runtime"
+                ),
+                NodeResolution::Unresolved => tracing::debug!("no Node runtime found"),
+            }
+            resolution
         })
+    }
+
+    /// Keep the probe's PATH, logging at info only when it changes: misses
+    /// re-run the probe every `UNRESOLVED_CACHE_TTL`, and an unchanged PATH
+    /// each time is noise. A failed probe keeps the previous PATH.
+    fn record_login_path(&self, shell: &str, probe: &LoginShellProbe) {
+        let mut stored = self
+            .login_path
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let elapsed_ms = probe.elapsed.as_millis() as u64;
+        match &probe.answer.path {
+            Some(path) if stored.as_ref() != Some(path) => {
+                tracing::info!(
+                    shell,
+                    mode = probe.mode,
+                    elapsed_ms,
+                    entries = std::env::split_paths(path).count(),
+                    "captured login-shell PATH"
+                );
+                *stored = Some(path.clone());
+            }
+            Some(_) => tracing::debug!(shell, elapsed_ms, "login-shell PATH unchanged"),
+            None if stored.is_none() => tracing::warn!(
+                shell,
+                mode = probe.mode,
+                elapsed_ms,
+                "login shell did not report a PATH; children keep core's own"
+            ),
+            None => tracing::debug!(shell, elapsed_ms, "login shell did not report a PATH"),
+        }
+    }
+
+    /// The PATH children start from: the login shell's when a search has
+    /// captured it, else core's own (launchd's, for a Finder launch).
+    pub fn child_path_base(&self) -> OsString {
+        path_base(self.login_path())
+    }
+
+    /// The login shell's PATH, once a search has captured it.
+    pub fn login_path(&self) -> Option<OsString> {
+        self.login_path
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .clone()
     }
 
     /// Concurrent callers share one search; whoever waited reads its answer
@@ -219,6 +292,72 @@ impl NodeResolver {
             .unwrap_or_else(|poisoned| poisoned.into_inner());
         *cache = Some((Instant::now(), resolution));
     }
+
+    #[cfg(test)]
+    pub(super) fn store_login_path_for_test(&self, path: &str) {
+        *self
+            .login_path
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(path.into());
+    }
+}
+
+/// `login_path` when captured, else core's own PATH.
+pub(crate) fn path_base(login_path: Option<OsString>) -> OsString {
+    login_path
+        .or_else(|| std::env::var_os("PATH"))
+        .unwrap_or_default()
+}
+
+/// `base` with `bin_dir` first, for processes that run Node tooling Ottam
+/// chose: the version probes, `npm install`, and local MCP servers. npm and
+/// npx are `#!/usr/bin/env node` scripts, and install hooks spawn `node`, so
+/// all of them re-resolve `node` through PATH and must find the resolved one.
+pub(crate) fn path_with_toolchain_first(base: &OsStr, bin_dir: Option<&Path>) -> OsString {
+    let Some(bin_dir) = bin_dir else {
+        return base.to_owned();
+    };
+    let mut path = bin_dir.as_os_str().to_owned();
+    if !base.is_empty() {
+        path.push(":");
+        path.push(base);
+    }
+    path
+}
+
+/// `base` with `bin_dir` last, unless it is already on it, for adapters. An
+/// adapter's environment reaches the agent's shell, where the user's own
+/// `node` should win; the adapter itself runs by absolute path and needs no
+/// PATH lookup.
+pub(crate) fn path_with_toolchain_last(base: &OsStr, bin_dir: Option<&Path>) -> OsString {
+    let Some(bin_dir) = bin_dir else {
+        return base.to_owned();
+    };
+    if base.is_empty() {
+        return bin_dir.as_os_str().to_owned();
+    }
+    if std::env::split_paths(base).any(|entry| entry == bin_dir) {
+        return base.to_owned();
+    }
+    let mut path = base.to_owned();
+    path.push(":");
+    path.push(bin_dir);
+    path
+}
+
+fn user_shell(env: &impl Fn(&str) -> Option<String>) -> String {
+    env("SHELL")
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| DEFAULT_SHELL.to_string())
+}
+
+/// `OTTAM_LOGIN_SHELL_PROBE=off` skips the shell run, for tests that must not
+/// start the machine's real login shell; children then start from the
+/// inherited PATH. An `OTTAM_NODE` override does not skip it, because a user
+/// who pins Node still wants their shell's PATH.
+fn login_shell_probe_off(env: &impl Fn(&str) -> Option<String>) -> bool {
+    env("OTTAM_LOGIN_SHELL_PROBE").is_some_and(|value| value == "off")
 }
 
 /// The resolution chain, with every effect injected so the ordering is testable
@@ -301,10 +440,7 @@ fn system_node(
     is_executable_file: &impl Fn(&Path) -> bool,
 ) -> Option<(PathBuf, NodeSource)> {
     // The user's login shell knows about their version manager; we do not.
-    let shell = env("SHELL")
-        .map(|value| value.trim().to_string())
-        .filter(|value| !value.is_empty())
-        .unwrap_or_else(|| DEFAULT_SHELL.to_string());
+    let shell = user_shell(env);
     if let Some(node) = login_shell_node(&shell).filter(|path| is_executable_file(path)) {
         return Some((node, NodeSource::LoginShell));
     }
@@ -406,18 +542,46 @@ fn is_executable_file(path: &Path) -> bool {
         .unwrap_or(false)
 }
 
-/// Marks our answer inside the shell's output so rc-file banners, direnv
+/// Marks our answers inside the shell's output so rc-file banners, direnv
 /// notices, and version-manager chatter cannot be mistaken for a path.
 const ANSWER_MARKER: &str = "__ottam_node__:";
+const PATH_MARKER: &str = "__ottam_path__:";
 
 /// Run by the shell's Node: the first `node` on PATH when it is that Node
 /// itself (Homebrew's stable symlink, an nvm install), else its own real path.
 /// It sits inside single quotes, so no `'`, `$`, or newline.
 const NODE_PATH_SCRIPT: &str = r#"(() => { const fs = require("fs"); const own = process.execPath; for (const dir of (process.env.PATH || "").split(":")) { const entry = dir + "/node"; try { fs.accessSync(entry, fs.constants.X_OK); } catch { continue; } try { return fs.realpathSync(entry) === own ? entry : own; } catch { return own; } } return own; })()"#;
 
-/// Ask the user's shell where Node lives.
+/// What one run of the user's shell reported.
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+struct LoginShellAnswer {
+    /// PATH as the user's terminal has it. Only PATH: the rest of a shell's
+    /// environment is session state (`PWD`, `SHLVL`, direnv) or settings
+    /// that would silently change an agent, such as an exported API key
+    /// switching it off subscription sign-in.
+    path: Option<OsString>,
+    node: Option<PathBuf>,
+}
+
+impl LoginShellAnswer {
+    /// Either line counts: a shell that reports Node but no PATH still
+    /// answered the part resolution needs, so the fallback mode is not tried.
+    fn answered(&self) -> bool {
+        self.path.is_some() || self.node.is_some()
+    }
+}
+
+/// One probe: the answer, which mode gave it, and how long it took.
+#[derive(Debug, Default)]
+struct LoginShellProbe {
+    answer: LoginShellAnswer,
+    mode: Option<&'static str>,
+    elapsed: Duration,
+}
+
+/// Ask the user's shell for its PATH and where Node lives.
 ///
-/// The answer is the PATH entry unless that entry is a shim. asdf and mise put
+/// The Node answer is the PATH entry unless that entry is a shim. asdf and mise put
 /// a shim first on PATH that re-enters the version manager by bare name, and
 /// that name is not on the launchd PATH the app spawns with, so a shim answers
 /// with Node's own `process.execPath`: the real binary runs anywhere and has
@@ -426,24 +590,24 @@ const NODE_PATH_SCRIPT: &str = r#"(() => { const fs = require("fs"); const own =
 /// path it points at does not. `command -v` remains the fallback so a Node that
 /// will not start is reported invalid, not missing.
 ///
-/// Two attempts, because neither mode alone covers the common setups. A login
-/// shell (`-l`) reads `.zprofile`/`.bash_profile`; an *interactive* one reads
-/// `.zshrc`/`.bashrc`, which is where asdf, nvm, and fnm actually install their
-/// shims. Homebrew users are usually fine with the first; version-manager users
-/// need the second.
-///
-/// The interactive attempt is second because it is the riskier of the two: it
-/// runs the user's full interactive startup. Its output is delimited rather
-/// than trusted, its stdin is closed so nothing can block on a read, and the
-/// shared timeout kills the whole process group.
-fn login_shell_node(shell: &str) -> Option<PathBuf> {
+/// An interactive login shell (`-i -l`) goes first because it is what the
+/// user's terminal runs: `.zprofile` for Homebrew, then `.zshrc`, where asdf,
+/// nvm, fnm, and most PATH edits live. A plain login shell answering first
+/// would hand back a PATH, and a Node, the terminal never sees. The plain
+/// attempt remains the fallback for an interactive startup that hangs or
+/// fails. Output is delimited rather than trusted, stdin is closed so nothing
+/// can block on a read, and the timeout kills the whole process group.
+fn probe_login_shell(shell: &str) -> LoginShellProbe {
     let script = format!(
-        "printf '%s%s\\n' '{ANSWER_MARKER}' \"$(node -p '{NODE_PATH_SCRIPT}' 2>/dev/null || command -v node)\""
+        "printf '%s%s\\n' '{PATH_MARKER}' \"$PATH\"; printf '%s%s\\n' '{ANSWER_MARKER}' \"$(node -p '{NODE_PATH_SCRIPT}' 2>/dev/null || command -v node)\""
     );
-    for arguments in [
-        vec!["-l", "-c", script.as_str()],
-        vec!["-i", "-l", "-c", script.as_str()],
+    let started = Instant::now();
+    for (mode, flags) in [
+        ("interactive login", &["-i", "-l", "-c"][..]),
+        ("login", &["-l", "-c"][..]),
     ] {
+        let mut arguments = flags.to_vec();
+        arguments.push(script.as_str());
         let Ok(output) = super::registry::command_output_args_with_timeout(
             shell,
             &arguments,
@@ -451,11 +615,32 @@ fn login_shell_node(shell: &str) -> Option<PathBuf> {
         ) else {
             continue;
         };
-        if let Some(path) = parse_which_output(&String::from_utf8_lossy(&output.stdout)) {
-            return Some(path);
+        let answer = parse_login_shell_output(&String::from_utf8_lossy(&output.stdout));
+        if answer.answered() {
+            return LoginShellProbe {
+                answer,
+                mode: Some(mode),
+                elapsed: started.elapsed(),
+            };
         }
     }
-    None
+    LoginShellProbe {
+        elapsed: started.elapsed(),
+        ..LoginShellProbe::default()
+    }
+}
+
+fn parse_login_shell_output(stdout: &str) -> LoginShellAnswer {
+    let path = stdout
+        .lines()
+        .filter_map(|line| line.trim().strip_prefix(PATH_MARKER))
+        .map(str::trim)
+        .find(|path| path.split(':').any(|entry| entry.starts_with('/')))
+        .map(OsString::from);
+    LoginShellAnswer {
+        path,
+        node: parse_which_output(stdout),
+    }
 }
 
 /// Pull the marked answer out of whatever else the shell printed. Only an
@@ -790,6 +975,126 @@ mod tests {
         for forbidden in ['\'', '$', '\n'] {
             assert!(!NODE_PATH_SCRIPT.contains(forbidden), "{forbidden:?}");
         }
+    }
+
+    #[test]
+    fn one_shell_run_answers_both_path_and_node() {
+        let output = format!(
+            "Last login: Mon\ndirenv: loading\n{PATH_MARKER}/Users/test/.local/state/fnm_multishells/1_2/bin:/opt/homebrew/bin:/usr/bin\n{ANSWER_MARKER}/Users/test/.local/state/fnm_multishells/1_2/bin/node\n"
+        );
+        assert_eq!(
+            parse_login_shell_output(&output),
+            LoginShellAnswer {
+                path: Some(
+                    "/Users/test/.local/state/fnm_multishells/1_2/bin:/opt/homebrew/bin:/usr/bin"
+                        .into()
+                ),
+                node: Some(PathBuf::from(
+                    "/Users/test/.local/state/fnm_multishells/1_2/bin/node"
+                )),
+            }
+        );
+        // No Node is still a PATH worth having.
+        assert_eq!(
+            parse_login_shell_output(&format!("{PATH_MARKER}/usr/bin:/bin\n{ANSWER_MARKER}\n")),
+            LoginShellAnswer {
+                path: Some("/usr/bin:/bin".into()),
+                node: None,
+            }
+        );
+        // The script never ran, or printed nothing usable.
+        assert_eq!(
+            parse_login_shell_output("zsh: bad option\n"),
+            LoginShellAnswer::default()
+        );
+        assert_eq!(
+            parse_login_shell_output(&format!("{PATH_MARKER}\n")).path,
+            None
+        );
+        // An unmarked PATH-looking line is somebody else's output.
+        assert_eq!(
+            parse_login_shell_output("/opt/homebrew/bin:/usr/bin\n").path,
+            None
+        );
+    }
+
+    /// A shell that prints only the Node line still answered: resolution must
+    /// get that Node rather than fall through to the next mode or a
+    /// well-known directory.
+    #[test]
+    fn a_node_only_answer_counts() {
+        let answer = parse_login_shell_output(&format!("{ANSWER_MARKER}/fake/bin/node\n"));
+        assert_eq!(answer.path, None);
+        assert!(answer.answered());
+        assert!(!parse_login_shell_output("zsh: bad option\n").answered());
+    }
+
+    #[test]
+    fn a_failed_probe_keeps_the_previous_login_path() {
+        let resolver = NodeResolver::default();
+        let probe = |path: Option<&str>| LoginShellProbe {
+            answer: LoginShellAnswer {
+                path: path.map(OsString::from),
+                node: None,
+            },
+            ..LoginShellProbe::default()
+        };
+        resolver.record_login_path("/bin/zsh", &probe(Some("/opt/homebrew/bin:/usr/bin")));
+        resolver.record_login_path("/bin/zsh", &probe(None));
+        assert_eq!(
+            resolver.login_path(),
+            Some(OsString::from("/opt/homebrew/bin:/usr/bin"))
+        );
+        resolver.record_login_path("/bin/zsh", &probe(Some("/usr/bin")));
+        assert_eq!(resolver.login_path(), Some(OsString::from("/usr/bin")));
+    }
+
+    #[test]
+    fn tooling_puts_the_resolved_node_first() {
+        let base = OsStr::new("/Users/test/.fnm/bin:/usr/bin");
+        assert_eq!(
+            path_with_toolchain_first(base, Some(Path::new("/managed/bin"))),
+            OsString::from("/managed/bin:/Users/test/.fnm/bin:/usr/bin")
+        );
+        assert_eq!(path_with_toolchain_first(base, None), OsString::from(base));
+        assert_eq!(
+            path_with_toolchain_first(OsStr::new(""), Some(Path::new("/managed/bin"))),
+            OsString::from("/managed/bin")
+        );
+    }
+
+    /// Adapters: the user's own Node keeps winning in the agent's shell, and
+    /// a Node already on the login PATH is not listed twice.
+    #[test]
+    fn adapters_put_the_resolved_node_last_once() {
+        let base = OsStr::new("/Users/test/.fnm/bin:/opt/homebrew/bin:/usr/bin");
+        assert_eq!(
+            path_with_toolchain_last(base, Some(Path::new("/managed/bin"))),
+            OsString::from("/Users/test/.fnm/bin:/opt/homebrew/bin:/usr/bin:/managed/bin")
+        );
+        assert_eq!(
+            path_with_toolchain_last(base, Some(Path::new("/opt/homebrew/bin"))),
+            OsString::from(base)
+        );
+        assert_eq!(path_with_toolchain_last(base, None), OsString::from(base));
+        assert_eq!(
+            path_with_toolchain_last(OsStr::new(""), Some(Path::new("/managed/bin"))),
+            OsString::from("/managed/bin")
+        );
+    }
+
+    #[test]
+    fn child_path_base_prefers_the_captured_login_path() {
+        let resolver = NodeResolver::default();
+        assert_eq!(
+            resolver.child_path_base(),
+            std::env::var_os("PATH").unwrap_or_default()
+        );
+        resolver.store_login_path_for_test("/opt/homebrew/bin:/usr/bin");
+        assert_eq!(
+            resolver.child_path_base(),
+            OsString::from("/opt/homebrew/bin:/usr/bin")
+        );
     }
 
     #[test]

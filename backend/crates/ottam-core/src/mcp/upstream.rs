@@ -34,7 +34,8 @@ use rmcp::transport::streamable_http_client::{
 use rmcp::transport::StreamableHttpClientTransport;
 use rmcp::{ClientHandler, ErrorData, RoleClient, ServiceExt};
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::ffi::OsStr;
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -255,13 +256,13 @@ impl Connection {
 }
 
 /// Open a connection to `server`, for `workspace` when it is local.
-/// `path_prefix` goes first on a local server's inherited PATH; a PATH the
-/// server's own config sets still wins. A remote server uses the OAuth
-/// credentials in `oauth` when it has any.
+/// `path` replaces a local server's inherited PATH; a PATH the server's own
+/// config sets still wins. A remote server uses the OAuth credentials in
+/// `oauth` when it has any.
 pub(super) async fn connect(
     server: &ResolvedServer,
     workspace: Option<&McpWorkspace>,
-    path_prefix: Option<&Path>,
+    path: Option<&OsStr>,
     hooks: ConnectionHooks,
     oauth: StoredOAuth,
 ) -> Result<Connection, UpstreamError> {
@@ -275,7 +276,7 @@ pub(super) async fn connect(
     };
     match &server.transport {
         ResolvedTransport::Stdio { command, args, env } => {
-            connect_local(command, args, env, path_prefix, client)
+            connect_local(command, args, env, path, client)
                 .await
                 .map_err(UpstreamError::Failed)
         }
@@ -289,12 +290,12 @@ async fn connect_local(
     command: &str,
     args: &[String],
     env: &[(String, String)],
-    path_prefix: Option<&Path>,
+    path: Option<&OsStr>,
     client: UpstreamClient,
 ) -> Result<Connection, String> {
     let mut spawn = Command::new(command);
-    if let Some(prefix) = path_prefix {
-        spawn.env("PATH", crate::agent::toolchain_path(prefix));
+    if let Some(path) = path {
+        spawn.env("PATH", path);
     }
     spawn
         .args(args)

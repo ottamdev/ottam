@@ -345,7 +345,7 @@ impl AgentServer {
                 service.runtime().set_toolchain(Arc::new(move || {
                     registry
                         .upgrade()
-                        .and_then(|registry| registry.node_bin_dir())
+                        .map(|registry| registry.mcp_server_path())
                 }));
                 service.serve_ottam(bridge.ottam_tools());
                 bridge.install_mcp(service.clone());

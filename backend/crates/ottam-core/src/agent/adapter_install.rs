@@ -549,13 +549,13 @@ pub(crate) async fn npm_install_into(
     staging: &Path,
     package: &AdapterPackage,
     npm: &Path,
-    bin_dir: Option<&Path>,
+    path: Option<std::ffi::OsString>,
     node_version: Option<String>,
     cancel: &CancellationToken,
 ) -> Result<AdapterManifest, AdapterInstallError> {
     std::fs::create_dir_all(staging).map_err(|error| AdapterInstallError::Io(error.to_string()))?;
 
-    let output = run_npm_install(staging, package, npm, bin_dir, cancel).await?;
+    let output = run_npm_install(staging, package, npm, path, cancel).await?;
     if !output.status.success() {
         let detail = String::from_utf8_lossy(&output.stderr).trim().to_string();
         return Err(AdapterInstallError::Npm(if detail.is_empty() {
@@ -699,13 +699,12 @@ async fn run_npm_install(
     staging: &Path,
     package: &AdapterPackage,
     npm: &Path,
-    bin_dir: Option<&Path>,
+    path: Option<std::ffi::OsString>,
     cancel: &CancellationToken,
 ) -> Result<std::process::Output, AdapterInstallError> {
     let npm = npm.to_path_buf();
     let staging = staging.to_path_buf();
     let spec = package.spec();
-    let bin_dir = bin_dir.map(Path::to_path_buf);
     let cancel = cancel.clone();
 
     tokio::task::spawn_blocking(move || {
@@ -722,14 +721,9 @@ async fn run_npm_install(
             &spec,
         ]);
         // npm is itself a `#!/usr/bin/env node` script, and package install
-        // hooks spawn `node` — both re-resolve through PATH.
-        if let Some(dir) = &bin_dir {
-            let inherited = std::env::var("PATH").unwrap_or_default();
-            let path = if inherited.is_empty() {
-                dir.to_string_lossy().into_owned()
-            } else {
-                format!("{}:{inherited}", dir.to_string_lossy())
-            };
+        // hooks spawn `node` — both re-resolve through PATH, which the caller
+        // leads with the resolved Node.
+        if let Some(path) = &path {
             command.env("PATH", path);
         }
         super::registry::command_output_until(command, NPM_INSTALL_TIMEOUT, || {
