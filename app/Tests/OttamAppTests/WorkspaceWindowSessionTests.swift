@@ -139,6 +139,32 @@ struct WorkspaceWindowSessionTests {
         #expect(decoded.state == state)
     }
 
+    @Test("pending onboarding and missing workspaces skip window restoration")
+    func restorationGate() {
+        let saved = WorkspaceID("saved")
+        let other = WorkspaceID("other")
+        #expect(!WorkspaceWindowRestoration.shouldRestore(saved, onboardingPending: true, knownWorkspaces: [saved]))
+        #expect(!WorkspaceWindowRestoration.shouldRestore(saved, onboardingPending: true, knownWorkspaces: []))
+        #expect(WorkspaceWindowRestoration.shouldRestore(saved, onboardingPending: false, knownWorkspaces: [other, saved]))
+        #expect(!WorkspaceWindowRestoration.shouldRestore(saved, onboardingPending: false, knownWorkspaces: [other]))
+        #expect(WorkspaceWindowRestoration.shouldRestore(saved, onboardingPending: false, knownWorkspaces: []))
+    }
+
+    @Test("only Core's not-found storage error counts as a missing workspace")
+    func missingRecordClassification() {
+        func rpc(kind: String?) -> AgentConnectionError {
+            .rpcError(
+                code: -32000,
+                message: "record was not found",
+                data: kind.map { .object(["kind": .string($0), "recoverable": .bool(true)]) }
+            )
+        }
+        #expect(WorkspaceWindowSession.isMissingRecord(rpc(kind: "storageNotFound")))
+        #expect(!WorkspaceWindowSession.isMissingRecord(rpc(kind: "storageBusy")))
+        #expect(!WorkspaceWindowSession.isMissingRecord(rpc(kind: nil)))
+        #expect(!WorkspaceWindowSession.isMissingRecord(AgentConnectionError.processTerminated))
+    }
+
     @Test("the main workspace window publishes its actions to the menu commands")
     func activeActions() {
         let first = session()

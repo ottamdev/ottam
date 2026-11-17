@@ -293,6 +293,7 @@ final class WorkspaceWindowRegistry {
             let session = WorkspaceWindowSession(workspaceID: workspaceID, runtime: runtime)
             if let restored {
                 session.restored = restored
+                session.restoredAtLaunch = true
             }
             let controller = WorkspaceWindowController(session: session, registry: self)
             if restored == nil, !controller.hasSavedFrame, let anchor = frontmostWindow {
