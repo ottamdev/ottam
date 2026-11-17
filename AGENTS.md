@@ -62,8 +62,8 @@ Adapter pins live in `backend/crates/ottam-core/src/agent/registry.rs`.
 - Preserve unrelated edits. Checkpoint before risky work; do not commit or push
   unless asked, and state the branch or PR target when publishing.
 - Always commit with `git commit -s`, signing the DCO (`CONTRIBUTING.md`) in
-  the git user's name (2026-11-16), so no commit lands unsigned; submitting
-  the work stays the human's certification.
+  the git user's name, so no commit lands unsigned; submitting the work stays
+  the human's certification.
 - After about three failed attempts, investigate the cause and change approach.
   After a rejected tool call, explain the changed approach before retrying.
 - Support success claims with actual results. UI claims need inspected rendered
