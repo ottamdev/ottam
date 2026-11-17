@@ -488,6 +488,15 @@ final class WorkspaceWindowRestoration: NSObject, NSWindowRestoration {
             completionHandler(nil, nil)
             return
         }
+        guard shouldRestore(
+            decoded.workspaceID,
+            onboardingPending: runtime.onboardingPending,
+            knownWorkspaces: runtime.workspaces.map(\.workspace.workspaceID)
+        ) else {
+            restorationLogger.notice("skipping saved workspace window \(decoded.workspaceID.rawValue, privacy: .public)")
+            completionHandler(nil, nil)
+            return
+        }
         restorationLogger.info("restoring workspace window \(decoded.workspaceID.rawValue, privacy: .public)")
         let controller = runtime.windows.open(
             decoded.workspaceID,
@@ -496,6 +505,19 @@ final class WorkspaceWindowRestoration: NSObject, NSWindowRestoration {
             show: false
         )
         completionHandler(controller.window, nil)
+    }
+
+    /// Onboarding owns the launch while it is pending, and a saved window
+    /// whose workspace the last listing lacks would open only as an error.
+    /// An empty listing is unknown (first launch after an upgrade, an
+    /// unreadable cache), so it restores.
+    static func shouldRestore(
+        _ workspaceID: WorkspaceID,
+        onboardingPending: Bool,
+        knownWorkspaces: [WorkspaceID]
+    ) -> Bool {
+        if onboardingPending { return false }
+        return knownWorkspaces.isEmpty || knownWorkspaces.contains(workspaceID)
     }
 
     static func encode(_ workspaceID: WorkspaceID, _ state: WorkspaceRestorationState, with coder: NSCoder) {

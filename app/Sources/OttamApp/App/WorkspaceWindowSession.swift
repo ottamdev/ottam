@@ -44,6 +44,10 @@ final class WorkspaceWindowSession {
 #endif
     let windowActions = OttamWindowActions()
     var restored = WorkspaceRestorationState()
+    /// Set when AppKit state restoration made the window rather than the
+    /// user, so a workspace that no longer exists closes it instead of
+    /// showing an error the user never asked to see.
+    var restoredAtLaunch = false
     var didResolveLaunchProject = false
     var readyCoreInstanceID: CoreInstanceID?
     var isRehydratingAfterCoreReplacement = false
@@ -333,10 +337,26 @@ final class WorkspaceWindowSession {
         } catch {
             guard !Task.isCancelled, !isClosed else { return }
             let message = error.localizedDescription
+            if restoredAtLaunch, Self.isMissingRecord(error) {
+                navigationLogger.notice(
+                    "closing restored window for missing Workspace workspaceID=\(self.workspaceID.rawValue, privacy: .public)"
+                )
+                closeWorkspaceWindow()
+                return
+            }
             markWorkspaceUnavailable(message)
             didResolveLaunchProject = true
             navigationLogger.error("failed to open Workspace: \(message, privacy: .public)")
         }
+    }
+
+    /// Core's not-found storage error, as opposed to a transient failure that
+    /// the "project unavailable" state lets the user retry.
+    static func isMissingRecord(_ error: any Error) -> Bool {
+        guard case .rpcError(_, _, .object(let data)?)? = error as? AgentConnectionError,
+              case .string(let kind)? = data["kind"]
+        else { return false }
+        return kind == "storageNotFound"
     }
 
     /// One-shot: re-select the window's last conversation once the first

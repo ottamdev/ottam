@@ -41,7 +41,11 @@ hold UI state only; durable domain authority stays behind the Core protocol
   (`WorkspaceWindowRestoration`), so they follow the system "Close windows
   when quitting an application" setting and ⌥⌘Q; otherwise launch opens the
   Welcome window. Decided 2026-11-14: Ottam honors the user's system choice
-  rather than reopening workspaces on its own.
+  rather than reopening workspaces on its own. Pending onboarding restores
+  none, so its window opens instead. A saved workspace missing from the
+  cached workspace list is skipped (`shouldRestore`), and a restored window
+  whose workspace Core reports `storageNotFound` closes rather than showing
+  the error (`isMissingRecord`).
 - Quitting stops every agent's work: runs, and background tasks or subagents
   that outlived theirs. When Core reports any, quit first asks with a native
   alert, Cancel by default (`WorkingAgentQuitWarning`);
