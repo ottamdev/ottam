@@ -1,3 +1,4 @@
+import Foundation
 import OttamBackendClient
 
 /// Why an engine's Node runtime cannot start its adapter.
@@ -177,6 +178,29 @@ public struct ManagedRuntimeInstall: Equatable, Sendable {
             "Installed"
         case .failed:
             "Try Again"
+        }
+    }
+
+    /// What an in-flight install is doing, for a status row's caption: sizes
+    /// once the download is under way, so a slow link reads as slow rather
+    /// than stuck. Nil when nothing is in flight.
+    public var progressCaption: String? {
+        switch phase {
+        case .starting:
+            return "Starting…"
+        case .downloading:
+            let received = ByteCountFormatter.string(fromByteCount: Int64(bytesReceived ?? 0), countStyle: .file)
+            if let bytesTotal, bytesTotal > 0 {
+                let total = ByteCountFormatter.string(fromByteCount: Int64(bytesTotal), countStyle: .file)
+                return "Downloading… \(received) of \(total)"
+            }
+            return (bytesReceived ?? 0) > 0 ? "Downloading… \(received)" : "Downloading…"
+        case .verifying:
+            return "Verifying…"
+        case .extracting:
+            return "Unpacking…"
+        case .ready, .failed, .cancelled, nil:
+            return nil
         }
     }
 

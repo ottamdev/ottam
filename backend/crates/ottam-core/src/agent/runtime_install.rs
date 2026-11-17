@@ -238,6 +238,7 @@ impl RuntimeInstallService {
         cancel: CancellationToken,
     ) {
         let service = Arc::clone(self);
+        let started = std::time::Instant::now();
         tokio::spawn(async move {
             let progress_service = Arc::clone(&service);
             let progress_id = install_id.clone();
@@ -270,7 +271,11 @@ impl RuntimeInstallService {
                     // without this the freshly installed runtime stays invisible
                     // until something else invalidates them.
                     service.registry.invalidate_runtime_cache();
-                    tracing::info!(node = %node.display(), "managed Node runtime installed");
+                    tracing::info!(
+                        node = %node.display(),
+                        elapsed_ms = started.elapsed().as_millis(),
+                        "managed Node runtime installed"
+                    );
                     // Runtimes a live adapter still runs on stay until a
                     // later reconcile; the idle ones go now.
                     service
@@ -285,6 +290,10 @@ impl RuntimeInstallService {
                     );
                 }
                 Err(InstallError::Cancelled) => {
+                    tracing::info!(
+                        elapsed_ms = started.elapsed().as_millis(),
+                        "managed Node install cancelled"
+                    );
                     service.set_outcome(Some(InstallOutcome::Cancelled));
                     service.emit(
                         &install_id,
@@ -295,7 +304,11 @@ impl RuntimeInstallService {
                     );
                 }
                 Err(error) => {
-                    tracing::warn!(%error, "managed Node install failed");
+                    tracing::warn!(
+                        %error,
+                        elapsed_ms = started.elapsed().as_millis(),
+                        "managed Node install failed"
+                    );
                     service.set_outcome(Some(InstallOutcome::Failed(error.to_string())));
                     service.emit_failure(&install_id, &version, error.to_string());
                 }

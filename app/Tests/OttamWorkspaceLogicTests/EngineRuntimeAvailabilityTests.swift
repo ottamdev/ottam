@@ -1,3 +1,4 @@
+import Foundation
 import OttamBackendClient
 import Testing
 
@@ -166,6 +167,25 @@ struct ManagedRuntimeInstallTests {
         #expect(ManagedRuntimeInstall(phase: .extracting).actionTitle == "Installing…")
         #expect(ManagedRuntimeInstall(phase: .verifying).isInFlight)
         #expect(ManagedRuntimeInstall(phase: .extracting).isInFlight)
+    }
+
+    @Test("the progress caption names the phase and, once known, the sizes")
+    func progressCaption() {
+        let mb = ByteCountFormatter.string(fromByteCount: 1_000_000, countStyle: .file)
+        let total = ByteCountFormatter.string(fromByteCount: 50_000_000, countStyle: .file)
+        #expect(ManagedRuntimeInstall(phase: .starting).progressCaption == "Starting…")
+        #expect(ManagedRuntimeInstall(phase: .downloading).progressCaption == "Downloading…")
+        #expect(
+            ManagedRuntimeInstall(phase: .downloading, bytesReceived: 1_000_000).progressCaption
+                == "Downloading… \(mb)"
+        )
+        #expect(
+            ManagedRuntimeInstall(phase: .downloading, bytesReceived: 1_000_000, bytesTotal: 50_000_000)
+                .progressCaption == "Downloading… \(mb) of \(total)"
+        )
+        #expect(ManagedRuntimeInstall(phase: .extracting).progressCaption == "Unpacking…")
+        #expect(ManagedRuntimeInstall(phase: .ready).progressCaption == nil)
+        #expect(ManagedRuntimeInstall(phase: .failed).progressCaption == nil)
     }
 
     @Test("a finished install names the version it landed")

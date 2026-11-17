@@ -228,7 +228,22 @@ impl NodeResolver {
             return resolution;
         }
         let invalidations = self.invalidations.load(Ordering::Acquire);
+        let started = Instant::now();
         let resolution = search();
+        // Only a real search logs: it can run two login shells, which is the
+        // slow step a first launch spends its silent seconds in.
+        let elapsed_ms = started.elapsed().as_millis();
+        match &resolution {
+            NodeResolution::Resolved(runtime) => tracing::info!(
+                source = ?runtime.source,
+                node = %runtime.node.display(),
+                elapsed_ms,
+                "Node toolchain resolved"
+            ),
+            NodeResolution::Unresolved => {
+                tracing::info!(elapsed_ms, "no Node toolchain found")
+            }
+        }
         let mut cache = self
             .cache
             .lock()

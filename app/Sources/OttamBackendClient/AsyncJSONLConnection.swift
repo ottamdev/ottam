@@ -123,8 +123,13 @@ public actor AsyncJSONLConnection: AgentConnection {
                     do {
                         let response = try decoder.decode(ProtocolResponse<Result>.self, from: responseData)
                         if let error = response.error {
+                            // Without the message a field report shows only the
+                            // code. Only core's own server errors (-32099…-32000)
+                            // carry it: a protocol error quotes the decoder,
+                            // which can echo the request's payload.
+                            let message = (-32099 ... -32000).contains(error.code) ? error.message : ""
                             Self.protocolLogger.error(
-                                "backend request failed method=\(method, privacy: .public) code=\(error.code, privacy: .public) elapsedMs=\(started.elapsedMilliseconds, privacy: .public)"
+                                "backend request failed method=\(method, privacy: .public) code=\(error.code, privacy: .public) elapsedMs=\(started.elapsedMilliseconds, privacy: .public) message=\(message, privacy: .public)"
                             )
                             continuation.resume(
                                 throwing: AgentConnectionError.rpcError(

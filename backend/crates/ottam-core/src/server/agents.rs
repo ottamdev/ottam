@@ -369,9 +369,11 @@ impl AgentRuntimeBridge {
                 HarnessErrorKind::Internal,
                 "agent request queue is saturated",
             );
-            let _ = self
-                .outbound
-                .respond(origin, harness_error_response(request_id, error));
+            // Callers return no response, so `handle_request` logs nothing:
+            // the rejection records its own outcome.
+            let response = harness_error_response(request_id, error);
+            super::responses::log_completion(&response, std::time::Duration::ZERO, None);
+            let _ = self.outbound.respond(origin, response);
             return;
         };
         if let Some(tasks) = self

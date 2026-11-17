@@ -328,8 +328,9 @@ if [ "$MODE" = "isolated" ] && [ "$ONBOARDING" = "0" ] && [ "$CHOOSER" = "0" ]; 
   OPEN_ENVIRONMENT+=(--env "OTTAM_DEV_OPEN_WORKSPACE=1")
 fi
 # `open` doesn't pass this shell's environment on, so forward the backend log
-# controls (AGENTS.md, Runtime Logs) and the onboarding override explicitly.
-for name in OTTAM_LOG OTTAM_ACP_WIRE_LOG OTTAM_ONBOARDING; do
+# controls (AGENTS.md, Runtime Logs) and the onboarding and Node overrides
+# explicitly.
+for name in OTTAM_LOG OTTAM_ACP_WIRE_LOG OTTAM_ONBOARDING OTTAM_NODE; do
   if [ -n "${!name:-}" ]; then
     OPEN_ENVIRONMENT+=(--env "$name=${!name}")
   fi

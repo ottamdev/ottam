@@ -28,9 +28,18 @@ final class AgentsSettingsModel {
 
     func addExistingSetup(harnessID: String) async throws -> AgentID {
         let result = try await client.createAgent(harnessID: harnessID, layout: .existing)
-        _ = try? await client.agentAuthState(agentID: result.agentID, refresh: true)
         await load()
+        await probeSignInIfInstalled(result.agentID)
         return result.agentID
+    }
+
+    /// A CLI setup may already be signed in, so it is asked at once — but only
+    /// with its adapter on disk: before that, core can only refuse. Onboarding's
+    /// Sign In step and the agent's page ask again once it installs.
+    private func probeSignInIfInstalled(_ agentID: AgentID) async {
+        guard let agent = agents.first(where: { $0.agentID == agentID }),
+              (agent.adapterPackage?.installState ?? .installed) == .installed else { return }
+        await probeProfile(agentID: agentID)
     }
 
     func createProfile(harnessID: String, label: String) async throws -> AgentID {
@@ -63,10 +72,8 @@ final class AgentsSettingsModel {
 
     func useLayout(agentID: AgentID, layout: AgentHomeKind) async throws -> AgentID {
         let result = try await client.setAgentLayout(agentID: agentID, layout: layout)
-        if layout == .existing {
-            _ = try? await client.agentAuthState(agentID: result.agentID, refresh: true)
-        }
         await load()
+        if layout == .existing { await probeSignInIfInstalled(result.agentID) }
         return result.agentID
     }
     /// Loads overlap — the pane, sidebar search, and removal each start one —

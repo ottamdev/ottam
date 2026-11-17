@@ -53,8 +53,7 @@ use client_link::ClientLink;
 use deferred::DeferredResponses;
 use outbound::{AttachedRegistry, ConnectionId, OutboundFrame};
 use responses::{
-    error_response, request_id_from_invalid_envelope, request_id_kind, response_status,
-    success_response, Tap,
+    error_response, request_id_from_invalid_envelope, request_id_kind, success_response,
 };
 use transport::{reader_task, writer_task, InboundMessage, PeerClosableOutput};
 
@@ -579,7 +578,19 @@ impl AgentServer {
         // Requests run one at a time; time spent behind earlier ones is
         // queueing the app sees as latency.
         let queued_ms = started.saturating_duration_since(received_at).as_millis();
-        let request_id = request.id.clone();
+        let response = self.dispatch_request(origin, request).await;
+        // A deferred response logs its own completion when its task answers.
+        if let Some(response) = &response {
+            responses::log_completion(response, started.elapsed(), Some(queued_ms));
+        }
+        response
+    }
+
+    async fn dispatch_request(
+        &mut self,
+        origin: ConnectionId,
+        request: ProtocolRequest<Value>,
+    ) -> Option<Value> {
         if request.method == ottam_protocol::METHOD_CONVERSATION_READ_TRANSCRIPT_PAYLOAD {
             let params = match serde_json::from_value::<
                 ottam_protocol::ConversationReadTranscriptPayloadParams,
@@ -752,16 +763,7 @@ impl AgentServer {
             METHOD_TERMINAL_UPDATE_METADATA => self.handle_terminal_update_metadata(request).await,
             METHOD_TERMINAL_REPLAY => self.handle_terminal_replay(request).await,
             _ => error_response(request.id, -32601, "method not found"),
-        }
-        .tap(|response| {
-            tracing::info!(
-                request_id_kind = %request_id_kind(&request_id),
-                queued_ms,
-                elapsed_ms = started.elapsed().as_millis(),
-                status = response_status(response),
-                "request completed"
-            );
-        });
+        };
         Some(response)
     }
 }

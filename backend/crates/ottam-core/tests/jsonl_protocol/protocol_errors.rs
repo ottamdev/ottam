@@ -103,6 +103,38 @@ fn backend_writes_trace_log_without_corrupting_protocol_stdout() {
     assert!(log_text.contains("initialize accepted"));
 }
 
+/// Agent requests answer from a spawned task, which once skipped the
+/// completion line: a failed `agent.authState` left no trace in core's log.
+#[test]
+fn a_deferred_agent_request_failure_is_logged_with_its_method_and_message() {
+    let temp_dir = TempDir::new().expect("creates log tempdir");
+    let log_path = temp_dir.path().join("core-agent-failure.log");
+    let mut core = CoreProcess::new_with_env(vec![(
+        "OTTAM_CORE_LOG_FILE".to_string(),
+        log_path.to_string_lossy().into_owned(),
+    )]);
+    assert_success_response(&core.initialize(), &json!(1));
+
+    let response = core.send(json!({
+        "id": 2,
+        "method": "agent.authState",
+        "params": { "agentID": "no-such-agent" }
+    }));
+    let message = response["error"]["message"]
+        .as_str()
+        .expect("an unknown agent is an error")
+        .to_string();
+    core.shutdown();
+
+    let log_text = read_log_text(&log_path);
+    let line = log_text
+        .lines()
+        .find(|line| line.contains("request completed") && line.contains("agent.authState"))
+        .unwrap_or_else(|| panic!("no completion line for agent.authState:\n{log_text}"));
+    assert!(line.contains("status=\"error\"") || line.contains("status=error"), "{line}");
+    assert!(line.contains(&message), "the message was dropped: {line}");
+}
+
 #[test]
 fn malformed_json_is_logged_without_raw_payload() {
     let temp_dir = TempDir::new().expect("creates log tempdir");

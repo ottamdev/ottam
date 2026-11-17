@@ -540,15 +540,24 @@ impl AgentInstallService {
     ) {
         let service = Arc::clone(self);
         tokio::spawn(async move {
+            let started = Instant::now();
+            tracing::info!(
+                target: "ottam_core::agent",
+                agent_id = %agent_id,
+                version = %package.version,
+                "adapter install started"
+            );
             let result = service
                 .run_install(&agent_id, &package, &installs, &install_id, &cancel)
                 .await;
+            let elapsed_ms = started.elapsed().as_millis();
             match result {
                 Ok(()) => {
                     tracing::info!(
                         target: "ottam_core::agent",
                         agent_id = %agent_id,
                         version = %package.version,
+                        elapsed_ms,
                         "adapter installed and handshake-verified"
                     );
                     service.emit(
@@ -560,6 +569,12 @@ impl AgentInstallService {
                     );
                 }
                 Err(InstallFailure::Cancelled) => {
+                    tracing::info!(
+                        target: "ottam_core::agent",
+                        agent_id = %agent_id,
+                        elapsed_ms,
+                        "adapter install cancelled"
+                    );
                     service.set_outcome(&agent_id, Some(InstallOutcome::Cancelled));
                     service.emit(
                         &agent_id,
@@ -574,6 +589,7 @@ impl AgentInstallService {
                         target: "ottam_core::agent",
                         agent_id = %agent_id,
                         version = %package.version,
+                        elapsed_ms,
                         error = %error,
                         "adapter install failed"
                     );
@@ -696,6 +712,7 @@ impl AgentInstallService {
 
         installs.remove_stale_staging(&agent_id.0);
         let staging = installs.staging_dir(&agent_id.0);
+        let fetch_started = Instant::now();
         let installed: Result<AdapterManifest, AdapterInstallError> = match &source {
             InstallSource::Npm {
                 runtime,
@@ -719,6 +736,20 @@ impl AgentInstallService {
             let _ = std::fs::remove_dir_all(&staging);
             return Err(error.into());
         }
+        // Separates the fetch from the handshake that follows, which is the
+        // first question when an install is slow.
+        let (source_kind, npm) = match &source {
+            InstallSource::Npm { runtime, .. } => ("npm", Some(runtime.npm.display().to_string())),
+            InstallSource::Binary { .. } => ("binary", None),
+        };
+        tracing::info!(
+            target: "ottam_core::agent",
+            agent_id = %agent_id,
+            source = source_kind,
+            npm = npm.as_deref(),
+            elapsed_ms = fetch_started.elapsed().as_millis(),
+            "adapter package fetched; verifying"
+        );
         // npm and the download observe the token themselves, but either can
         // finish moments after Cancel lands. Publishing anyway would turn a
         // cancelled install into an installed one.

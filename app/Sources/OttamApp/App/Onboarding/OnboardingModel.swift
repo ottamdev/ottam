@@ -143,7 +143,36 @@ final class OnboardingModel {
         selected.compactMap(instance).contains { EngineRuntimeProblem(adapterOf: $0) != nil }
     }
 
-    var showsNodeRow: Bool { needsNode || nodeAutoStarted }
+    /// Core is still looking for Node for a chosen agent that runs on it. The
+    /// search can run the user's login shell twice, which on a heavily
+    /// configured Mac takes seconds — long enough to need saying.
+    var isCheckingNode: Bool {
+        selected.compactMap(instance).contains(where: Self.isCheckingNode)
+    }
+
+    static func isCheckingNode(_ agent: AgentSummary) -> Bool {
+        agent.adapterPackage?.source != .binary && agent.runtime.availability == .checking
+    }
+
+    /// Node installed here, yet core still reports a chosen agent unable to
+    /// use it: a first run slowed past the version probe's budget, say. The
+    /// row offers Check Again rather than a "Waiting" with no way on. An
+    /// `OTTAM_NODE` override outranks the installed runtime, so it is named:
+    /// otherwise the row blames Node the user just watched install.
+    var nodeProblemAfterInstall: String? {
+        guard runtime.runtimeInstall.state.phase == .ready else { return nil }
+        for agent in selected.compactMap(instance) {
+            guard let problem = EngineRuntimeProblem(adapterOf: agent) else { continue }
+            return agent.runtime.source == .override ? "OTTAM_NODE is not a working Node.js" : problem.title
+        }
+        return nil
+    }
+
+    var showsNodeRow: Bool { needsNode || nodeAutoStarted || isCheckingNode }
+
+    func cancelNode() { runtime.runtimeInstall.cancel() }
+
+    func recheckNode() { agents.requestRuntimeRefresh() }
 
     var installComplete: Bool {
         !selected.isEmpty && !isPreparing
@@ -214,7 +243,9 @@ final class OnboardingModel {
         }
         for harnessID in selected where !autoStarted.contains(harnessID) {
             guard let agent = instance(harnessID), !OnboardingProgress.isInstalled(agent) else { continue }
-            if EngineRuntimeProblem(adapterOf: agent) != nil { continue }
+            // Started mid-search, core refuses the npm install, and the row
+            // would fail before Node had a chance to install.
+            if EngineRuntimeProblem(adapterOf: agent) != nil || Self.isCheckingNode(agent) { continue }
             autoStarted.insert(harnessID)
             runtime.agentInstall.install(agentID: AgentID(harnessID))
         }
