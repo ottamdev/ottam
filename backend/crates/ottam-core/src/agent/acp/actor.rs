@@ -41,6 +41,9 @@ use tokio::sync::{mpsc, oneshot, watch};
 use tokio::task::JoinSet;
 
 pub(super) const COMMAND_CAPACITY: usize = 64;
+/// The auth-status RFD's notification. Core reads the `_` form; once a
+/// connection has sent that, the standard form is its duplicate.
+pub(super) const STANDARD_AUTH_STATUS_UPDATE: &str = "auth/status_update";
 
 /// Connection-scoped identity reported by Claude and Codex ACP. Unknown future
 /// kinds carry no verdict; never retain or log account details from the payload.
@@ -652,6 +655,10 @@ async fn run_acp_backend(context: BackendContext) -> Result<(), HarnessError> {
     let update_agent_id = definition.agent_id.clone();
     let unclaimed_agent_id = definition.agent_id.clone();
     let auth_shared = Arc::clone(&shared);
+    // Set by the first `_auth/status_update`. Until then a standard-form
+    // status is not a duplicate, so it is logged as unhandled.
+    let auth_status_seen = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let auth_status_marker = Arc::clone(&auth_status_seen);
     let connection_ready_tx = Arc::clone(&ready_tx);
     let connection_shared = Arc::clone(&shared);
     let permission_agent_id = definition.agent_id.clone();
@@ -674,6 +681,7 @@ async fn run_acp_backend(context: BackendContext) -> Result<(), HarnessError> {
         .name(CLIENT_NAME)
         .on_receive_notification(
             async move |notification: AuthStatusUpdate, _connection| {
+                auth_status_marker.store(true, std::sync::atomic::Ordering::Relaxed);
                 notification.record(&auth_shared);
                 Ok(())
             },
@@ -886,6 +894,16 @@ async fn run_acp_backend(context: BackendContext) -> Result<(), HarnessError> {
                             agent_client_protocol::Error::method_not_found().data(request.method),
                         )
                         .map(|()| Handled::Yes)
+                }
+                // Claude repeats each `_auth/status_update` in the standard
+                // form, which says nothing core reads from the other. An
+                // adapter sending only the standard form falls through, so
+                // its sign-in verdicts show up as unhandled traffic.
+                Dispatch::Notification(notification)
+                    if notification.method == STANDARD_AUTH_STATUS_UPDATE
+                        && auth_status_seen.load(std::sync::atomic::Ordering::Relaxed) =>
+                {
+                    Ok(Handled::Yes)
                 }
                 Dispatch::Notification(notification) => {
                     record_unhandled(

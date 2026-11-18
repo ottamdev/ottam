@@ -154,11 +154,11 @@ async fn payload_recorded_air_tool_calls_keep_terminal_bytes_and_diffs() {
     // Claude 0.94 and later drop the command's trailing newline.
     for (recording, listed) in [
         (
-            include_str!("../../../agent/fixtures/codex-acp-2.5.0.json"),
+            include_str!("../../../agent/fixtures/codex-acp-2.7.0.json"),
             &b"README.md\nnotes.txt\nsrc\nhello-from-shell\n"[..],
         ),
         (
-            include_str!("../../../agent/fixtures/claude-agent-acp-0.100.0.json"),
+            include_str!("../../../agent/fixtures/claude-agent-acp-0.108.0.json"),
             &b"README.md\nnotes.txt\nsrc\nhello-from-shell"[..],
         ),
     ] {

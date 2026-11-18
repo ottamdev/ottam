@@ -482,6 +482,16 @@ fn unhandled_traffic_is_logged_without_payloads_and_requests_are_answered() {
             "no unhandled-traffic line for {label}:\n{logged}"
         );
     }
+    // Unhandled traffic logs at powers of two, so a duplicate wrongly left
+    // unhandled would add an `occurrences=2` line.
+    let standard_auth = unhandled
+        .iter()
+        .filter(|line| line.contains("notification:auth/status_update"))
+        .collect::<Vec<_>>();
+    assert!(
+        standard_auth.len() == 1 && standard_auth[0].contains("occurrences=1"),
+        "a standard auth status alone is unhandled; after the `_` form it is claimed:\n{logged}"
+    );
     assert!(
         unhandled
             .iter()

@@ -17,11 +17,11 @@ current.
 
 ## Agents (ACP)
 
-- [ACP Work Plan](backend/acp/README.md) — active — approve M10's Try it; run the six open real-window checks
-- [Agent Instances](backend/acp/agent-instances.md) — active — Claude's 72-hour coexistence check (`inst:4`)
+- [ACP Work Plan](backend/acp/README.md) — active — approve M10's Try it; run the five open real-window checks
+- [Agent Instances](backend/acp/agent-instances.md) — deferred — ask OpenCode upstream about `OPENCODE_DB`; packaged agents unscheduled
 - [Agent Roster And Client Compatibility](backend/acp/agent-roster-compatibility.md) — active — go/no-go on Grok Build (`roster:7`)
 - [Context Compaction](backend/acp/context-compaction.md) — active — `cmp:1`–`cmp:4` once the Try it is approved
-- [Subagent Sessions](backend/acp/subagent-sessions.md) — active — handle non-terminal `subagent_update` states
+- [Subagent Sessions](backend/acp/subagent-sessions.md) — active — thread OpenCode 2.3.0's background subagents, then bump its pin
 - [Usage And Cost](backend/acp/usage-and-cost.md) — active — approve and run the plan-usage Try it (`usage:5`), then per-run cost (`usage:3`)
 
 ## MCP

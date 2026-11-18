@@ -36,8 +36,8 @@ ordering and idle adapter-originated updates.
 
 ### Adapter behavior
 
-Inspected at `claude-agent-acp@0.85.1` and `codex-acp@2.1.1`; current pins
-are 0.100.0 and 2.5.0, so recheck before relying on this table.
+Inspected at `claude-agent-acp@0.85.1` and `codex-acp@2.1.1`; recheck at the
+current pins before relying on this table.
 
 | Adapter | Implementation | Required product behavior |
 | --- | --- | --- |

@@ -112,11 +112,11 @@ fn recorded_sessions_carry_turn_usage_and_context_usage() {
     for (agent, recording) in [
         (
             "claude",
-            include_str!("../fixtures/claude-agent-acp-0.100.0.json"),
+            include_str!("../fixtures/claude-agent-acp-0.108.0.json"),
         ),
-        ("codex", include_str!("../fixtures/codex-acp-2.5.0.json")),
+        ("codex", include_str!("../fixtures/codex-acp-2.7.0.json")),
         ("opencode", include_str!("../fixtures/opencode-2.2.5.json")),
-        ("omp", include_str!("../fixtures/omp-18.16.0.json")),
+        ("omp", include_str!("../fixtures/omp-18.22.0.json")),
     ] {
         let messages = serde_json::from_str::<Vec<serde_json::Value>>(recording).unwrap();
         // A cancelled answer may carry no usage (Oh-My-Pi, OpenCode).
@@ -177,8 +177,8 @@ fn recorded_air_sessions_decode_with_the_pinned_schema() {
     let mut air_capabilities = Vec::new();
     let mut auth_methods = Vec::new();
     let recordings = [
-        include_str!("../fixtures/codex-acp-2.5.0.json"),
-        include_str!("../fixtures/claude-agent-acp-0.100.0.json"),
+        include_str!("../fixtures/codex-acp-2.7.0.json"),
+        include_str!("../fixtures/claude-agent-acp-0.108.0.json"),
     ];
     for message in recordings
         .into_iter()
@@ -203,6 +203,8 @@ fn recorded_air_sessions_decode_with_the_pinned_schema() {
                 serde_json::from_value::<super::actor::AuthStatusUpdate>(params)
                     .expect("auth status decodes");
             }
+            // Claude's standard-form duplicate, which core claims unread.
+            (Some(super::actor::STANDARD_AUTH_STATUS_UPDATE), _) => {}
             (None, Some(0)) => {
                 let response =
                     serde_json::from_value::<InitializeResponse>(message["result"].clone())
@@ -622,6 +624,68 @@ fn unhandled_fields_excuse_defaults_only_where_the_sdk_omits_them() {
     assert_eq!(dropped(skipped_item), ["update.content[]"]);
 }
 
+/// Writes what `scripts/record-acp-fixture.py` replays, so a recording starts
+/// from Ottam's real `initialize`, each pinned launch, and each managed
+/// profile as core lays it out under `OTTAM_FIXTURE_HOME_ROOT`, instead of
+/// copies that drift. Chat `session/new` carries no `_meta`; only catalog
+/// probes do.
+#[test]
+#[ignore = "run by scripts/record-acp-fixture.py"]
+fn write_fixture_recording_inputs() {
+    let out = std::env::var_os("OTTAM_FIXTURE_INPUTS_OUT")
+        .expect("OTTAM_FIXTURE_INPUTS_OUT names the output file");
+    let home_root = std::env::var_os("OTTAM_FIXTURE_HOME_ROOT")
+        .expect("OTTAM_FIXTURE_HOME_ROOT names the managed homes' root");
+    let mut managed: BTreeMap<_, _> =
+        super::super::registry::managed_fixture_launches(std::path::Path::new(&home_root))
+            .expect("managed homes")
+            .into_iter()
+            .map(|launch| {
+                let environment: BTreeMap<_, _> = launch.environment.into_iter().collect();
+                (
+                    launch.agent.0,
+                    serde_json::json!({"home": launch.home, "environment": environment}),
+                )
+            })
+            .collect();
+    let agents: serde_json::Map<String, serde_json::Value> =
+        super::super::registry::built_in_definitions()
+            .into_iter()
+            .map(|definition| {
+                let binary = definition.adapter.as_ref().and_then(|adapter| match &adapter.source {
+                    AdapterSource::Binary(binary) => binary.for_host().map(|artifact| {
+                        let member = match &artifact.archive {
+                            BinaryArchive::Raw => None,
+                            BinaryArchive::Tgz { member } => Some(member.clone()),
+                        };
+                        serde_json::json!({
+                            "command": binary.command,
+                            "url": artifact.url,
+                            "sha256": artifact.sha256,
+                            "member": member,
+                        })
+                    }),
+                    AdapterSource::Npm => None,
+                });
+                let launch = &definition.launch;
+                let spec = serde_json::json!({
+                    "command": launch.command,
+                    "arguments": launch.arguments,
+                    "environment": launch.environment.iter().cloned().collect::<BTreeMap<_, _>>(),
+                    "version": definition.adapter.as_ref().map(|adapter| adapter.version.clone()),
+                    "binary": binary,
+                    "managed": managed.remove(&definition.agent_id.0),
+                });
+                (definition.agent_id.0.clone(), spec)
+            })
+            .collect();
+    let inputs = serde_json::json!({
+        "initialize": super::protocol::initialize_wire(),
+        "agents": agents,
+    });
+    std::fs::write(out, serde_json::to_vec_pretty(&inputs).unwrap()).unwrap();
+}
+
 /// What a pin bump must not lose: every recorded `session/update` survives
 /// the typed round-trip whole, and every method the adapters send has a
 /// handler. A failure names the field or method to model before bumping.
@@ -634,10 +698,10 @@ fn unhandled_nothing_in_the_recorded_sessions() {
         SessionNotification,
     };
     let recorded = [
-        include_str!("../fixtures/codex-acp-2.5.0.json"),
-        include_str!("../fixtures/claude-agent-acp-0.100.0.json"),
+        include_str!("../fixtures/codex-acp-2.7.0.json"),
+        include_str!("../fixtures/claude-agent-acp-0.108.0.json"),
         include_str!("../fixtures/opencode-2.2.5.json"),
-        include_str!("../fixtures/omp-18.16.0.json"),
+        include_str!("../fixtures/omp-18.22.0.json"),
     ]
     .into_iter()
     .flat_map(|text| serde_json::from_str::<Vec<serde_json::Value>>(text).unwrap());
@@ -690,6 +754,8 @@ fn unhandled_nothing_in_the_recorded_sessions() {
                     &serde_json::from_value::<CancelRequestNotification>(params.clone()).unwrap(),
                 ),
             ),
+            // Claimed unread: Claude sends it beside `_auth/status_update`.
+            Some(super::actor::STANDARD_AUTH_STATUS_UPDATE) => continue,
             Some(method) => panic!("no handler claims {method}"),
             None => continue,
         };

@@ -13,7 +13,7 @@ use std::time::{Duration, Instant};
 /// The codex pin from `registry.rs`. Spelled out rather than imported: these
 /// tests assert what lands on disk, so a pin bump should fail loudly here.
 const CODEX_PACKAGE: &str = "@agentclientprotocol/codex-acp";
-const CODEX_VERSION: &str = "2.5.0";
+const CODEX_VERSION: &str = "2.7.0";
 
 /// The harness disables installs globally for hermeticity; these tests are
 /// the ones that turn the real flow back on.
