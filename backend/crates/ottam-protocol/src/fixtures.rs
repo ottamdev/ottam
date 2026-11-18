@@ -2791,3 +2791,68 @@ pub fn mcp_import_candidates_response_fixture() -> McpImportCandidatesResponse {
         },
     )
 }
+
+pub fn attention_list_request_fixture() -> AttentionListRequest {
+    ProtocolRequest::new(
+        RequestID::Number(470),
+        METHOD_ATTENTION_LIST,
+        AttentionListParams {},
+    )
+}
+
+fn attention_entry_fixture() -> AttentionEntry {
+    AttentionEntry {
+        workspace_id: WorkspaceID("019b0000-0000-7000-8000-000000000003".to_string()),
+        conversation_id: ConversationID("019b0000-0000-7000-8000-000000000010".to_string()),
+        state: AttentionState::Unseen,
+        reason: AttentionReason::Completed,
+        run_id: Some(ConversationRunID(
+            "019b0000-0000-7000-8000-000000000020".to_string(),
+        )),
+        title: "Fix the flaky test".to_string(),
+        detail: None,
+    }
+}
+
+pub fn attention_list_response_fixture() -> AttentionListResponse {
+    ProtocolResponse::success(
+        RequestID::Number(470),
+        AttentionListResult {
+            revision: 7,
+            entries: vec![attention_entry_fixture()],
+        },
+    )
+}
+
+pub fn attention_set_focus_request_fixture() -> AttentionSetFocusRequest {
+    ProtocolRequest::new(
+        RequestID::Number(471),
+        METHOD_ATTENTION_SET_FOCUS,
+        AttentionSetFocusParams {
+            conversation_id: Some(ConversationID(
+                "019b0000-0000-7000-8000-000000000010".to_string(),
+            )),
+        },
+    )
+}
+
+pub fn attention_set_focus_response_fixture() -> AttentionSetFocusResponse {
+    ProtocolResponse::success(RequestID::Number(471), AttentionSetFocusResult {})
+}
+
+/// A permission ask, the variant carrying every optional field.
+pub fn attention_changed_notification_fixture() -> AttentionChangedNotification {
+    ProtocolNotification::new(
+        METHOD_ATTENTION_CHANGED,
+        AttentionChangedParams {
+            revision: 8,
+            entry: AttentionEntry {
+                state: AttentionState::NeedsInput,
+                reason: AttentionReason::Permission,
+                detail: Some("Run `cargo test`".to_string()),
+                ..attention_entry_fixture()
+            },
+            notify: true,
+        },
+    )
+}

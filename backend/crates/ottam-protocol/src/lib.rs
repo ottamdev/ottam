@@ -3,6 +3,7 @@
 mod agent;
 mod agent_install;
 mod agent_plan_usage;
+mod attention;
 mod conversation;
 mod core;
 mod delegation;
@@ -24,6 +25,7 @@ mod workspace;
 pub use agent::*;
 pub use agent_install::*;
 pub use agent_plan_usage::*;
+pub use attention::*;
 pub use conversation::*;
 pub use core::*;
 pub use delegation::*;
@@ -94,6 +96,11 @@ pub type AgentInstallEventNotification = ProtocolNotification<AgentInstallEventP
 pub type AgentPlanUsageRequest = ProtocolRequest<AgentPlanUsageParams>;
 pub type AgentPlanUsageResponse = ProtocolResponse<AgentPlanUsageResult>;
 pub type AgentPlanUsageChangedNotification = ProtocolNotification<AgentPlanUsageChangedParams>;
+pub type AttentionListRequest = ProtocolRequest<AttentionListParams>;
+pub type AttentionListResponse = ProtocolResponse<AttentionListResult>;
+pub type AttentionSetFocusRequest = ProtocolRequest<AttentionSetFocusParams>;
+pub type AttentionSetFocusResponse = ProtocolResponse<AttentionSetFocusResult>;
+pub type AttentionChangedNotification = ProtocolNotification<AttentionChangedParams>;
 pub type AgentUninstallRequest = ProtocolRequest<AgentUninstallParams>;
 pub type AgentUninstallResponse = ProtocolResponse<AgentEmptyResult>;
 pub type RuntimeInstallRequest = ProtocolRequest<RuntimeInstallParams>;
