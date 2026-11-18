@@ -575,43 +575,329 @@ final class ChatWorkspaceModel {
     var isCommandPickerOpen = false
 
     var selectedConversationID: ConversationID?
-    var selectedEngineID: EngineID? {
+
+    /// The agent a new chat starts on, saved across launches. Only a pick in
+    /// a new chat changes it: opening or switching an existing chat never does.
+    var draftEngineID: EngineID? {
         didSet {
-            guard selectedEngineID != oldValue else { return }
-            if let selectedEngineID {
-                defaults.set(selectedEngineID.rawValue, forKey: Self.selectedEngineStorageKey)
+            guard draftEngineID != oldValue else { return }
+            if let draftEngineID {
+                defaults.set(draftEngineID.rawValue, forKey: Self.selectedEngineStorageKey)
             } else {
                 defaults.removeObject(forKey: Self.selectedEngineStorageKey)
             }
-            restoreEngineSelections()
+            restoreDraftSelections()
         }
     }
-    /// Adapter-defined model id for new harness sessions; nil means the
-    /// engine's default. Persisted per engine so switching engines restores
-    /// each engine's own choice.
-    var selectedModelID: String? {
+    /// Adapter-defined model id a new chat on `draftEngineID` starts with; nil
+    /// means the engine's default. Saved per engine, so switching engines
+    /// restores each engine's own choice. A new-chat default only: an existing
+    /// chat shows and sends its own model.
+    var draftModelID: String? {
         didSet {
-            guard selectedModelID != oldValue, let engineID = selectedEngineID else { return }
-            let key = Self.selectedModelStorageKey(for: engineID)
-            if let selectedModelID {
-                defaults.set(selectedModelID, forKey: key)
-            } else {
-                defaults.removeObject(forKey: key)
-            }
+            guard draftModelID != oldValue, let engineID = draftEngineID else { return }
+            persistDraft(draftModelID, forKey: Self.selectedModelStorageKey(for: engineID))
         }
     }
-    /// Adapter-defined permission-mode id for new harness sessions; nil means
-    /// the engine's default. Same persistence contract as `selectedModelID`.
-    var selectedModeID: String? {
+    /// Adapter-defined permission-mode id for new chats; nil means the
+    /// engine's default. Same contract as `draftModelID`.
+    var draftModeID: String? {
         didSet {
-            guard selectedModeID != oldValue, let engineID = selectedEngineID else { return }
-            let key = Self.selectedModeStorageKey(for: engineID)
-            if let selectedModeID {
-                defaults.set(selectedModeID, forKey: key)
-            } else {
-                defaults.removeObject(forKey: key)
-            }
+            guard draftModeID != oldValue, let engineID = draftEngineID else { return }
+            persistDraft(draftModeID, forKey: Self.selectedModeStorageKey(for: engineID))
         }
+    }
+    /// Adapter-defined thought-level (reasoning effort) id for new chats; nil
+    /// means the model's default. Same contract as `draftModelID`.
+    var draftThoughtLevelID: String? {
+        didSet {
+            guard draftThoughtLevelID != oldValue, let engineID = draftEngineID else { return }
+            persistDraft(draftThoughtLevelID, forKey: Self.selectedThoughtLevelStorageKey(for: engineID))
+        }
+    }
+
+    private func persistDraft(_ value: String?, forKey key: String) {
+        if let value {
+            defaults.set(value, forKey: key)
+        } else {
+            defaults.removeObject(forKey: key)
+        }
+    }
+
+    /// The engine on screen: a new chat's default, or the conversation's own.
+    /// Setting it is a pick, routed like any other: a new chat's changes the
+    /// default, an existing chat's waits for its next message.
+    var selectedEngineID: EngineID? {
+        get { engineID(for: selectedConversationID) }
+        set { pickEngine(newValue) }
+    }
+
+    /// Each conversation's engine: its latest run's.
+    private(set) var conversationEngineIDs: [ConversationID: EngineID] = [:]
+    /// An engine picked in an existing conversation that no run has used yet.
+    /// The next message starts on it, seeded with the earlier turns.
+    private(set) var pendingEngineIDs: [ConversationID: EngineID] = [:]
+
+    /// A model and thought level, either meaning the engine's or model's
+    /// default when nil.
+    struct ModelSelection: Equatable {
+        var modelID: String?
+        var thoughtLevelID: String?
+    }
+
+    /// A pick that belongs to one engine: another engine's models and levels
+    /// are not its own.
+    struct EnginePick: Equatable {
+        var engineID: EngineID
+        var value: String
+    }
+
+    /// What each conversation's session on each engine last confirmed, per
+    /// field: the agent's word where Core has it, else the latest run on that
+    /// engine's own request (sessions confirmed before Core kept the model).
+    private(set) var confirmedModels: [ConversationID: [EngineID: ModelSelection]] = [:]
+    /// A model or level picked in an existing conversation that the agent has
+    /// not confirmed. It rides on the next message; there is no live apply.
+    private(set) var pendingModelIDs: [ConversationID: EnginePick] = [:]
+    private(set) var pendingThoughtLevelIDs: [ConversationID: EnginePick] = [:]
+    /// The run that carried each conversation's pending picks. Its
+    /// confirmation or end settles them, so a run cancelled before the switch
+    /// took leaves the chat showing what the agent actually runs.
+    @ObservationIgnored private var pickRunIDs: [ConversationID: ConversationRunID] = [:]
+
+    /// `conversationID`'s engine; nil is a draft. A chat whose detail has not
+    /// loaded yet shows the new-chat default until it does.
+    func engineID(for conversationID: ConversationID?) -> EngineID? {
+        guard let conversationID else { return draftEngineID }
+        return pendingEngineIDs[conversationID] ?? conversationEngineIDs[conversationID] ?? draftEngineID
+    }
+
+    func engine(for conversationID: ConversationID?) -> EngineSummary? {
+        guard let engineID = engineID(for: conversationID) else { return engines.first }
+        return engines.first { $0.engineID == engineID }
+    }
+
+    /// A new chat's pick changes the default; an existing chat's waits for
+    /// the next message, which starts the conversation on that engine.
+    private func pickEngine(_ engineID: EngineID?) {
+        guard let conversationID = selectedConversationID else {
+            draftEngineID = engineID
+            return
+        }
+        if engineID == nil || engineID == conversationEngineIDs[conversationID] {
+            pendingEngineIDs[conversationID] = nil
+        } else {
+            pendingEngineIDs[conversationID] = engineID
+        }
+        if let engineID { loadSavedCommands(for: engineID) }
+    }
+
+    /// What `conversationID` has for `engineID`: a pending pick, else what its
+    /// session confirmed. Nil when the conversation has never run there, so
+    /// that engine's new-chat defaults apply.
+    func conversationModel(
+        _ conversationID: ConversationID, engineID: EngineID
+    ) -> ModelSelection? {
+        let model = pendingModelIDs[conversationID].flatMap { $0.engineID == engineID ? $0 : nil }
+        let level = pendingThoughtLevelIDs[conversationID].flatMap { $0.engineID == engineID ? $0 : nil }
+        let confirmed = confirmedModels[conversationID]?[engineID]
+        guard model != nil || level != nil || confirmed != nil else { return nil }
+        return ModelSelection(
+            modelID: model?.value ?? confirmed?.modelID,
+            // A new model's levels are its own: an old level survives only
+            // where the model offers it (`thoughtLevelID(for:)` checks).
+            thoughtLevelID: level?.value ?? confirmed?.thoughtLevelID
+        )
+    }
+
+    /// The model the next message in `conversationID` requests; nil is a
+    /// draft, which takes the new-chat default. Nil in an existing chat is
+    /// the engine's default, which Core reads as "keep what it confirmed".
+    func modelID(for conversationID: ConversationID?) -> String? {
+        guard let conversationID else { return draftModelID }
+        guard let engineID = engineID(for: conversationID) else { return nil }
+        if let selection = conversationModel(conversationID, engineID: engineID) {
+            return selection.modelID
+        }
+        return savedDefaults(for: engineID).modelID
+    }
+
+    /// The level `conversationID` requests, before `thoughtLevelID(for:)`
+    /// checks the model offers it.
+    private func thoughtLevelPick(for conversationID: ConversationID?) -> String? {
+        guard let conversationID else { return draftThoughtLevelID }
+        guard let engineID = engineID(for: conversationID) else { return nil }
+        if let selection = conversationModel(conversationID, engineID: engineID) {
+            return selection.thoughtLevelID
+        }
+        return savedDefaults(for: engineID).thoughtLevelID
+    }
+
+    /// The level the next message in `conversationID` requests: the pick its
+    /// model honors. Effort levels belong to the model, so a pick it lacks is
+    /// kept for the models that offer it rather than sent or erased.
+    func thoughtLevelID(for conversationID: ConversationID?) -> String? {
+        let pick = thoughtLevelPick(for: conversationID)
+        guard let pick, let engine = engine(for: conversationID) else { return pick }
+        let levels = engine.thoughtLevelSelect(forModel: modelID(for: conversationID)).levels
+        return levels.contains { $0.id == pick } ? pick : nil
+    }
+
+    /// The new-chat defaults saved for `engineID`. The draft engine's are
+    /// held in memory; another's are read when a chat switches to it.
+    private func savedDefaults(for engineID: EngineID) -> (modelID: String?, modeID: String?, thoughtLevelID: String?) {
+        if engineID == draftEngineID { return (draftModelID, draftModeID, draftThoughtLevelID) }
+        let engine = engines.first { $0.engineID == engineID }
+        return (
+            Self.validated(
+                defaults.string(forKey: Self.selectedModelStorageKey(for: engineID)),
+                in: engine.map { $0.models.map(\.modelID) }
+            ),
+            Self.validated(
+                defaults.string(forKey: Self.selectedModeStorageKey(for: engineID)),
+                in: engine.map { $0.modes.map(\.id) }
+            ),
+            defaults.string(forKey: Self.selectedThoughtLevelStorageKey(for: engineID))
+        )
+    }
+
+    /// A model pick. A new chat's changes the per-engine default; an existing
+    /// chat's is pending until the agent confirms it, and its "Default" row
+    /// names the engine's default model, since the session may have left it.
+    func selectModel(_ modelID: String?) {
+        guard let conversationID = selectedConversationID else {
+            draftModelID = modelID
+            return
+        }
+        guard let engineID = selectedEngineID else { return }
+        let defaultModelID = selectedEngine?.defaultModelID
+        let resolved = modelID ?? defaultModelID
+        let confirmed = confirmedModels[conversationID]?[engineID]
+        if let resolved, confirmed.map({ ($0.modelID ?? defaultModelID) != resolved }) ?? true {
+            pendingModelIDs[conversationID] = EnginePick(engineID: engineID, value: resolved)
+        } else {
+            pendingModelIDs[conversationID] = nil
+        }
+    }
+
+    /// A thought-level pick, routed like `selectModel`.
+    func selectThoughtLevel(_ thoughtLevelID: String?) {
+        guard let conversationID = selectedConversationID else {
+            draftThoughtLevelID = thoughtLevelID
+            return
+        }
+        guard let engineID = selectedEngineID else { return }
+        let modelDefault = selectedEngine?.thoughtLevelSelect(forModel: modelID(for: conversationID)).defaultID
+        let resolved = thoughtLevelID ?? modelDefault
+        // Re-picking what the session runs clears the pick, unless a pending
+        // model would move the level: then the pick has to ride along.
+        let confirmed = confirmedModels[conversationID]?[engineID]
+        let modelPending = pendingModelIDs[conversationID]?.engineID == engineID
+        let isCurrent = !modelPending && confirmed.map { ($0.thoughtLevelID ?? modelDefault) == resolved } == true
+        if let resolved, !isCurrent {
+            pendingThoughtLevelIDs[conversationID] = EnginePick(engineID: engineID, value: resolved)
+        } else {
+            pendingThoughtLevelIDs[conversationID] = nil
+        }
+    }
+
+    /// Whether the picker's model or level waits for the next message.
+    var hasPendingModel: Bool {
+        guard let conversationID = selectedConversationID, let engineID = selectedEngineID else { return false }
+        return pendingModelIDs[conversationID]?.engineID == engineID
+            || pendingThoughtLevelIDs[conversationID]?.engineID == engineID
+    }
+
+    /// Record what the agent confirmed for `conversationID`'s session on
+    /// `engineID`; a field it did not report keeps its value. A pending pick
+    /// it matches is done, and the run that carried the picks settles all of
+    /// them: whatever it confirmed is what the chat now runs.
+    func confirmModel(
+        _ modelID: String?, thoughtLevelID: String?,
+        engineID: EngineID, conversationID: ConversationID, runID: ConversationRunID? = nil
+    ) {
+        var confirmed = confirmedModels[conversationID]?[engineID] ?? ModelSelection()
+        if let modelID { confirmed.modelID = modelID }
+        if let thoughtLevelID { confirmed.thoughtLevelID = thoughtLevelID }
+        confirmedModels[conversationID, default: [:]][engineID] = confirmed
+        if let runID, pickRunIDs[conversationID] == runID {
+            settlePicks(conversationID)
+        } else {
+            clearConfirmedPicks(conversationID, engineID: engineID)
+        }
+    }
+
+    private func clearConfirmedPicks(_ conversationID: ConversationID, engineID: EngineID) {
+        let confirmed = confirmedModels[conversationID]?[engineID]
+        if let pick = pendingModelIDs[conversationID], pick.engineID == engineID,
+           pick.value == confirmed?.modelID {
+            pendingModelIDs[conversationID] = nil
+        }
+        if let pick = pendingThoughtLevelIDs[conversationID], pick.engineID == engineID,
+           pick.value == confirmed?.thoughtLevelID {
+            pendingThoughtLevelIDs[conversationID] = nil
+        }
+    }
+
+    /// Mark `runID` as the run carrying `conversationID`'s pending picks, when
+    /// it requested them: a message queued before the pick does not.
+    func notePicksCarried(
+        by runID: ConversationRunID, conversationID: ConversationID,
+        modelID: String?, thoughtLevelID: String?
+    ) {
+        let carriesModel = pendingModelIDs[conversationID].map { $0.value == modelID } ?? false
+        let carriesLevel = pendingThoughtLevelIDs[conversationID].map { $0.value == thoughtLevelID } ?? false
+        guard carriesModel || carriesLevel else { return }
+        pickRunIDs[conversationID] = runID
+    }
+
+    /// The run carrying the picks ended: drop them, so the chat shows what
+    /// the agent confirmed rather than a pick it may never have taken.
+    func noteRunEnded(_ runID: ConversationRunID, conversationID: ConversationID) {
+        guard pickRunIDs[conversationID] == runID else { return }
+        settlePicks(conversationID)
+    }
+
+    private func settlePicks(_ conversationID: ConversationID) {
+        pickRunIDs[conversationID] = nil
+        pendingModelIDs[conversationID] = nil
+        pendingThoughtLevelIDs[conversationID] = nil
+    }
+
+    /// Record a conversation's runs and sessions from its loaded detail: its
+    /// engine, and each engine session's confirmed model and level.
+    func noteConversationSelections(
+        runs: [ConversationRunSummary], sessions: [AgentSessionSummary], conversationID: ConversationID
+    ) {
+        guard let latest = runs.first else { return }
+        conversationEngineIDs[conversationID] = latest.engineID
+        loadSavedCommands(for: latest.engineID)
+        if pendingEngineIDs[conversationID] == latest.engineID {
+            pendingEngineIDs[conversationID] = nil
+        }
+        // The detail is Core's whole answer, so it replaces rather than merges:
+        // a run on the engine default must not keep an earlier model.
+        let confirmed = Self.confirmedModels(runs: runs, sessions: sessions)
+        confirmedModels[conversationID] = confirmed
+        for engineID in confirmed.keys {
+            clearConfirmedPicks(conversationID, engineID: engineID)
+        }
+    }
+
+    /// Each engine's confirmed model and level: its active session's, field
+    /// by field, else its latest run's request. Runs are newest first.
+    static func confirmedModels(
+        runs: [ConversationRunSummary], sessions: [AgentSessionSummary]
+    ) -> [EngineID: ModelSelection] {
+        var result: [EngineID: ModelSelection] = [:]
+        for run in runs where result[run.engineID] == nil {
+            let session = sessions.first { $0.state == .active && $0.engineID == run.engineID }
+            result[run.engineID] = ModelSelection(
+                modelID: session?.currentModelID ?? run.modelID,
+                thoughtLevelID: session?.currentThoughtLevelID ?? run.thoughtLevelID
+            )
+        }
+        return result
     }
     /// The mode the agent last confirmed for each conversation's session: its
     /// acknowledgment of a request, or a change it made itself (leaving plan
@@ -641,8 +927,9 @@ final class ChatWorkspaceModel {
 
     /// `effectiveModeID` for a given conversation; nil is a draft.
     func modeID(for conversationID: ConversationID?) -> String? {
-        guard let conversationID else { return selectedModeID }
-        return conversationModeID(conversationID, advertisedBy: selectedEngine) ?? selectedModeID
+        guard let conversationID else { return draftModeID }
+        return conversationModeID(conversationID, advertisedBy: engine(for: conversationID))
+            ?? engineID(for: conversationID).flatMap { savedDefaults(for: $0).modeID }
     }
 
     /// The conversation's pending pick, else its confirmed mode, when `engine`
@@ -686,7 +973,7 @@ final class ChatWorkspaceModel {
     /// default mode explicitly, since the session may have left it.
     func selectMode(_ modeID: String?) {
         guard let conversationID = selectedConversationID else {
-            selectedModeID = modeID
+            draftModeID = modeID
             return
         }
         guard !modeWriteConversationIDs.contains(conversationID) else { return }
@@ -868,19 +1155,14 @@ final class ChatWorkspaceModel {
         }
     }
 
-    /// Adapter-defined thought-level (reasoning effort) id for new harness
-    /// sessions; nil means the engine's default.
-    var selectedThoughtLevelID: String? {
-        didSet {
-            guard selectedThoughtLevelID != oldValue, let engineID = selectedEngineID else { return }
-            let key = Self.selectedThoughtLevelStorageKey(for: engineID)
-            if let selectedThoughtLevelID {
-                defaults.set(selectedThoughtLevelID, forKey: key)
-            } else {
-                defaults.removeObject(forKey: key)
-            }
-        }
-    }
+    /// The model the picker shows and the next message requests: a new chat's
+    /// default, or the conversation's own. Picks go through `selectModel`.
+    var selectedModelID: String? { modelID(for: selectedConversationID) }
+
+    /// The thought level picked for what is on screen, before the model's
+    /// levels gate it (`effectiveThoughtLevelID`). Picks go through
+    /// `selectThoughtLevel`.
+    var selectedThoughtLevelID: String? { thoughtLevelPick(for: selectedConversationID) }
 
     let starterPrompts = [
         "Ask what changed recently in this project.",
@@ -892,8 +1174,8 @@ final class ChatWorkspaceModel {
     init(defaults: UserDefaults = .standard, transcriptCache: ConversationTranscriptCache? = nil) {
         self.defaults = defaults
         self.transcriptCache = transcriptCache ?? ConversationTranscriptCache()
-        selectedEngineID = defaults.string(forKey: Self.selectedEngineStorageKey).map(EngineID.init)
-        restoreEngineSelections()
+        draftEngineID = defaults.string(forKey: Self.selectedEngineStorageKey).map(EngineID.init)
+        restoreDraftSelections()
         let pressure = DispatchSource.makeMemoryPressureSource(eventMask: [.warning, .critical], queue: .main)
         pressure.setEventHandler { [weak self] in
             MainActor.assumeIsolated { self?.relieveMemoryPressure() }
@@ -1170,12 +1452,8 @@ final class ChatWorkspaceModel {
     }
 
     /// The pick the selected model honors, which is what runs send and the
-    /// picker shows. Effort levels belong to the model, so a pick it lacks is
-    /// kept for the models that offer it rather than sent or erased.
-    var effectiveThoughtLevelID: String? {
-        guard let pick = selectedThoughtLevelID, selectedEngine != nil else { return selectedThoughtLevelID }
-        return availableThoughtLevels.contains { $0.id == pick } ? pick : nil
-    }
+    /// picker shows (`thoughtLevelID(for:)`).
+    var effectiveThoughtLevelID: String? { thoughtLevelID(for: selectedConversationID) }
 
     /// The level the selected model runs at without a pick; nil when unknown.
     var defaultThoughtLevelID: String? {
@@ -1192,33 +1470,39 @@ final class ChatWorkspaceModel {
         return availableThoughtLevels.first { $0.id == defaultID }?.displayName ?? defaultID
     }
 
-    /// Restores the persisted model/mode/thought-level choices for the current
-    /// engine. Validation against the engine's advertised options only applies
-    /// once engines have loaded — before that, the persisted values are trusted
-    /// so the chip doesn't flash "Default" on launch. The thought-level pick is
-    /// kept as is: `effectiveThoughtLevelID` gates it per model.
-    private func restoreEngineSelections() {
-        guard let selectedEngineID else {
-            selectedModelID = nil
-            selectedModeID = nil
-            selectedThoughtLevelID = nil
+    /// Restores the saved new-chat model/mode/thought-level choices for the
+    /// draft engine. Validation against the engine's advertised options only
+    /// applies once engines have loaded — before that, the saved values are
+    /// trusted so the chip doesn't flash "Default" on launch. The thought-level
+    /// pick is kept as is: `thoughtLevelID(for:)` gates it per model.
+    private func restoreDraftSelections() {
+        guard let draftEngineID else {
+            draftModelID = nil
+            draftModeID = nil
+            draftThoughtLevelID = nil
             return
         }
-        if engineCommands[selectedEngineID] == nil,
-           let saved = defaults.data(forKey: Self.commandsStorageKey(selectedEngineID)),
-           let commands = try? JSONDecoder().decode([ConversationSessionCommand].self, from: saved) {
-            engineCommands[selectedEngineID] = commands
-        }
-        let engine = engines.first { $0.engineID == selectedEngineID }
-        selectedModelID = Self.validated(
-            defaults.string(forKey: Self.selectedModelStorageKey(for: selectedEngineID)),
+        loadSavedCommands(for: draftEngineID)
+        let engine = engines.first { $0.engineID == draftEngineID }
+        draftModelID = Self.validated(
+            defaults.string(forKey: Self.selectedModelStorageKey(for: draftEngineID)),
             in: engine.map { $0.models.map(\.modelID) }
         )
-        selectedModeID = Self.validated(
-            defaults.string(forKey: Self.selectedModeStorageKey(for: selectedEngineID)),
+        draftModeID = Self.validated(
+            defaults.string(forKey: Self.selectedModeStorageKey(for: draftEngineID)),
             in: engine.map { $0.modes.map(\.id) }
         )
-        selectedThoughtLevelID = defaults.string(forKey: Self.selectedThoughtLevelStorageKey(for: selectedEngineID))
+        draftThoughtLevelID = defaults.string(forKey: Self.selectedThoughtLevelStorageKey(for: draftEngineID))
+    }
+
+    /// The commands `engineID` last reported, saved, so a chat on it lists
+    /// them before its session reports its own.
+    private func loadSavedCommands(for engineID: EngineID) {
+        guard engineCommands[engineID] == nil,
+              let saved = defaults.data(forKey: Self.commandsStorageKey(engineID)),
+              let commands = try? JSONDecoder().decode([ConversationSessionCommand].self, from: saved)
+        else { return }
+        engineCommands[engineID] = commands
     }
 
     /// A persisted id is trusted until the engine's advertised list is known
@@ -1283,24 +1567,25 @@ final class ChatWorkspaceModel {
     /// One accessor because the four have to be read from one place. While a
     /// run is live the Message joins that run's Engine, which need not be the
     /// one the picker shows — and the picker's model, mode and effort belong to
-    /// whatever Engine the *picker* is on, since `restoreEngineSelections`
-    /// reassigns all three the moment it changes. Taking the Engine from the run
-    /// and the options from the picker pairs one Engine with another's model,
-    /// which Core rejects as unavailable. The run records its own three for
-    /// exactly this reason: so a later send can be launched the same way.
+    /// whatever Engine the *picker* is on. Taking the Engine from the run and
+    /// the options from another Engine's picker pairs one Engine with another's
+    /// model, which Core rejects as unavailable. The run records its own three
+    /// for exactly this reason: so a later send can be launched the same way.
     private var submissionRouting: SubmissionRouting? {
         if let runID = selectedLiveRun?.runID,
            let run = selectedDetail?.runs.first(where: { $0.runID == runID }),
            let engine = engines.first(where: { $0.engineID == run.engineID }) {
-            // The mode is the exception: a pick made during the run applies to
-            // a message queued behind it, or the drain would restore the old one.
+            // A pick made during the run applies to a message queued behind
+            // it, or the drain would restore the old setting: the mode always,
+            // the model and level while the picker is on the run's engine.
             let modeID = selectedConversationID
                 .flatMap { conversationModeID($0, advertisedBy: engine) } ?? run.modeID
+            let onRunEngine = selectedEngineID == run.engineID
             return SubmissionRouting(
                 engine: engine,
-                modelID: run.modelID,
+                modelID: onRunEngine ? selectedModelID : run.modelID,
                 modeID: modeID,
-                thoughtLevelID: run.thoughtLevelID
+                thoughtLevelID: onRunEngine ? effectiveThoughtLevelID : run.thoughtLevelID
             )
         }
         // No live run, or a run whose Engine is no longer installed. Either way
@@ -1606,8 +1891,9 @@ final class ChatWorkspaceModel {
             for: run,
             refused: run.status == .failed && run.error.objectString("kind") == "selectionUnavailable",
             engine: engines.first { $0.engineID == run.engineID },
-            picks: selectedEngine?.engineID == run.engineID
-                ? (selectedModelID, modeID(for: run.conversationID), effectiveThoughtLevelID)
+            picks: engineID(for: run.conversationID) == run.engineID
+                ? (modelID(for: run.conversationID), modeID(for: run.conversationID),
+                   thoughtLevelID(for: run.conversationID))
                 : (nil, nil, nil)
         )
     }
@@ -1794,17 +2080,17 @@ final class ChatWorkspaceModel {
         for engine in refreshed where engine.authState == .missing || engine.authState == .expired {
             signIn.forgetSuccess(AgentID(engine.engineID.rawValue))
         }
-        restoreEngineSelections()
+        restoreDraftSelections()
     }
 
     /// Setup may make a different agent ready than the unavailable saved choice.
     /// Existing conversations keep their own engine selection.
     private func selectReadyLandingEngineIfNeeded() {
         guard selectedConversationID == nil, selectedEngine?.isUsable != true,
-              selectedEngineID == nil || engines.contains(where: { $0.engineID == selectedEngineID }),
+              draftEngineID == nil || engines.contains(where: { $0.engineID == draftEngineID }),
               let ready = EngineSummary.defaultSelection(from: engines), ready.isUsable
         else { return }
-        selectedEngineID = ready.engineID
+        draftEngineID = ready.engineID
     }
 
     /// Live Run lifecycle remains visible while transcript pages load.
@@ -2487,8 +2773,10 @@ final class ChatWorkspaceModel {
                 throw ChatSubmitError.noEngine
             }
             // Read before a new conversation is selected below: a draft sends
-            // the new-chat default, an existing conversation its own mode.
+            // the new-chat defaults, an existing conversation its own.
+            let modelID = selectedModelID
             let modeID = effectiveModeID
+            let thoughtLevelID = effectiveThoughtLevelID
             // Pinned before the wait below, which a new selection can outlast.
             let targetConversationID = selectedConversationID
             let workingRoot = draftWorkingRoot
@@ -2534,13 +2822,18 @@ final class ChatWorkspaceModel {
                 workspaceID: workspaceID,
                 conversationID: conversationID,
                 engineID: engineID,
-                modelID: selectedModelID,
+                modelID: modelID,
                 modeID: modeID,
-                thoughtLevelID: effectiveThoughtLevelID,
+                thoughtLevelID: thoughtLevelID,
                 runInputID: runInputID
             )
             pendingStartConversationID = nil
+            notePicksCarried(
+                by: run.run.runID, conversationID: conversationID,
+                modelID: modelID, thoughtLevelID: thoughtLevelID
+            )
             if terminalRunIDs.remove(run.run.runID) != nil {
+                noteRunEnded(run.run.runID, conversationID: conversationID)
                 await loadDetail(run.run.conversationID, backend: backend)
             } else {
                 await loadDetail(run.run.conversationID, backend: backend)
@@ -2834,7 +3127,14 @@ final class ChatWorkspaceModel {
         // over — it declines, correctly, but the id has to be taken out of
         // `terminalRunIDs` or it is held forever. The ordinary submit path
         // makes the same check for the same reason.
-        guard terminalRunIDs.remove(run.run.runID) == nil else { return true }
+        notePicksCarried(
+            by: run.run.runID, conversationID: conversationID,
+            modelID: message.modelID, thoughtLevelID: message.thoughtLevelID
+        )
+        guard terminalRunIDs.remove(run.run.runID) == nil else {
+            noteRunEnded(run.run.runID, conversationID: conversationID)
+            return true
+        }
         mergeActiveRun(run.run)
         return false
     }
@@ -2970,11 +3270,11 @@ final class ChatWorkspaceModel {
             engineID = originalRun.engineID
             (modelID, modeID, thoughtLevelID) = retrySelections(for: originalRun)
         } else {
-            guard let selectedEngine else { throw ChatSubmitError.noEngine }
-            engineID = selectedEngine.engineID
-            modelID = selectedModelID
+            guard let engine = engine(for: conversationID) else { throw ChatSubmitError.noEngine }
+            engineID = engine.engineID
+            modelID = self.modelID(for: conversationID)
             modeID = self.modeID(for: conversationID)
-            thoughtLevelID = effectiveThoughtLevelID
+            thoughtLevelID = self.thoughtLevelID(for: conversationID)
         }
         await settleAlwaysAllowToolActions()
         let started = try await backend.startConversationRun(
@@ -2986,6 +3286,13 @@ final class ChatWorkspaceModel {
             thoughtLevelID: thoughtLevelID,
             runInputID: retryInput.runInputID
         )
+        notePicksCarried(
+            by: started.run.runID, conversationID: conversationID,
+            modelID: modelID, thoughtLevelID: thoughtLevelID
+        )
+        if terminalRunIDs.contains(started.run.runID) {
+            noteRunEnded(started.run.runID, conversationID: conversationID)
+        }
         mergeActiveRun(started.run)
     }
 
@@ -3352,6 +3659,7 @@ final class ChatWorkspaceModel {
                 // finished while startConversationRun was still in flight, and the event
                 // handlers above use it to drop stale queued/update events.
                 terminalRunIDs.insert(event.runID)
+                noteRunEnded(event.runID, conversationID: event.conversationID)
                 transcriptStore(for: event.conversationID)?.endSessionActivity(event.runID)
                 liveRuns.removeValue(forKey: event.runID)
                 // Out of view, a finished run starts its conversation's idle
@@ -3418,6 +3726,14 @@ final class ChatWorkspaceModel {
                 }
                 if let modeID = incoming.currentModeId {
                     confirmMode(modeID, conversationID: event.conversationID)
+                }
+                if incoming.currentModelId != nil || incoming.currentThoughtLevelId != nil,
+                   let engineID = selectedDetail?.runs.first(where: { $0.runID == event.runID })?.engineID
+                    ?? engineID(for: event.conversationID) {
+                    confirmModel(
+                        incoming.currentModelId, thoughtLevelID: incoming.currentThoughtLevelId,
+                        engineID: engineID, conversationID: event.conversationID, runID: event.runID
+                    )
                 }
                 if let usage = incoming.usage {
                     recordContextUsage(.init(used: usage.used, size: usage.size),
@@ -3544,14 +3860,14 @@ final class ChatWorkspaceModel {
             guard self.workspaceID == workspaceID, !Task.isCancelled else { return }
             if let uninstalled { uninstalledEngineIDs = uninstalled }
             self.engines = engines
-            if selectedEngineID == nil {
+            if draftEngineID == nil {
                 // Readiness-ranked, not id-ranked: on a fresh machine only the
                 // adapter the user just got is any use, and a pill defaulting
                 // to a disabled row reads as the wrong agent being picked.
-                selectedEngineID = EngineSummary.defaultSelection(from: engines)?.engineID
+                draftEngineID = EngineSummary.defaultSelection(from: engines)?.engineID
             }
             selectReadyLandingEngineIfNeeded()
-            restoreEngineSelections()
+            restoreDraftSelections()
 
             let conversations = try await backend.listConversations(workspaceID: workspaceID).conversations
             guard self.workspaceID == workspaceID, !Task.isCancelled else { return }
@@ -3727,9 +4043,12 @@ final class ChatWorkspaceModel {
             }
         }
         selectedConversationID = detail.summary.conversationID
-        if let latestEngineID = detail.runs.first?.engineID {
-            selectedEngineID = latestEngineID
-        }
+        // The conversation's own engine, model and level; the new-chat
+        // defaults stay as they were.
+        noteConversationSelections(
+            runs: detail.runs, sessions: detail.latestAgentSessionPage.sessions,
+            conversationID: detail.summary.conversationID
+        )
         let activeSession = Self.latestRunSession(
             runs: detail.runs, sessions: detail.latestAgentSessionPage.sessions
         )

@@ -1251,7 +1251,7 @@ private struct ChatSessionSelector: View {
         }
         .buttonStyle(.plain)
         .fixedSize()
-        .help("Agent, model, effort, and mode for new sessions")
+        .help("Agent, model, effort, and mode for this chat")
         .accessibilityIdentifier(AccessibilityID.chatEngineMenu)
         // `.top`: the composer sits in the window's lower half, so the popover
         // opens upward — same reasoning as the sidebar identity popover.
@@ -1287,6 +1287,19 @@ private struct ChatSessionSelector: View {
         label.localizedCaseInsensitiveContains("default")
     }
 
+    /// A model or effort picked in an existing chat reaches the agent with
+    /// the next message; there is no live switch.
+    @ViewBuilder private var pendingModelNote: some View {
+        if model.hasPendingModel {
+            Text("Applies to your next message")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.horizontal, 8)
+                .padding(.top, 6)
+        }
+    }
+
     /// The Mode page's caption: why the last change failed, else when the
     /// picked mode takes effect.
     private var modeNote: String? {
@@ -1302,21 +1315,27 @@ private struct ChatSessionSelector: View {
             case .root:
                 rootPage
             case .model:
-                optionPage(
-                    title: "Model",
-                    defaultID: model.selectedEngine?.defaultModelID,
-                    defaultName: model.defaultModelDisplayName,
-                    options: model.availableModels.map { ($0.modelID, $0.displayName) },
-                    selectedID: model.selectedModelID
-                ) { model.selectedModelID = $0 }
+                VStack(alignment: .leading, spacing: 0) {
+                    optionPage(
+                        title: "Model",
+                        defaultID: model.selectedEngine?.defaultModelID,
+                        defaultName: model.defaultModelDisplayName,
+                        options: model.availableModels.map { ($0.modelID, $0.displayName) },
+                        selectedID: model.selectedModelID
+                    ) { model.selectModel($0) }
+                    pendingModelNote
+                }
             case .effort:
-                optionPage(
-                    title: "Effort",
-                    defaultID: model.defaultThoughtLevelID,
-                    defaultName: model.defaultThoughtLevelDisplayName,
-                    options: model.availableThoughtLevels.map { ($0.id, $0.displayName) },
-                    selectedID: model.effectiveThoughtLevelID
-                ) { model.selectedThoughtLevelID = $0 }
+                VStack(alignment: .leading, spacing: 0) {
+                    optionPage(
+                        title: "Effort",
+                        defaultID: model.defaultThoughtLevelID,
+                        defaultName: model.defaultThoughtLevelDisplayName,
+                        options: model.availableThoughtLevels.map { ($0.id, $0.displayName) },
+                        selectedID: model.effectiveThoughtLevelID
+                    ) { model.selectThoughtLevel($0) }
+                    pendingModelNote
+                }
             case .mode:
                 VStack(alignment: .leading, spacing: 0) {
                     optionPage(

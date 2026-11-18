@@ -20,7 +20,7 @@ struct ChatConversationModeTests {
     func draftPickSetsDefault() {
         let model = makeModel()
         model.selectMode("plan")
-        #expect(model.selectedModeID == "plan")
+        #expect(model.draftModeID == "plan")
         #expect(model.effectiveModeID == "plan")
         #expect(model.hasPendingMode == false)
     }
@@ -34,7 +34,7 @@ struct ChatConversationModeTests {
         #expect(model.effectiveModeID == "plan", "nothing confirmed yet: the default")
         model.confirmMode("default", conversationID: conversation)
         #expect(model.effectiveModeID == "default")
-        #expect(model.selectedModeID == "plan", "the new-chat default is untouched")
+        #expect(model.draftModeID == "plan", "the new-chat default is untouched")
     }
 
     /// Core with nothing live: the app names no session, Core defers.
@@ -57,7 +57,7 @@ struct ChatConversationModeTests {
         await model.applyPendingMode(send: noLiveSession)
         #expect(model.effectiveModeID == "acceptEdits")
         #expect(model.hasPendingMode)
-        #expect(model.selectedModeID == "plan")
+        #expect(model.draftModeID == "plan")
 
         // The agent changing mode on its own mid-run keeps the user's pick.
         model.confirmMode("plan", conversationID: conversation)
