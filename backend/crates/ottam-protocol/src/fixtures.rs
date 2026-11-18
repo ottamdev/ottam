@@ -1273,6 +1273,8 @@ pub fn agent_session_summary_fixture() -> AgentSessionSummary {
         ended_at: None,
         end_reason: None,
         current_mode_id: Some("workspace-write".to_string()),
+        current_model_id: Some("gpt-5".to_string()),
+        current_thought_level_id: Some("high".to_string()),
         commands: Some(vec![ConversationSessionCommand {
             name: "review".to_string(),
             description: "Review my current changes".to_string(),

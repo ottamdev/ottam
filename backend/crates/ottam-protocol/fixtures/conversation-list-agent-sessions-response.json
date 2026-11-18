@@ -12,6 +12,8 @@
           "createdAt": "2026-07-03T22:00:00.400Z",
           "lastUsedAt": "2026-07-03T22:00:01.000Z",
           "currentModeID": "workspace-write",
+          "currentModelID": "gpt-5",
+          "currentThoughtLevelID": "high",
           "commands": [
             {
               "name": "review",

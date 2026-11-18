@@ -51,6 +51,16 @@ pub(in crate::server) struct BeginRunRecord {
     pub images: Vec<HarnessPromptImage>,
 }
 
+/// What the agent last confirmed for a resumable session. A restore or fresh
+/// fallback reapplies each one the run does not request, so a follow-up that
+/// names none keeps the conversation's settings, never the agent's defaults.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub(in crate::server) struct ConfirmedSelection {
+    pub mode_id: Option<String>,
+    pub model_id: Option<String>,
+    pub thought_level_id: Option<String>,
+}
+
 #[derive(Debug, Clone)]
 pub(in crate::server) struct PreparedSteerRecord {
     pub run: ConversationRunSummary,
@@ -374,12 +384,12 @@ impl ChatService {
 
     /// The resumable external harness session for this conversation, engine,
     /// and current source scope, per the spec's fingerprint-matched rule, with
-    /// the mode the agent last confirmed for it.
+    /// what the agent last confirmed for it.
     pub(in crate::server) async fn resumable_session(
         &self,
         conversation_id: &ConversationID,
         engine_id: &EngineID,
-    ) -> Result<Option<(AgentSessionID, Option<String>)>, CoreError> {
+    ) -> Result<Option<(AgentSessionID, ConfirmedSelection)>, CoreError> {
         let workspace_id = self.workspace()?;
         let conversation_id = parse_conversation_id(conversation_id)?;
         let engine_id = engine_id.0.clone();
@@ -415,7 +425,11 @@ impl ChatService {
                 .and_then(|session| {
                     Some((
                         AgentSessionID(session.external_session_id?),
-                        session.current_mode_id,
+                        ConfirmedSelection {
+                            mode_id: session.current_mode_id,
+                            model_id: session.current_model_id,
+                            thought_level_id: session.current_thought_level_id,
+                        },
                     ))
                 }))
             })
@@ -686,6 +700,29 @@ impl ChatService {
                             (run.agent_session_id.as_ref(), announced_mode)
                         {
                             RunRepository::set_session_mode(connection, session_id, mode_id)?;
+                        }
+                        // Likewise the model and level it confirmed, each from
+                        // the latest event that names it.
+                        let announced = |key: &str| {
+                            events
+                                .iter()
+                                .rev()
+                                .filter(|(kind, _)| *kind == ConversationEventKind::SessionMetadata)
+                                .find_map(|(_, payload)| payload.get(key)?.as_str())
+                        };
+                        let announced_model = announced("currentModelId");
+                        let announced_level = announced("currentThoughtLevelId");
+                        if let Some(session_id) = run
+                            .agent_session_id
+                            .as_ref()
+                            .filter(|_| announced_model.is_some() || announced_level.is_some())
+                        {
+                            RunRepository::set_session_model(
+                                connection,
+                                session_id,
+                                announced_model,
+                                announced_level,
+                            )?;
                         }
                         // Likewise the commands it announced, so `/` lists them
                         // after a relaunch. The recorder already drops oversized

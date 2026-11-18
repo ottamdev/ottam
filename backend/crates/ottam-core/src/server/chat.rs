@@ -21,7 +21,7 @@ mod wire;
 pub(super) use attachments::sweep_attachments;
 pub(super) use delegation::{ChildLink, DelegatedChild, WaitingNote};
 pub(super) use history::{HISTORY_DEFAULT_ENTRIES, HISTORY_MAX_ENTRIES};
-pub(super) use runs::BeginRunRecord;
+pub(super) use runs::{BeginRunRecord, ConfirmedSelection};
 
 use crate::storage::error::StorageError;
 use crate::storage::models::WorkspaceId;

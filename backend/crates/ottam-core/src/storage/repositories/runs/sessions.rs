@@ -187,6 +187,34 @@ impl RunRepository {
         Ok(())
     }
 
+    /// Record the model and thought level the agent confirmed for an active
+    /// session. `None` keeps the stored value: an agent can report one without
+    /// the other, and an unknown value is not a confirmed default. An ended
+    /// session keeps the pair it ended with.
+    pub fn set_session_model(
+        connection: &mut SqliteConnection,
+        session_id: &AgentSessionId,
+        model_id: Option<&str>,
+        thought_level_id: Option<&str>,
+    ) -> Result<(), StorageError> {
+        let active = || {
+            agent_sessions::table
+                .find(session_id.to_string())
+                .filter(agent_sessions::status.eq(AgentSessionStatus::Active.as_storage_str()))
+        };
+        if let Some(model_id) = model_id {
+            diesel::update(active())
+                .set(agent_sessions::current_model_id.eq(model_id))
+                .execute(connection)?;
+        }
+        if let Some(thought_level_id) = thought_level_id {
+            diesel::update(active())
+                .set(agent_sessions::current_thought_level_id.eq(thought_level_id))
+                .execute(connection)?;
+        }
+        Ok(())
+    }
+
     /// Record the commands the agent last announced for an active session,
     /// as a JSON array. An ended session keeps the commands it ended with.
     pub fn set_session_commands(
