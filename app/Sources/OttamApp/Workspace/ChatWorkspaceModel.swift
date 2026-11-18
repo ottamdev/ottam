@@ -943,12 +943,13 @@ final class ChatWorkspaceModel {
     }
     /// The mode the agent last confirmed for each conversation's session: its
     /// acknowledgment of a request, or a change it made itself (leaving plan
-    /// mode). The picker shows it in place of the new-chat default.
-    private(set) var confirmedModeIDs: [ConversationID: String] = [:]
+    /// mode). The picker shows it in place of the new-chat default. Like
+    /// models, a mode belongs to its engine: another engine's never shows.
+    private(set) var confirmedModeIDs: [ConversationID: EnginePick] = [:]
     /// A mode picked in an existing conversation that the agent has not
     /// confirmed yet: being sent to the live session, or, when no session is
     /// live, riding on the next message.
-    private(set) var pendingModeIDs: [ConversationID: String] = [:]
+    private(set) var pendingModeIDs: [ConversationID: EnginePick] = [:]
     /// Each conversation's active AgentSession, the target of a live mode
     /// change. Core rejects a change aimed at a session that has since ended.
     private(set) var activeAgentSessionIDs: [ConversationID: AgentSessionID] = [:]
@@ -970,27 +971,30 @@ final class ChatWorkspaceModel {
     /// `effectiveModeID` for a given conversation; nil is a draft.
     func modeID(for conversationID: ConversationID?) -> String? {
         guard let conversationID else { return draftModeID }
-        return conversationModeID(conversationID, advertisedBy: engine(for: conversationID))
-            ?? engineID(for: conversationID).flatMap { savedDefaults(for: $0).modeID }
+        guard let engineID = engineID(for: conversationID) else { return nil }
+        return conversationModeID(conversationID, engineID: engineID, advertisedBy: engine(for: conversationID))
+            ?? savedDefaults(for: engineID).modeID
     }
 
-    /// The conversation's pending pick, else its confirmed mode, when `engine`
-    /// advertises it.
+    /// The conversation's pending pick, else its confirmed mode, made on
+    /// `engineID` and advertised by `engine`. An engine that has not listed
+    /// its modes yet accepts its own picks.
     func conversationModeID(
         _ conversationID: ConversationID,
+        engineID: EngineID,
         advertisedBy engine: EngineSummary?
     ) -> String? {
         let advertised = (engine?.modes ?? []).map(\.id)
         return [pendingModeIDs[conversationID], confirmedModeIDs[conversationID]]
-            .compactMap { $0 }
+            .compactMap { $0?.engineID == engineID ? $0?.value : nil }
             .first { advertised.isEmpty || advertised.contains($0) }
     }
 
     /// Whether the picker's mode waits for the next message to take effect.
     var hasPendingMode: Bool {
         guard let conversationID = selectedConversationID else { return false }
-        return pendingModeIDs[conversationID] != nil
-            && deferredModeConversationIDs.contains(conversationID)
+        guard let pick = pendingModeIDs[conversationID] else { return false }
+        return pick.engineID == selectedEngineID && deferredModeConversationIDs.contains(conversationID)
     }
 
     /// Whether a mode change for the conversation on screen awaits the agent.
@@ -1018,9 +1022,10 @@ final class ChatWorkspaceModel {
             draftModeID = modeID
             return
         }
-        guard !modeWriteConversationIDs.contains(conversationID) else { return }
+        guard !modeWriteConversationIDs.contains(conversationID),
+              let engineID = selectedEngineID else { return }
         modeErrorTexts[conversationID] = nil
-        let resolved = modeID ?? selectedEngine?.defaultModeID
+        let resolved = (modeID ?? selectedEngine?.defaultModeID).map { EnginePick(engineID: engineID, value: $0) }
         if resolved == nil || resolved == confirmedModeIDs[conversationID] {
             pendingModeIDs[conversationID] = nil
             deferredModeConversationIDs.remove(conversationID)
@@ -1035,10 +1040,12 @@ final class ChatWorkspaceModel {
         activeAgentSessionIDs[conversationID] = agentSessionID
     }
 
-    /// Record a mode the agent confirmed. A pending pick it matches is done.
-    func confirmMode(_ modeID: String, conversationID: ConversationID) {
-        confirmedModeIDs[conversationID] = modeID
-        if pendingModeIDs[conversationID] == modeID {
+    /// Record a mode `conversationID`'s session on `engineID` confirmed. A
+    /// pending pick it matches is done.
+    func confirmMode(_ modeID: String, engineID: EngineID, conversationID: ConversationID) {
+        let confirmed = EnginePick(engineID: engineID, value: modeID)
+        confirmedModeIDs[conversationID] = confirmed
+        if pendingModeIDs[conversationID] == confirmed {
             pendingModeIDs[conversationID] = nil
             deferredModeConversationIDs.remove(conversationID)
         }
@@ -1063,18 +1070,24 @@ final class ChatWorkspaceModel {
         send: (ConversationID, AgentSessionID?, String) async throws -> ConversationSetModeResult
     ) async {
         guard let conversationID = selectedConversationID,
-              let modeID = pendingModeIDs[conversationID],
+              let pick = pendingModeIDs[conversationID],
               !modeWriteConversationIDs.contains(conversationID)
         else { return }
+        // A pick for an engine the chat has not run on yet rides on the
+        // message that starts it there: the live session is another engine's.
+        if let sessionEngineID = conversationEngineIDs[conversationID], sessionEngineID != pick.engineID {
+            deferredModeConversationIDs.insert(conversationID)
+            return
+        }
         modeWriteConversationIDs.insert(conversationID)
         defer { modeWriteConversationIDs.remove(conversationID) }
         do {
             // A conversation started in this launch has no session in its
             // loaded detail yet; Core then targets its active session.
-            let result = try await send(conversationID, activeAgentSessionIDs[conversationID], modeID)
+            let result = try await send(conversationID, activeAgentSessionIDs[conversationID], pick.value)
             switch result.outcome {
             case .applied:
-                confirmMode(result.currentModeID ?? modeID, conversationID: conversationID)
+                confirmMode(result.currentModeID ?? pick.value, engineID: pick.engineID, conversationID: conversationID)
             case .deferred:
                 deferredModeConversationIDs.insert(conversationID)
             }
@@ -1618,10 +1631,10 @@ final class ChatWorkspaceModel {
            let run = selectedDetail?.runs.first(where: { $0.runID == runID }),
            let engine = engines.first(where: { $0.engineID == run.engineID }) {
             // A pick made during the run applies to a message queued behind
-            // it, or the drain would restore the old setting: the mode always,
-            // the model and level while the picker is on the run's engine.
+            // it, or the drain would restore the old setting: a mode made on
+            // the run's engine, the model and level while the picker is on it.
             let modeID = selectedConversationID
-                .flatMap { conversationModeID($0, advertisedBy: engine) } ?? run.modeID
+                .flatMap { conversationModeID($0, engineID: run.engineID, advertisedBy: engine) } ?? run.modeID
             let onRunEngine = selectedEngineID == run.engineID
             return SubmissionRouting(
                 engine: engine,
@@ -3766,11 +3779,12 @@ final class ChatWorkspaceModel {
                 if let title = incoming.title {
                     applyHarnessTitle(title, conversationID: event.conversationID)
                 }
-                if let modeID = incoming.currentModeId {
-                    confirmMode(modeID, conversationID: event.conversationID)
+                let runEngineID = confirmingEngineID(runID: event.runID, conversationID: event.conversationID)
+                if let modeID = incoming.currentModeId, let runEngineID {
+                    confirmMode(modeID, engineID: runEngineID, conversationID: event.conversationID)
                 }
                 if incoming.currentModelId != nil || incoming.currentThoughtLevelId != nil,
-                   let engineID = confirmingEngineID(runID: event.runID, conversationID: event.conversationID) {
+                   let engineID = runEngineID {
                     confirmModel(
                         incoming.currentModelId, thoughtLevelID: incoming.currentThoughtLevelId,
                         engineID: engineID, conversationID: event.conversationID, runID: event.runID
@@ -4094,8 +4108,8 @@ final class ChatWorkspaceModel {
             runs: detail.runs, sessions: detail.latestAgentSessionPage.sessions
         )
         noteActiveAgentSession(activeSession?.agentSessionID, conversationID: detail.summary.conversationID)
-        if let modeID = activeSession?.currentModeID {
-            confirmMode(modeID, conversationID: detail.summary.conversationID)
+        if let activeSession, let modeID = activeSession.currentModeID {
+            confirmMode(modeID, engineID: activeSession.engineID, conversationID: detail.summary.conversationID)
         }
         if let activeSession, let commands = activeSession.commands {
             recordCommands(commands, engineID: activeSession.engineID, conversationID: detail.summary.conversationID)
