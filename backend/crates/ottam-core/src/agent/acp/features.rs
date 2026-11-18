@@ -215,6 +215,11 @@ pub enum AcpFeature {
     ClaudeToolName,
     #[serde(rename = "_meta._claude/rateLimit")]
     ClaudeRateLimit,
+    /// `_meta["opencode/child-session-updates"]` on `initialize`: OpenCode
+    /// reports each subagent's run status and frames as
+    /// `opencode/session/child_update` instead of tagged parent updates.
+    #[serde(rename = "opencode/child-session-updates")]
+    OpenCodeChildSessionUpdates,
     /// `_meta.terminal_info` / `terminal_output` / `terminal_exit` on tool
     /// call updates.
     #[serde(rename = "_meta.terminal_*")]
@@ -347,6 +352,7 @@ impl AcpFeature {
         Self::ClaudeParentToolUseId,
         Self::ClaudeToolName,
         Self::ClaudeRateLimit,
+        Self::OpenCodeChildSessionUpdates,
         Self::TerminalMeta,
     ];
 
@@ -422,6 +428,7 @@ impl AcpFeature {
             | Self::ClaudeParentToolUseId
             | Self::ClaudeToolName
             | Self::ClaudeRateLimit
+            | Self::OpenCodeChildSessionUpdates
             | Self::TerminalMeta => Extension,
         }
     }
@@ -507,6 +514,10 @@ impl AcpFeature {
                     adapters: &["claude-agent-acp"],
                 }
             }
+            Self::OpenCodeChildSessionUpdates => Extension {
+                vendor: "adapter",
+                adapters: &["opencode"],
+            },
             _ => Stable,
         }
     }
@@ -636,6 +647,7 @@ pub const CLIENT_FEATURES: &[(AcpFeature, ClientSupport)] = {
         (ClaudeParentToolUseId, Supported),
         (ClaudeToolName, Unsupported),
         (ClaudeRateLimit, Supported),
+        (OpenCodeChildSessionUpdates, Supported),
         (TerminalMeta, Supported),
     ]
 };
@@ -768,6 +780,14 @@ pub(super) fn advertised_features(
         (AcpFeature::AuthTerminal, terminal_auth),
         (AcpFeature::AuthStatusUpdate, auth_status),
         (AcpFeature::SessionSteering, steering),
+        (
+            AcpFeature::OpenCodeChildSessionUpdates,
+            capabilities
+                .meta
+                .as_ref()
+                .and_then(|meta| meta.get(super::protocol::OPENCODE_CHILD_SESSION_UPDATES))
+                == Some(&serde_json::Value::Bool(true)),
+        ),
     ]
     .into_iter()
     .chain(air_rows)
@@ -842,6 +862,10 @@ mod tests {
         expect(AcpFeature::AuthTerminal, "/auth/terminal");
         expect(AcpFeature::AuthTerminal, "/_meta/terminal-auth");
         expect(AcpFeature::TerminalOutputMeta, "/_meta/terminal_output");
+        expect(
+            AcpFeature::OpenCodeChildSessionUpdates,
+            "/_meta/opencode~1child-session-updates",
+        );
         expect(AcpFeature::FsReadTextFile, "/fs/readTextFile");
         expect(AcpFeature::FsWriteTextFile, "/fs/writeTextFile");
         expect(AcpFeature::Terminal, "/terminal");

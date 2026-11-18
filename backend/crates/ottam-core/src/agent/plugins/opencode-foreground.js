@@ -1,16 +1,16 @@
-// Ottam's OpenCode plugin: keep every shell command and subagent in the
-// foreground, and give shell commands the user's own environment.
+// Ottam's OpenCode plugin: keep every shell command in the foreground, and
+// give shell commands the user's own environment.
 //
-// OpenCode resumes a session on its own when background work finishes, but
-// its ACP layer drops that resumed turn after the prompt response, so
-// Ottam would never show it. Stripping `background` keeps the work, and
-// its result, inside the turn that asked for it.
+// A background shell command reports back by resuming the session on its
+// own, a turn Ottam can't tell from the agent's own work. Stripping
+// `background` keeps the command, and its result, inside the turn that asked
+// for it. Subagents always run in the background; core threads them from
+// `opencode/session/child_update`.
 //
 // An Ottam profile points OpenCode's homes, XDG ones included, inside the
 // profile. Shell commands are the user's, so they get the user's values back.
 import { Plugin } from "@opencode/plugin"
 
-const FOREGROUND_TOOLS = new Set(["shell", "subagent"])
 const SHELL_ENVIRONMENT = "OTTAM_SHELL_ENVIRONMENT"
 
 function userEnvironment() {
@@ -27,7 +27,7 @@ export default Plugin.define({
   async setup(ctx) {
     const own = userEnvironment()
     await ctx.tool.hook("execute.before", (event) => {
-      if (FOREGROUND_TOOLS.has(event.tool) && event.input && typeof event.input === "object") {
+      if (event.tool === "shell" && event.input && typeof event.input === "object") {
         delete event.input.background
       }
     })
@@ -41,7 +41,7 @@ export default Plugin.define({
     await ctx.session.hook("context", (event) => {
       event.system.push({
         type: "text",
-        text: "Background execution is unavailable in this session. Run shell commands and subagents in the foreground and wait for their results.",
+        text: "Background shell commands are unavailable in this session. Run shell commands in the foreground and wait for their results.",
       })
     })
   },

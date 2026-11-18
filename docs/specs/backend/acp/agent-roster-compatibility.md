@@ -68,10 +68,10 @@ recorded fixture in `agent/fixtures/` covers before relying on it.
     · key, and a new conversation's model picker lists Go's models. Remove
     it, and the list drops back to free models. `ps` and the logs never
     show the key.
-- **OpenCode background gap.** Slash commands with `subtask: true`, or a
-  subagent-mode agent, always background their child
-  (`config/plugin/command.ts`), which Ottam's plugin can't reach. Trigger:
-  a user hits an invisible follow-up.
+- **OpenCode subtask commands.** Slash commands with `subtask: true`, or a
+  subagent-mode agent, start a child with no `subagent` call
+  (`config/plugin/command.ts`). The child-update stream should thread it
+  under its title; unchecked at 2.3.0. Trigger: a user runs one.
 - **Ottam-owned ACP package on pi's SDK.** Contingency only, if omp's ACP
   fails across three pin bumps: a small TypeScript package on
   `@agentclientprotocol/sdk` and pi's SDK. Prior art: `@automatalabs/pi-acp`
@@ -108,12 +108,12 @@ recorded fixture in `agent/fixtures/` covers before relying on it.
 - 2026-10-13: OpenCode downloads the npm platform tarball with a pinned
   sha256, because v2 publishes no GitHub release assets. omp uses its
   signed release assets.
-- 2026-10-13: OpenCode's background work is disabled, not surfaced. Neither
-  OpenCode nor omp forwards the turn it resumes after background work.
-  omp's async `bash` is left on: under ACP it holds a late result for the
-  next prompt (observed live at 18.11.1), so nothing is lost.
-- 2026-10-13: OpenCode child sessions use the default tagged projection,
-  rewritten into native subagent sessions.
-  `opencode/child-session-updates` stays unadvertised.
+- 2026-10-13: OpenCode's background shell commands are disabled, not
+  surfaced. omp's async `bash` is left on: under ACP it holds a late result
+  for the next prompt (observed live at 18.11.1), so nothing is lost.
+- 2026-11-17: OpenCode subagents run in the background and are threaded
+  from `opencode/child-session-updates`, which core now advertises,
+  reversing the 2026-10-13 tagged-projection choice. 2.3.0 can't keep a
+  subagent in the foreground, and only that stream reports a child's end.
 - 2026-10-13: an existing OpenCode setup is allowed, with a warning that
   v2 migrates the shared `opencode.db` in place.

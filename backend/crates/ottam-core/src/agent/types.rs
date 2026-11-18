@@ -288,6 +288,11 @@ pub struct ChildSessionTags {
     /// title) and the prompt that opens its tab.
     pub name: &'static str,
     pub prompt: &'static str,
+    /// The `rawInput` field naming an existing child: the call is the
+    /// parent's follow-up to it, not a new child.
+    pub target: &'static str,
+    /// The notification carrying each child's run status and frames.
+    pub updates: &'static str,
 }
 
 /// One top-level key of a JSON file inside a managed home, set on every

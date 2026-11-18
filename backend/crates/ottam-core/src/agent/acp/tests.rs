@@ -115,7 +115,7 @@ fn recorded_sessions_carry_turn_usage_and_context_usage() {
             include_str!("../fixtures/claude-agent-acp-0.108.0.json"),
         ),
         ("codex", include_str!("../fixtures/codex-acp-2.7.0.json")),
-        ("opencode", include_str!("../fixtures/opencode-2.2.5.json")),
+        ("opencode", include_str!("../fixtures/opencode-2.3.0.json")),
         ("omp", include_str!("../fixtures/omp-18.22.0.json")),
     ] {
         let messages = serde_json::from_str::<Vec<serde_json::Value>>(recording).unwrap();
@@ -700,7 +700,7 @@ fn unhandled_nothing_in_the_recorded_sessions() {
     let recorded = [
         include_str!("../fixtures/codex-acp-2.7.0.json"),
         include_str!("../fixtures/claude-agent-acp-0.108.0.json"),
-        include_str!("../fixtures/opencode-2.2.5.json"),
+        include_str!("../fixtures/opencode-2.3.0.json"),
         include_str!("../fixtures/omp-18.22.0.json"),
     ]
     .into_iter()
@@ -748,6 +748,23 @@ fn unhandled_nothing_in_the_recorded_sessions() {
                         .unwrap(),
                 ),
             ),
+            // OpenCode's child status and frames; a frame is a tagged
+            // `session/update` of its own.
+            Some(method @ "opencode/session/child_update") => {
+                let typed: super::child_sessions::ChildUpdate =
+                    serde_json::from_value(params.clone()).unwrap();
+                if let super::child_sessions::ChildEvent::Update { update } = &typed.event {
+                    let inner =
+                        serde_json::json!({"sessionId": typed.root_session_id, "update": update});
+                    let decoded =
+                        to_json(&serde_json::from_value::<SessionNotification>(inner.clone()).unwrap());
+                    let dropped = dropped_paths(&inner, &decoded, &|path, value| {
+                        is_omitted_default(tag, path, value)
+                    });
+                    assert!(dropped.is_empty(), "{method} frame loses {dropped:?}: {params}");
+                }
+                (method, to_json(&typed))
+            }
             Some(method @ "$/cancel_request") => (
                 method,
                 to_json(

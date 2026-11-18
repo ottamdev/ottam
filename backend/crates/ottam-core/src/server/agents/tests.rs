@@ -204,10 +204,11 @@ fn compatibility_agent_column_falls_back_to_the_catalog_when_stopped() {
         .collect();
     assert_eq!(
         features.len(),
-        AcpFeature::ALL.len() - 4,
-        "every row but the four codex-only _meta rows is present for claude"
+        AcpFeature::ALL.len() - 5,
+        "every row but the four codex-only rows and OpenCode's is present for claude"
     );
     assert!(!features.iter().any(|name| name.starts_with("_meta.codex.")));
+    assert!(!features.contains(&"opencode/child-session-updates"));
     assert!(features.contains(&"_meta._claude/rateLimit"));
     assert!(features.contains(&"jetbrains.air.asyncTasks"));
     let steering = row(&stopped, "_session/steering");

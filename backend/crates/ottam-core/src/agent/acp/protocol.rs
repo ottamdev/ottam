@@ -118,6 +118,9 @@ pub(crate) fn launch_unset_variables(definition: &AgentDefinition) -> Vec<String
 /// and its own resolved script, which is how we avoid re-resolving through
 /// `npx` for the login run.
 const TERMINAL_AUTH_META_KEY: &str = "terminal-auth";
+/// OpenCode's opt-in, in both directions: the client asks for
+/// `opencode/session/child_update`, and the agent says it sends them.
+pub(super) const OPENCODE_CHILD_SESSION_UPDATES: &str = "opencode/child-session-updates";
 
 /// Built from [`CLIENT_FEATURES`]: a row flip there changes the wire here,
 /// and `client_features_table_matches_initialize_request` pins the result.
@@ -164,6 +167,9 @@ pub(super) fn initialize_request() -> InitializeRequest {
     }
     if client_supports(AcpFeature::TerminalOutputMeta) {
         meta.insert("terminal_output".into(), Value::Bool(true));
+    }
+    if client_supports(AcpFeature::OpenCodeChildSessionUpdates) {
+        meta.insert(OPENCODE_CHILD_SESSION_UPDATES.into(), Value::Bool(true));
     }
     meta.insert(
         "jetbrains".into(),

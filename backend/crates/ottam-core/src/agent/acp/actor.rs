@@ -8,7 +8,7 @@ use super::super::types::{
     McpServerEntry, ModelSwitch, SessionConfigRequest, SignInProof, SteeringCapability,
 };
 use super::async_tasks::StopAsyncTaskRequest;
-use super::child_sessions::ChildSessions;
+use super::child_sessions::{ChildSessions, ChildUpdate};
 use super::elicitation;
 use super::features::{advertised_features, AcpFeature};
 use super::protocol::{
@@ -327,6 +327,34 @@ impl SharedState {
             }
             None => self.publish(session_id, update),
         }
+    }
+
+    /// Publishes a child update notification (`ChildSessionTags::updates`),
+    /// or returns false when it is not one this agent's children send.
+    pub(super) fn send_child_update(
+        &self,
+        agent: &str,
+        method: &str,
+        params: &serde_json::Value,
+    ) -> bool {
+        let Some(children) = self
+            .child_sessions
+            .as_ref()
+            .filter(|children| children.updates_method() == method)
+        else {
+            return false;
+        };
+        match serde_json::from_value::<ChildUpdate>(params.clone()) {
+            Ok(notification) => {
+                let updates = children
+                    .child_update(notification, |params| decode_session_update(agent, params));
+                for (session_id, update) in updates {
+                    self.publish(session_id, update);
+                }
+            }
+            Err(_) => record_unhandled(agent, &format!("malformed:{method}"), || shape(params)),
+        }
+        true
     }
 
     fn publish(&self, session_id: HarnessSessionId, update: HarnessUpdateKind) {
@@ -696,6 +724,13 @@ async fn run_acp_backend(context: BackendContext) -> Result<(), HarnessError> {
         // task, so sequences stay in order.
         .on_receive_notification(
             async move |notification: UntypedMessage, connection: ConnectionTo<Agent>| {
+                if update_shared.send_child_update(
+                    &update_agent_id.0,
+                    &notification.method,
+                    &notification.params,
+                ) {
+                    return Ok(Handled::Yes);
+                }
                 if notification.method != "session/update" {
                     return Ok(Handled::No {
                         message: (notification, connection),

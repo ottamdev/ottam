@@ -1169,11 +1169,11 @@ mod tests {
     #[test]
     fn a_binary_adapter_login_runs_the_installed_executable() {
         let mut definition = definition();
-        definition.launch.command = "/agents/opencode/adapter/2.2.5/bin/opencode".to_string();
+        definition.launch.command = "/agents/opencode/adapter/2.3.0/bin/opencode".to_string();
         definition.launch.arguments = vec!["acp".to_string()];
         definition.adapter = Some(crate::agent::AdapterPackage {
             name: "@opencode/cli".to_string(),
-            version: "2.2.5".to_string(),
+            version: "2.3.0".to_string(),
             source: crate::agent::AdapterSource::Binary(crate::agent::BinaryAdapter {
                 command: "opencode".to_string(),
                 artifacts: Vec::new(),

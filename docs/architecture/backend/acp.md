@@ -146,8 +146,20 @@ agent shells, and first wherever npm or npx re-resolve it from their shebang
 - OpenCode is outside `ACP_ADAPTERS` (no terminal output, `_auth/status_update`
   or steering); sign-in is validated by session creation. Every launch loads
   `agent/plugins/opencode-foreground.js`, which strips `background` from
-  `shell` and `subagent` (OpenCode doesn't forward the resumed turn) and
-  restores core's environment from `OTTAM_SHELL_ENVIRONMENT`. A managed
+  `shell` (OpenCode resumes the session for its result with no task
+  lifecycle, so nothing arms a follow-up) and restores core's environment
+  from `OTTAM_SHELL_ENVIRONMENT`. Subagents always run in the background:
+  core advertises `opencode/child-session-updates`, and
+  `agent/acp/child_sessions.rs` threads each child from the run statuses in
+  `opencode/session/child_update`, not from its control call, which
+  completes as the child starts. A `subagent` call naming a finished child's
+  `sessionID` is a resumed run (`<child>:generation:<n>`) whose prompt it
+  carries; one naming a running child joins that run and shows as a
+  follow-up. The parent's turn woken by a child's report arrives with no
+  prompt and lands in a follow-up run (the child's end arms it). Stop does
+  not interrupt a background child: core ends its thread cancelled, and
+  what the child sends after that, and the parent turn its report wakes,
+  are dropped. A managed
   profile disables the CLI's shared background service (`config/service.json`;
   fixed port 49374 would mix profiles' sign-ins). At 2.0.27: plan mode not
   enforced, write/patch emit no diffs, slash output doesn't stream.
