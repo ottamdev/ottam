@@ -202,28 +202,30 @@ final class TranscriptSelectionController {
         return index >= ordered.lowerIndex && index <= ordered.upperIndex
     }
 
+    /// The selection as text. `fencesLoneCodeBlock` is for Markdown
+    /// destinations such as quote reply; the clipboard copies a selection
+    /// inside one code block as bare code, even when the block is the whole
+    /// message, because it is pasted somewhere that runs it.
     func copiedText(
         blocks: [TranscriptBlock],
         sourcePlan: [TranscriptItem],
-        indexByID: [TranscriptBlockID: Int]
+        indexByID: [TranscriptBlockID: Int],
+        fencesLoneCodeBlock: Bool = false
     ) -> String? {
         guard hasSelection,
               let ordered = orderedEndpoints(blocks: blocks, indexByID: indexByID)
         else { return nil }
 
-        // A selection inside one code block copies the code alone, even when
-        // the block is the whole message: the reader is pasting it somewhere
-        // that runs it, not back into Markdown.
-        if ordered.lowerIndex == ordered.upperIndex,
-           case .text(let text) = blocks[ordered.lowerIndex].content,
+        // Counted by selected characters, not endpoints: a drag that starts
+        // or ends at the edge of a neighbor block selects nothing there.
+        let selectedIndices = (ordered.lowerIndex...ordered.upperIndex).filter {
+            localRange(for: blocks[$0].id, blocks: blocks, indexByID: indexByID).length > 0
+        }
+        var copiesBareCode = false
+        if !fencesLoneCodeBlock, selectedIndices.count == 1,
+           case .text(let text) = blocks[selectedIndices[0]].content,
            case .codeBlock? = text.node?.kind {
-            let range = localRange(
-                for: blocks[ordered.lowerIndex].id,
-                blocks: blocks,
-                indexByID: indexByID
-            )
-            guard range.length > 0 else { return nil }
-            return (text.source as NSString).substring(with: range)
+            copiesBareCode = true
         }
 
         let sources = Dictionary(uniqueKeysWithValues: sourcePlan.compactMap { item in
@@ -257,7 +259,7 @@ final class TranscriptSelectionController {
                 && firstRange.location == 0
                 && NSMaxRange(lastRange) == blocks[selectedEnd].selectionTextLength
 
-            if selectsWholeItem, let source = sources[itemID] {
+            if !copiesBareCode, selectsWholeItem, let source = sources[itemID] {
                 fragments.append(source)
             } else {
                 let rendered = (selectedStart...selectedEnd).compactMap { blockIndex -> String? in
@@ -269,10 +271,11 @@ final class TranscriptSelectionController {
                     )
                     guard range.length > 0 else { return nil }
                     let substring = (text.source as NSString).substring(with: range)
-                    // A code block spanned whole by a wider selection copies
-                    // as the fence it came from, so the result stays Markdown;
-                    // a partial range stays the code the reader dragged over.
-                    if range.location == 0,
+                    // A whole code block copies as the fence it came from,
+                    // so the result stays Markdown, unless it is the bare
+                    // code the clipboard wants; a partial range stays the
+                    // code the reader dragged over.
+                    if !copiesBareCode, range.location == 0,
                        range.length == blocks[blockIndex].selectionTextLength {
                         switch text.node?.kind {
                         case .codeBlock(let hint, _)?:

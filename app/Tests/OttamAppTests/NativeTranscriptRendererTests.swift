@@ -1114,7 +1114,7 @@ struct NativeTranscriptRendererTests {
     }
 
     @Test("a code block alone copies its code; a wider selection keeps the fence")
-    func selectionCopyRefencesWholeCodeBlocks() throws {
+    func selectionCopyFencesOnlyWithinWiderSelections() throws {
         let plan = [
             TranscriptItem(
                 id: "reply",
@@ -1134,6 +1134,52 @@ struct NativeTranscriptRendererTests {
         selection.begin(at: .init(blockID: code.id, utf16Offset: 0), blockIndex: 1, blocks: blocks)
         selection.extend(
             to: .init(blockID: code.id, utf16Offset: ("let x = 1\nprint(x)" as NSString).length),
+            blockIndex: 1,
+            blocks: blocks,
+            indexByID: indices
+        )
+        #expect(selection.copiedText(blocks: blocks, sourcePlan: plan, indexByID: indices)
+            == "let x = 1\nprint(x)")
+        // Quote reply sends Markdown, so it keeps the fence.
+        #expect(selection.copiedText(
+            blocks: blocks, sourcePlan: plan, indexByID: indices, fencesLoneCodeBlock: true
+        ) == "```swift\nlet x = 1\nprint(x)\n```")
+
+        // Endpoints parked at the edges of the neighbor blocks select only
+        // the code, so it still copies bare.
+        selection.begin(
+            at: .init(blockID: blocks[0].id, utf16Offset: ("Intro" as NSString).length),
+            blockIndex: 0,
+            blocks: blocks
+        )
+        selection.extend(
+            to: .init(blockID: blocks[2].id, utf16Offset: 0),
+            blockIndex: 2,
+            blocks: blocks,
+            indexByID: indices
+        )
+        #expect(selection.copiedText(blocks: blocks, sourcePlan: plan, indexByID: indices)
+            == "let x = 1\nprint(x)")
+
+        // Each side alone: an empty range in only the leading or only the
+        // trailing neighbor.
+        let codeLength = ("let x = 1\nprint(x)" as NSString).length
+        selection.begin(at: .init(blockID: code.id, utf16Offset: 0), blockIndex: 1, blocks: blocks)
+        selection.extend(
+            to: .init(blockID: blocks[2].id, utf16Offset: 0),
+            blockIndex: 2,
+            blocks: blocks,
+            indexByID: indices
+        )
+        #expect(selection.copiedText(blocks: blocks, sourcePlan: plan, indexByID: indices)
+            == "let x = 1\nprint(x)")
+        selection.begin(
+            at: .init(blockID: blocks[0].id, utf16Offset: ("Intro" as NSString).length),
+            blockIndex: 0,
+            blocks: blocks
+        )
+        selection.extend(
+            to: .init(blockID: code.id, utf16Offset: codeLength),
             blockIndex: 1,
             blocks: blocks,
             indexByID: indices
