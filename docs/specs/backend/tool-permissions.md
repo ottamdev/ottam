@@ -68,7 +68,7 @@ agents with their own permission modes; its granular `tool_permissions` rules
 apply only to Zed's own agent
 ([tool permissions](https://zed.dev/docs/ai/tool-permissions.md)).
 
-**omp**, read at v18.11.1 (current pin 18.16.0): under ACP an unset
+**omp**, read at v18.11.1: under ACP an unset
 `tools.approvalMode` gates shell commands, `edit`, `delete` and `move`; only an
 explicit `yolo` (settings or `--approval-mode yolo`) disables the gate, and
 settings are process-wide. ACP mode starts no config watching and advertises

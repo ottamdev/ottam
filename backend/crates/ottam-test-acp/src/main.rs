@@ -1236,6 +1236,22 @@ fn main() {
                         &output,
                         json!({"jsonrpc":"2.0","method":"_ottam_test/unclaimed","params":{"sessionId":session_id,"note":"PRIVATE-TEXT"}}),
                     );
+                    // A standard-form auth status alone, which core logs as
+                    // unhandled; then Claude's pair: the `_` form (a kind
+                    // that sets no verdict) and its standard-form duplicate,
+                    // which core claims unread.
+                    emit(
+                        &output,
+                        json!({"jsonrpc":"2.0","method":"auth/status_update","params":{"state":"authenticated","accounts":[]}}),
+                    );
+                    emit(
+                        &output,
+                        json!({"jsonrpc":"2.0","method":"_auth/status_update","params":{"authStatus":{"kind":"ottam_test"}}}),
+                    );
+                    emit(
+                        &output,
+                        json!({"jsonrpc":"2.0","method":"auth/status_update","params":{"state":"authenticated","accounts":[]}}),
+                    );
                     emit(
                         &output,
                         json!({"jsonrpc":"2.0","id":outbound,"method":"fs/read_text_file","params":{"sessionId":session_id,"path":"/tmp/ottam-test-unclaimed"}}),

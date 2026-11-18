@@ -131,6 +131,10 @@ agent shells, and first wherever npm or npx re-resolve it from their shebang
 - Sign-in: `_auth/status_update` `none` means missing credentials, a
   recognized kind means ready, anything else leaves the verdict alone. Claude
   creates and loads sessions while signed out, so those never prove sign-in.
+  Claude also sends the auth-status RFD's `auth/status_update`; core claims it
+  unread once the connection has sent the `_` form
+  (`STANDARD_AUTH_STATUS_UPDATE` in `agent/acp/actor.rs`). Sent alone, it logs
+  as unhandled traffic, since core does not read its verdict.
   Adapters read API keys only at launch, so secret-only auth methods are
   hidden. Under `SignInProof::ModelSelector` a clean login exit proves nothing.
 - Claude OAuth refresh: `<home>/.oauth_refresh.lock` or legacy

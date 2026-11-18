@@ -15,9 +15,7 @@ Setup…". What remains is real-window verification.
 Core semantics (existing-setup layout, guardrails, claiming) live in
 [acp.md](../../architecture/backend/acp.md) § Managed Adapter Lifecycle And
 Setup UI. Clean-Mac acceptance belongs to
-[agent runtime setup](../backend/agent-runtime-setup.md#remaining-acceptance),
-and Claude's 72-hour shared-home coexistence gate to
-[agent instances](../backend/acp/agent-instances.md) item 4.
+[agent runtime setup](../backend/agent-runtime-setup.md#remaining-acceptance).
 
 ## Active
 
@@ -113,9 +111,9 @@ Try it:
 - The path from a signed-out existing setup through a terminal `codex login`
   to a recheck has not been walked in the real window.
 - Replace the model-catalog probe with ACP's unstable `session/options` per
-  agent once it advertises `sessionCapabilities.options`: claude-agent-acp
-  has it from 0.106.0 (pinned at 0.100.0); codex-acp, OpenCode, and
-  Oh-My-Pi do not yet. It drops the per-adapter cleanup, though Claude's
+  agent once it advertises `sessionCapabilities.options`: the pinned
+  claude-agent-acp does (from 0.106.0), so Claude's probe can switch now;
+  codex-acp, OpenCode, and Oh-My-Pi do not yet. It drops the per-adapter cleanup, though Claude's
   implementation still starts the CLI, so hooks still run.
 
 ## Decisions

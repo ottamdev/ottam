@@ -1,6 +1,6 @@
 ---
 kind: spec
-status: active
+status: deferred
 ---
 
 # Agent Instances
@@ -8,24 +8,8 @@ status: active
 ## Current Status
 
 Instances ship ([ACP work plan](README.md) M4 and M5); the contract is in
-[acp.md](../../../architecture/backend/acp.md) § Instances And Homes. One
-gate is open: Claude's 72-hour coexistence check on a shared home.
-
-## Active
-
-- [ ] 4. Claude existing-setup coexistence gate.
-  - What: at least 72 hours of ordinary Ottam use on `~/.claude` beside
-    terminal Claude. It must include restarts and a real credential-refresh
-    cycle, with no unexpected re-login.
-  - Why: a shared home is what once forced a daily Claude re-login. The
-    refresh-lock guardrails are only proven by synthetic locks.
-  - Done when: the run completes and its record shows the refresh. Time
-    alone does not satisfy the gate, and a merge does not establish it.
-  - Record: timestamps, restart and refresh outcomes, and the
-    unexpected-login count. Never record credential values. Never
-    manufacture or remove a lock in the real CLI home.
-  - Verify with: `./scripts/inspect-core.sh call agent.list '{}'`, plus the
-    core logs (`./scripts/logs-app.sh --backend`).
+[acp.md](../../../architecture/backend/acp.md) § Instances And Homes. Nothing
+is active; what follows is unscheduled.
 
 ## Next
 
@@ -71,6 +55,9 @@ gate is open: Claude's 72-hour coexistence check on a shared home.
   Guardrails: no probes, no lock cleanup, no force-close mid-refresh, no
   sign-out, no purge.
 - 2026-10-09: onboarding recommends and defaults to a managed profile.
+- 2026-11-16: the maintainer closed Claude's 72-hour shared-home
+  coexistence gate. No recorded run backs it; the refresh-lock guardrails
+  remain proven only by synthetic locks.
 - 2026-10-04: seeds are unconditional, and an unclaimed seed's layout can
   be set; onboarding sets it. An instance is claimed once a conversation run
   or agent session references it.

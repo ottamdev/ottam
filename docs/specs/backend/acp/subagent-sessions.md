@@ -44,6 +44,19 @@ Adapter behavior the architecture doc does not record:
 
 ## Next
 
+- Bump OpenCode to 2.3.0, held at 2.2.5 until then. 2.3.0 runs subagents in
+  the background: the control call completes with the child's session id
+  before the child's first frame, and the child later reports to the parent
+  through a new control call. `agent/acp/child_sessions.rs` matches children
+  to open control calls, so at 2.3.0 the controls leak as ordinary calls and
+  the threads never end. Undecided: likely match a late child by its
+  control's `rawOutput.metadata.sessionID` and let the thread's state follow
+  the child, not the control (as for legacy asynchronous Claude threads), and
+  decide how the report-back call shows. Then re-record
+  `opencode-2.3.0.json` with `scripts/record-acp-fixture.py`.
+- Codex 2.7.0 reports delegated tasks as session messages with child
+  references; the pinned recording never triggered one. Record it and check
+  it threads.
 - Let non-terminal `subagent_update` states refresh the thread (a woken
   child, `requires_action`), and show later `session_message`s. Today only
   announce, assignment, and end are handled.

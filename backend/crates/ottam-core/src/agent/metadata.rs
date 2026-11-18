@@ -49,6 +49,9 @@ pub(crate) fn has_unknown_extensions(value: &Value) -> bool {
             // A model id string on each `usage_update`; unused until per-model
             // usage lands.
             "_claude/model" => &[],
+            // Claude's next-prompt suggestions on `session_info_update`;
+            // unused until prompt suggestions land.
+            "promptSuggestions" => &["suggestions"],
             "terminal_info" => &["terminal_id", "cwd"],
             "terminal_output" | "terminal_output_delta" => &["terminal_id", "data"],
             "terminal_exit" => &["terminal_id", "exit_code", "signal"],
@@ -271,9 +274,9 @@ mod tests {
     #[test]
     fn pinned_fixture_updates_have_no_unknown_extensions() {
         let fixtures = [
-            include_str!("fixtures/claude-agent-acp-0.100.0.json"),
-            include_str!("fixtures/codex-acp-2.5.0.json"),
-            include_str!("fixtures/omp-18.16.0.json"),
+            include_str!("fixtures/claude-agent-acp-0.108.0.json"),
+            include_str!("fixtures/codex-acp-2.7.0.json"),
+            include_str!("fixtures/omp-18.22.0.json"),
             include_str!("fixtures/opencode-2.2.5.json"),
         ];
         let mut checked = 0;

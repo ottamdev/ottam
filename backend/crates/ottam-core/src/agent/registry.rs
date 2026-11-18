@@ -36,9 +36,11 @@ pub const TEST_BINARY_AGENT_ID: &str = "test.binary";
 /// upstream release cannot change what every user runs without an app release.
 /// Bump deliberately; `ModelCatalogService` re-probes when a pin moves. Each
 /// definition's `catalog_probe` rests on what that version stores for a bare
-/// `session/new`: recheck it with `scripts/check-probe-leftovers.py`.
-const CODEX_ACP_PACKAGE: (&str, &str) = ("@agentclientprotocol/codex-acp", "2.5.0");
-const CLAUDE_ACP_PACKAGE: (&str, &str) = ("@agentclientprotocol/claude-agent-acp", "0.100.0");
+/// `session/new`: recheck it with `scripts/check-probe-leftovers.py`. Each
+/// bump also re-records the agent's `fixtures/` session with
+/// `scripts/record-acp-fixture.py`.
+const CODEX_ACP_PACKAGE: (&str, &str) = ("@agentclientprotocol/codex-acp", "2.7.0");
+const CLAUDE_ACP_PACKAGE: (&str, &str) = ("@agentclientprotocol/claude-agent-acp", "0.108.0");
 /// Each adapter's own `engines.node`, per engine rather than one figure for
 /// all: a floor is a rejection threshold, so borrowing the strictest engine's
 /// would turn setups that genuinely work into "Node too old". Re-check these
@@ -2373,6 +2375,53 @@ fn apply_home_settings(home: &Path, settings: &[HomeSetting]) -> io::Result<()> 
 }
 
 /// Create a managed home and the directories its variables name inside it.
+/// One agent's managed profile, laid out as for a real launch.
+#[cfg(test)]
+pub(crate) struct ManagedFixtureLaunch {
+    pub(crate) agent: AgentId,
+    pub(crate) home: PathBuf,
+    pub(crate) environment: Vec<(String, String)>,
+}
+
+/// Each built-in agent's managed profile under `root` as a real launch gets
+/// it: the home and plugin written, and the launch environment (home
+/// variables, plugin, shell environment). `scripts/record-acp-fixture.py`
+/// records in these rather than in its own copy of the layout.
+#[cfg(test)]
+pub(crate) fn managed_fixture_launches(
+    root: &Path,
+) -> Result<Vec<ManagedFixtureLaunch>, HarnessError> {
+    struct NoAdapters;
+    impl AdapterFactory for NoAdapters {
+        fn create(&self, _: AgentDefinition, _: u64) -> Arc<dyn HarnessAdapter> {
+            unreachable!("a fixture launch starts no adapter")
+        }
+    }
+    let registry = AgentRegistry::with_components(
+        built_in_definitions(),
+        Arc::new(SystemRuntimeProbe::with_resolver(Arc::default())),
+        Arc::new(NoAdapters),
+    )
+    .with_home_root(root.to_path_buf());
+    built_in_definitions()
+        .into_iter()
+        .filter(|definition| !definition.home_variables.is_empty())
+        .map(|definition| {
+            let agent = definition.agent_id;
+            registry.prepare_home(&agent)?;
+            let home = registry.agent_home(&agent).ok_or_else(|| {
+                HarnessError::new(HarnessErrorKind::Internal, "no managed home")
+            })?;
+            let environment = registry.definition(&agent)?.launch.environment;
+            Ok(ManagedFixtureLaunch {
+                agent,
+                home,
+                environment,
+            })
+        })
+        .collect()
+}
+
 fn create_managed_home(home: &Path, variables: &[HomeVariable]) -> io::Result<()> {
     std::fs::create_dir_all(home)?;
     for variable in variables {
@@ -2436,7 +2485,7 @@ pub(super) fn built_in_definitions() -> Vec<AgentDefinition> {
             sign_in_proof: SignInProof::Session,
             terminal_login_args: None,
             mcp_connections: McpConnections::PerSession,
-            // At 0.100.0 a transcript appears only with the first prompt; the
+            // At 0.108.0 a transcript appears only with the first prompt; the
             // adapter spreads `claudeCode.options` into the CLI's query
             // options, so this keeps even that from being written.
             catalog_probe: ProbeCleanup::SessionMeta(|| {
@@ -2478,7 +2527,7 @@ pub(super) fn built_in_definitions() -> Vec<AgentDefinition> {
             sign_in_proof: SignInProof::Session,
             terminal_login_args: None,
             mcp_connections: McpConnections::PerSession,
-            // At 2.5.0 the rollout file is written with the first prompt, so
+            // At 2.7.0 the rollout file is written with the first prompt, so
             // a bare `session/new` stores no thread.
             catalog_probe: ProbeCleanup::Nothing,
         },
@@ -2599,6 +2648,9 @@ fn test_binary_definition() -> Option<AgentDefinition> {
 /// OpenCode v2 ships as Bun-compiled executables inside npm platform
 /// tarballs; there are no GitHub release assets for v2. The digests are
 /// sha256 of each tarball, cross-checked against npm's sha512 integrity.
+/// Held at 2.2.5: 2.3.0 runs subagents in the background, ending each control
+/// call before its child's first frame, which `acp/child_sessions.rs` does
+/// not thread yet.
 const OPENCODE_VERSION: &str = "2.2.5";
 const OPENCODE_ARTIFACTS: [(&str, &str, &str); 2] = [
     (
@@ -2728,17 +2780,17 @@ fn opencode_definition() -> AgentDefinition {
 /// assets; the digests are the release's own `SHA256SUMS.txt`. omp changes
 /// ACP behavior in patch releases, so a bump re-records
 /// `fixtures/omp-<version>.json` and goes through the roster spec.
-const OMP_VERSION: &str = "18.16.0";
+const OMP_VERSION: &str = "18.22.0";
 const OMP_ARTIFACTS: [(&str, &str, &str); 2] = [
     (
         "aarch64",
-        "https://github.com/can1357/oh-my-pi/releases/download/v18.16.0/omp-darwin-arm64",
-        "d4a10d97488d6054d2b18198bd24f461079952c7e0fb75ba66336ca0df0cb99e",
+        "https://github.com/can1357/oh-my-pi/releases/download/v18.22.0/omp-darwin-arm64",
+        "d185113d63eba23925e5d70ab661a424b827c06c98f8e766c3bf4ad62ddaff9a",
     ),
     (
         "x86_64",
-        "https://github.com/can1357/oh-my-pi/releases/download/v18.16.0/omp-darwin-x64",
-        "abd62d315b66314f0f635d537407037e7b0d06782513d8035669db5ef744242d",
+        "https://github.com/can1357/oh-my-pi/releases/download/v18.22.0/omp-darwin-x64",
+        "a1933196fe54bac3d518ccf7e5cc11849dd207b710cda431c465a12d173ff035",
     ),
 ];
 
@@ -2809,7 +2861,7 @@ fn omp_definition() -> AgentDefinition {
         // stores the one picked, and exits.
         terminal_login_args: Some(&["login"]),
         mcp_connections: McpConnections::PerSession,
-        // At 18.16.0 every `session/new` writes a `.jsonl` under the agent
+        // At 18.22.0 every `session/new` writes a `.jsonl` under the agent
         // directory's `sessions/`. omp has no `session/delete`, ignores
         // `--no-session` in ACP, and records a handle in
         // `acp-session-handles.json` only for a switched or forked session.
@@ -3034,11 +3086,11 @@ mod tests {
         assert_eq!(codex.terminal_login_reveal, TerminalLoginReveal::Immediate);
         assert_eq!(
             codex.launch.arguments,
-            ["-y", "@agentclientprotocol/codex-acp@2.5.0"]
+            ["-y", "@agentclientprotocol/codex-acp@2.7.0"]
         );
         assert_eq!(
             codex.adapter.as_ref().map(AdapterPackage::spec).as_deref(),
-            Some("@agentclientprotocol/codex-acp@2.5.0")
+            Some("@agentclientprotocol/codex-acp@2.7.0")
         );
         // Literals, not the constants: mirroring each adapter's declared
         // `engines.node` is the whole point, so moving a floor should be a
@@ -3066,11 +3118,11 @@ mod tests {
         assert_eq!(claude.terminal_login_reveal, TerminalLoginReveal::WhenStuck);
         assert_eq!(
             claude.launch.arguments,
-            ["-y", "@agentclientprotocol/claude-agent-acp@0.100.0"]
+            ["-y", "@agentclientprotocol/claude-agent-acp@0.108.0"]
         );
         assert_eq!(
             claude.adapter.as_ref().map(AdapterPackage::spec).as_deref(),
-            Some("@agentclientprotocol/claude-agent-acp@0.100.0")
+            Some("@agentclientprotocol/claude-agent-acp@0.108.0")
         );
         assert_eq!(claude.launch.minimum_node_major, 22);
         assert!(claude.launch.environment.is_empty());

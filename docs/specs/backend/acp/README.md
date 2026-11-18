@@ -9,7 +9,7 @@ status: active
 
 M1–M9 are shipped; their behavior is in
 [acp.md](../../../architecture/backend/acp.md). M10 (context compaction) is
-next and its Try it awaits approval. Four shipped milestones still owe one
+next and its Try it awaits approval. Three shipped milestones still owe one
 real-window check each, listed under Active.
 
 ## How Milestones Work
@@ -81,9 +81,6 @@ Try it (draft, awaiting approval):
 Each is one walkthrough step that never ran in the real window. Run it,
 record the result in the owning spec, then delete the entry here.
 
-- **M4, existing Claude setup.** Claude's 72-hour coexistence check on a
-  shared home ([`inst:4`](agent-instances.md#active)). Release is gated on
-  it.
 - **M6, OpenCode.** With an OpenCode 2 CLI already signed in, choose "Use
   my CLI setup." The sheet shows the database warning. The conversation
   uses the CLI's providers without asking for sign-in

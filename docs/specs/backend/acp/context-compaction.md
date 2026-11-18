@@ -16,11 +16,13 @@ This is [M10 of the ACP work plan](README.md#m10-see-when-an-agent-compacts-its-
 ## Current Status
 
 Not started; its Try it in the work plan awaits approval. The wire evidence
-below was recorded at the current pins (Claude 0.100.0, Codex 2.5.0,
+below was recorded at the earlier pins (Claude 0.100.0, Codex 2.5.0,
 OpenCode 2.2.5, Oh-My-Pi 18.16.0) with a direct ACP client sending Ottam's
 `initialize`, once as sent today and once with
 `clientCapabilities.session.compaction: {}` added. Oh-My-Pi forwards only
-automatic compaction, so its threshold was lowered to force one.
+automatic compaction, so its threshold was lowered to force one. Claude
+compacts idle sessions since 0.101.0, so recheck its row at the current pin
+before `cmp:1`.
 
 ACP 1.12 (SDK 3.5, pinned) defines compaction as stable, not behind an SDK
 feature:
