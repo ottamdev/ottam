@@ -1,5 +1,8 @@
 use super::attribution::SessionAttribution;
-use super::conversation_runner::{ConversationPermissionControl, FollowUpAttribution};
+use super::conversation_runner::{
+    ConversationPermissionControl, ConversationRunContext, FollowUpAttribution,
+};
+use crate::server::attention::{AskGuard, AskInfo, Attention};
 use crate::agent::{
     AgentId, HarnessPermissionBroker, HarnessPermissionFuture, HarnessPermissionOutcome,
     HarnessPermissionRequest, HarnessQuestionFuture, HarnessQuestionOutcome,
@@ -10,7 +13,8 @@ use ottam_protocol::{
     AgentAskQuestionParams, AgentAskQuestionResult, AgentID, AgentPermissionOption,
     AgentPermissionOptionKind, AgentPermissionOutcome, AgentQuestion, AgentQuestionAnswer,
     AgentQuestionKind, AgentQuestionOutcome, AgentRequestPermissionParams,
-    AgentRequestPermissionResult, AgentSessionID, ConversationEventKind, TranscriptQuestion,
+    AgentRequestPermissionResult, AgentSessionID, AttentionReason, ConversationEventKind,
+    TranscriptQuestion,
     TranscriptQuestionAnswer, TranscriptQuestionState, METHOD_AGENT_ASK_QUESTION,
     METHOD_AGENT_REQUEST_PERMISSION,
 };
@@ -51,6 +55,9 @@ pub(super) struct ServerPermissionBroker {
     /// The coordinator, which opens follow-up runs. Bound once both exist;
     /// unbound, a request on a session no run holds goes out unattributed.
     follow_ups: Arc<OnceLock<Weak<dyn FollowUpAttribution>>>,
+    /// Where an ask waiting on the client is shown. Weak: the registry
+    /// holding this broker outlives the bridge's shutdown in deferred tasks.
+    attention: Arc<OnceLock<Weak<Attention>>>,
 }
 
 impl ServerPermissionBroker {
@@ -63,12 +70,37 @@ impl ServerPermissionBroker {
             pending: Arc::new(StdMutex::new(HashMap::new())),
             attribution,
             follow_ups: Arc::new(OnceLock::new()),
+            attention: Arc::new(OnceLock::new()),
         }
     }
 
     pub(super) fn bind_follow_ups<T: FollowUpAttribution + 'static>(&self, follow_ups: &Arc<T>) {
         let follow_ups: Weak<T> = Arc::downgrade(follow_ups);
         let _ = self.follow_ups.set(follow_ups);
+    }
+
+    pub(super) fn bind_attention(&self, attention: &Arc<Attention>) {
+        let _ = self.attention.set(Arc::downgrade(attention));
+    }
+
+    /// Shows `context`'s conversation as needing input until the guard
+    /// drops. Only requests attributed to a conversation are shown.
+    fn ask_guard(
+        &self,
+        context: Option<&ConversationRunContext>,
+        reason: AttentionReason,
+        detail: Option<String>,
+    ) -> Option<AskGuard> {
+        let context = context?;
+        let attention = self.attention.get()?.upgrade()?;
+        Some(attention.begin_ask(AskInfo {
+            workspace_id: context.workspace_id.clone(),
+            conversation_id: context.conversation_id.clone(),
+            run_id: context.run_id.clone(),
+            reason,
+            detail,
+            title: context.title_reader(),
+        }))
     }
 
     pub(super) fn set_supported(&self, supported: bool) {
@@ -282,6 +314,19 @@ impl HarnessPermissionBroker for ServerPermissionBroker {
                 // No timeout: like a question, the request waits for the user,
                 // a Stop, or the agent. A timeout aborted tool calls the user
                 // simply hadn't reached yet.
+                let needs_input = self.ask_guard(
+                    conversation_context.as_ref(),
+                    if params.plan.is_some() {
+                        AttentionReason::Plan
+                    } else {
+                        AttentionReason::Permission
+                    },
+                    params
+                        .tool_call
+                        .get("title")
+                        .and_then(Value::as_str)
+                        .map(str::to_owned),
+                );
                 let response = match serde_json::to_value(&params) {
                     Ok(value) => tokio::select! {
                         _ = cancel.cancelled() => None,
@@ -291,6 +336,7 @@ impl HarnessPermissionBroker for ServerPermissionBroker {
                     },
                     Err(_) => None,
                 };
+                drop(needs_input);
                 self.remove_pending(&key, pending_id);
                 match response {
                     Some(ClientResponse::Success { result, .. }) => {
@@ -469,10 +515,16 @@ impl ServerPermissionBroker {
         }
 
         // No timeout: the question waits for the user, a Stop, or the agent.
+        let needs_input = self.ask_guard(
+            context.as_ref(),
+            AttentionReason::Question,
+            Some(params.title.clone()),
+        );
         let response = tokio::select! {
             _ = cancel.cancelled() => None,
             response = self.client_link.request(METHOD_AGENT_ASK_QUESTION, value) => response.ok(),
         };
+        drop(needs_input);
         self.remove_pending(&key, pending_id);
         let outcome = match response {
             Some(ClientResponse::Success { result, .. }) => {

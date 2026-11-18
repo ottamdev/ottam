@@ -231,6 +231,72 @@ fn notifications_broadcast_without_terminal_output_deltas() {
     core.shutdown();
 }
 
+/// An attached client's focus counts as seen, like the primary's, and ends
+/// when its connection closes.
+#[test]
+fn attention_follows_an_attached_clients_focus_until_it_closes() {
+    let repo = GitRepoFixture::init();
+    repo.commit_empty("initial");
+    let runtime = crate::support::FakeAcpRuntime::new();
+    let mut core = CoreProcess::new_with_env(runtime.environment());
+    core.initialize();
+    let opened = core.open_path(repo.path());
+    let project_id = opened["project"]["projectID"]
+        .as_str()
+        .expect("projectID")
+        .to_string();
+    let workspace_id = core.workspace_id(&project_id);
+    let created = core.create_conversation(&project_id, Some("Watched"), Some("Go"));
+    let conversation_id = created["conversation"]["conversationID"]
+        .as_str()
+        .expect("conversationID")
+        .to_string();
+    let input_id = created["latestRunInputPage"]["runInputs"][0]["runInputID"]
+        .as_str()
+        .expect("inputID")
+        .to_string();
+
+    let mut attach = AttachClient::connect(core.ottam_home_path());
+    attach.send(json!({
+        "id": "att/focus",
+        "method": "attention.setFocus",
+        "params": {"conversationID": conversation_id}
+    }));
+    let (focused, _) = attach.read_response_id(&json!("att/focus"));
+    assert_success_response(&focused, &json!("att/focus"));
+
+    let unseen = |messages: &[Value]| {
+        messages
+            .iter()
+            .any(|message| message["method"] == "attention.changed"
+                && message["params"]["entry"]["state"] == "unseen")
+    };
+    let read_for = |core: &mut CoreProcess, duration: Duration| {
+        let deadline = Instant::now() + duration;
+        let mut messages = Vec::new();
+        while let Some(message) =
+            core.read_json_timeout(deadline.saturating_duration_since(Instant::now()))
+        {
+            messages.push(message);
+        }
+        messages
+    };
+    let run = core.start_conversation_run(&project_id, &conversation_id, "codex", &input_id);
+    let run_id = run["run"]["runID"].as_str().expect("runID").to_string();
+    core.wait_for_run_status(&workspace_id, &conversation_id, &run_id, &["completed"]);
+    assert!(!unseen(&read_for(&mut core, Duration::from_secs(4))));
+
+    drop(attach);
+    let posted = core.post_conversation_message(&project_id, &conversation_id, "Again");
+    let input_id = posted["input"]["runInputID"]
+        .as_str()
+        .expect("follow-up input")
+        .to_string();
+    core.start_conversation_run(&project_id, &conversation_id, "codex", &input_id);
+    assert!(unseen(&read_for(&mut core, Duration::from_secs(8))));
+    core.shutdown();
+}
+
 #[test]
 fn primary_stdin_close_ends_attached_connections_and_unlinks_the_socket() {
     let mut core = CoreProcess::new();
