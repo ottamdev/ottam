@@ -143,11 +143,11 @@ output set `OTTAM_TEST_VERBOSE=1` (Rust) or pass `--verbose` (Swift).
 | `Cargo.lock` | `./scripts/generate-third-party-notices.sh` (needs `cargo-about`) refreshes `THIRD_PARTY_NOTICES.md` |
 
 Full gates: `./scripts/test-rust-core.sh` and `./scripts/test-app.sh`. CI's
-`full-tests` runs Rust tests, protocol guards, and Clippy on Linux, then
-affected Swift checks on macOS; it runs every gate on pushes to `main`. Report
-what ran; never imply pending CI passed. `./scripts/install-git-hooks.sh`
-installs the pre-commit hook (whitespace, plus the docs check when Markdown
-changes); fix failures rather than bypassing it.
+`full-tests` runs Rust tests, protocol guards, and Clippy on Linux, and
+affected Swift checks on macOS in parallel; it runs every gate on pushes to
+`main`. Report what ran; never imply pending CI passed.
+`./scripts/install-git-hooks.sh` installs the pre-commit hook (whitespace, plus
+the docs check when Markdown changes); fix failures rather than bypassing it.
 `scripts/prune-rust-target.sh` cleans `backend/target` past
 `OTTAM_RUST_TARGET_MAX_GB` (default 20; 0 disables), so expect an occasional
 cold build.
