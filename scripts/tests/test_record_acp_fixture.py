@@ -126,6 +126,14 @@ class Framing(unittest.TestCase):
         self.assertEqual(sent, [{"jsonrpc": "2.0", "id": 7,
                                  "result": {"outcome": {"outcome": "cancelled"}}}])
 
+    def test_a_passed_deadline_stops_reading_queued_output(self):
+        adapter = object.__new__(recorder.Adapter)
+        adapter.inbox = recorder.queue.Queue()
+        adapter.frames = []
+        adapter.inbox.put(json.dumps(update("plan")))
+        self.assertIsNone(adapter.next(recorder.time.monotonic() - 1))
+        self.assertEqual(adapter.next(recorder.time.monotonic() + 5), update("plan"))
+
     def test_mode_switch_targets_the_mode_select(self):
         session = {"sessionId": "s", "configOptions": [
             {"id": "model", "category": "model", "currentValue": "a", "options": []},

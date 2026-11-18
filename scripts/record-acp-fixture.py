@@ -451,9 +451,14 @@ class Adapter:
                 return frame["result"]
 
     def next(self, deadline: float):
+        """The next frame, or None once the adapter exits or `deadline`
+        passes, even while output is still queued."""
         while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                return None
             try:
-                line = self.inbox.get(timeout=max(0.0, deadline - time.monotonic()))
+                line = self.inbox.get(timeout=remaining)
             except queue.Empty:
                 return None
             if line is None:
@@ -601,12 +606,14 @@ def main() -> int:
         if any(email != EMAIL for email in EMAIL_PATTERN.findall(line)):
             print(f"  review line {number}: an email-shaped token outside an account")
 
+    # Read the baseline first: --compare may name the file about to be replaced.
+    baseline = json.loads(options.compare.read_text()) if options.compare else None
     out = options.out or FIXTURES / scenario["fixture"].format(version=spec["version"])
     out.write_text(rendered)
     print(f"wrote {out.relative_to(REPO) if out.is_relative_to(REPO) else out} "
           f"({len(scrubbed)} frames)")
-    if options.compare:
-        lost = compare(json.loads(options.compare.read_text()), scrubbed)
+    if baseline is not None:
+        lost = compare(baseline, scrubbed)
         for item in lost:
             print(f"  lost {item}")
         if not lost:
