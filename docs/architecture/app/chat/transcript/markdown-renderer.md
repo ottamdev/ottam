@@ -127,7 +127,9 @@ Selection, copy and accessibility:
 - Copy reconstructs Markdown source for whole blocks (fenced code with a fence
   longer than any inner backtick run; a pipe table via
   `TranscriptTableSource.pipeTable` that parses back to the same cells) and
-  rendered text for partial ranges. Responder-chain Copy uses the same
+  rendered text for partial ranges. A selection whose characters fall in one
+  code block copies bare code instead; quote reply keeps the fence because
+  it sends Markdown. Responder-chain Copy uses the same
   selection. Whole-message copy exists only for finished turns whose final
   assistant body loaded without error, and copies that message alone.
 - Links are marked by color alone; activation resolves relative destinations
