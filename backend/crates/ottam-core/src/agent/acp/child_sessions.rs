@@ -151,6 +151,28 @@ impl ChildSessions {
         *self.lock() = State::default();
     }
 
+    /// The agent's own ids of `root`'s children whose current run has not
+    /// ended, nested ones included, deepest first.
+    pub(super) fn open_children(&self, root: &HarnessSessionId) -> Vec<String> {
+        fn depth<'a>(children: &'a HashMap<String, Child>, mut id: &'a str) -> usize {
+            let mut depth = 0;
+            while let Some(child) = children.get(id) {
+                depth += 1;
+                id = &child.parent.0;
+            }
+            depth
+        }
+        let state = self.lock();
+        let mut open: Vec<(usize, &String)> = state
+            .children
+            .iter()
+            .filter(|(_, child)| child.open && child.root == *root)
+            .map(|(id, _)| (depth(&state.children, id), id))
+            .collect();
+        open.sort();
+        open.into_iter().rev().map(|(_, id)| id.clone()).collect()
+    }
+
     /// Rewrites one update that arrived on `session`. `params` is the raw
     /// `session/update`, whose tag a decoded chunk no longer carries. The
     /// updates come back in order, each with the session it now belongs to.
@@ -1083,6 +1105,26 @@ mod tests {
         assert!(
             matches!(out.last(), Some((session, HarnessUpdateKind::AgentMessageChunk(..))) if session == &id("inner"))
         );
+    }
+
+    #[test]
+    fn open_children_are_a_roots_running_children_deepest_first() {
+        let children = ChildSessions::new(TAGS);
+        replay(
+            &children,
+            &[
+                status("root", "outer", "root", "Outer", "created"),
+                json!({"method": TAGS.updates, "params": {
+                    "rootSessionId": "root", "childSessionId": "inner", "parentSessionId": "outer",
+                    "depth": 2, "title": "Inner", "type": "status", "status": "created"}}),
+                status("root", "done", "root", "Done", "created"),
+                status("root", "done", "root", "Done", "completed"),
+                status("other", "elsewhere", "other", "Elsewhere", "created"),
+            ],
+        );
+        assert_eq!(children.open_children(&id("root")), ["inner", "outer"]);
+        replay(&children, &[status("root", "done", "root", "Done", "running")]);
+        assert_eq!(children.open_children(&id("root")), ["inner", "outer", "done"]);
     }
 
     #[test]

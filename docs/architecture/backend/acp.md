@@ -156,10 +156,13 @@ agent shells, and first wherever npm or npx re-resolve it from their shebang
   `sessionID` is a resumed run (`<child>:generation:<n>`) whose prompt it
   carries; one naming a running child joins that run and shows as a
   follow-up. The parent's turn woken by a child's report arrives with no
-  prompt and lands in a follow-up run (the child's end arms it). Stop does
-  not interrupt a background child: core ends its thread cancelled, and
-  what the child sends after that, and the parent turn its report wakes,
-  are dropped. A managed
+  prompt and lands in a follow-up run (the child's end arms it).
+  `session/cancel` reaches neither a background child nor a woken turn, and
+  a child's report, even a cancelled one, wakes the parent. So Stop sends
+  `session/close` to the open children, waits a second for the wake their
+  reports cause, then closes the root, which interrupts it
+  (`actor.rs::close_background_tree`); a root closed before the wake leaves
+  the woken turn running. The next run loads the root again. A managed
   profile disables the CLI's shared background service (`config/service.json`;
   fixed port 49374 would mix profiles' sign-ins). At 2.0.27: plan mode not
   enforced, write/patch emit no diffs, slash output doesn't stream.
