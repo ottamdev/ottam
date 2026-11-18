@@ -211,6 +211,21 @@ final class TranscriptSelectionController {
               let ordered = orderedEndpoints(blocks: blocks, indexByID: indexByID)
         else { return nil }
 
+        // A selection inside one code block copies the code alone, even when
+        // the block is the whole message: the reader is pasting it somewhere
+        // that runs it, not back into Markdown.
+        if ordered.lowerIndex == ordered.upperIndex,
+           case .text(let text) = blocks[ordered.lowerIndex].content,
+           case .codeBlock? = text.node?.kind {
+            let range = localRange(
+                for: blocks[ordered.lowerIndex].id,
+                blocks: blocks,
+                indexByID: indexByID
+            )
+            guard range.length > 0 else { return nil }
+            return (text.source as NSString).substring(with: range)
+        }
+
         let sources = Dictionary(uniqueKeysWithValues: sourcePlan.compactMap { item in
             item.markdownText.map { (item.id, $0) }
         })
@@ -254,7 +269,8 @@ final class TranscriptSelectionController {
                     )
                     guard range.length > 0 else { return nil }
                     let substring = (text.source as NSString).substring(with: range)
-                    // A whole code block copies as the fence it came from;
+                    // A code block spanned whole by a wider selection copies
+                    // as the fence it came from, so the result stays Markdown;
                     // a partial range stays the code the reader dragged over.
                     if range.location == 0,
                        range.length == blocks[blockIndex].selectionTextLength {
