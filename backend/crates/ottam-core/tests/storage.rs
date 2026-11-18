@@ -306,6 +306,83 @@ async fn baseline_home_upgrades_to_session_model_columns() {
     assert_eq!(kept.value, 1);
 }
 
+/// A session's confirmed level belongs to its model: a different model
+/// reported without a level drops the old one, the same model keeps it, and
+/// either value alone leaves the other as stored.
+#[tokio::test]
+async fn session_model_keeps_levels_with_their_model() {
+    use ottam_core::storage::models::AgentSessionId;
+    use ottam_core::storage::repositories::*;
+    let home = TempDir::new().expect("home");
+    let database = Database::open(home.path().to_path_buf()).expect("opens database");
+    let session_id = "01900000-0000-7000-8000-000000000002";
+    database
+        .run("test.sessionModel", move |connection| {
+            let now = chrono::Utc::now();
+            let workspace = WorkspaceRepository::create(connection, "Models", now)?;
+            let created = ConversationRepository::create(
+                connection,
+                &CreateConversationParams {
+                    workspace_id: &workspace.id,
+                    title: "Models",
+                    root: ConversationRootSelection::WorkspaceFiles,
+                    context_projects: &[],
+                    initial_message: None,
+                },
+                now,
+            )?;
+            diesel::sql_query(
+                "INSERT INTO agent_sessions (id, workspace_id, conversation_id, engine_id, \
+                     external_session_id, source_scope_fingerprint, status, created_at, \
+                     last_used_at) \
+                 VALUES (?, ?, ?, 'claude', 'external', 'scope', 'active', 1, 1)",
+            )
+            .bind::<Text, _>(session_id)
+            .bind::<Text, _>(workspace.id.to_string())
+            .bind::<Text, _>(created.conversation.id.to_string())
+            .execute(connection)?;
+            Ok(())
+        })
+        .await
+        .expect("seeds a session");
+    let set = |model: Option<&'static str>, level: Option<&'static str>| {
+        let database = &database;
+        async move {
+            database
+                .run("test.sessionModel", move |connection| {
+                    let id = AgentSessionId::try_from(session_id).expect("session id");
+                    RunRepository::set_session_model(connection, &id, model, level)?;
+                    let stored: (Option<String>, Option<String>) = diesel::sql_query(
+                        "SELECT current_model_id AS model, current_thought_level_id AS level \
+                         FROM agent_sessions WHERE id = ?",
+                    )
+                    .bind::<Text, _>(session_id)
+                    .get_result::<StoredSelection>(connection)
+                    .map(|row| (row.model, row.level))?;
+                    Ok(stored)
+                })
+                .await
+                .expect("sets the model")
+        }
+    };
+    let pair = |model: &str, level: Option<&str>| {
+        (Some(model.to_string()), level.map(str::to_string))
+    };
+    assert_eq!(set(Some("opus"), Some("xhigh")).await, pair("opus", Some("xhigh")));
+    assert_eq!(set(Some("opus"), None).await, pair("opus", Some("xhigh")), "same model");
+    assert_eq!(set(None, Some("high")).await, pair("opus", Some("high")), "level alone");
+    assert_eq!(set(Some("haiku"), None).await, pair("haiku", None), "a new model's levels are its own");
+    assert_eq!(set(None, None).await, pair("haiku", None), "nothing reported");
+}
+
+#[derive(QueryableByName)]
+struct StoredSelection {
+    #[diesel(sql_type = diesel::sql_types::Nullable<Text>)]
+    model: Option<String>,
+    #[diesel(sql_type = diesel::sql_types::Nullable<Text>)]
+    level: Option<String>,
+}
+
 fn applied_migrations(connection: &mut SqliteConnection) -> Vec<String> {
     diesel::sql_query("SELECT version AS value FROM __diesel_schema_migrations ORDER BY version")
         .load::<TextValue>(connection)

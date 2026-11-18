@@ -122,7 +122,8 @@ struct ChatConversationModelTests {
              sessions: [session("s1", launch, engine: claude, model: "fable", level: "xhigh")])
         model.selectModel("haiku")
         let carrying = ConversationRunID("r2")
-        model.notePicksCarried(by: carrying, conversationID: launch, modelID: "haiku", thoughtLevelID: "xhigh")
+        model.notePicksCarried(by: carrying, engineID: claude, conversationID: launch,
+                               modelID: "haiku", thoughtLevelID: "xhigh")
         model.noteRunEnded(ConversationRunID("unrelated"), conversationID: launch)
         #expect(model.hasPendingModel, "another run's end leaves the pick")
         model.noteRunEnded(carrying, conversationID: launch)
@@ -137,12 +138,15 @@ struct ChatConversationModelTests {
              sessions: [session("s1", launch, engine: claude, model: "fable", level: "xhigh")])
         model.selectModel("haiku")
         let carrying = ConversationRunID("r2")
-        model.notePicksCarried(by: carrying, conversationID: launch, modelID: "haiku", thoughtLevelID: "xhigh")
+        model.notePicksCarried(by: carrying, engineID: claude, conversationID: launch,
+                               modelID: "haiku", thoughtLevelID: "xhigh")
         // The agent fell back to another model.
         model.confirmModel("sonnet", thoughtLevelID: nil, engineID: claude, conversationID: launch, runID: carrying)
         #expect(model.hasPendingModel == false)
         #expect(model.selectedModelID == "sonnet")
-        #expect(model.effectiveThoughtLevelID == "xhigh", "a field it did not report keeps its value")
+        #expect(model.effectiveThoughtLevelID == nil, "the old model's level is not the new one's")
+        model.confirmModel(nil, thoughtLevelID: "low", engineID: claude, conversationID: launch)
+        #expect(model.selectedModelID == "sonnet", "a field it did not report keeps its value")
     }
 
     @Test("A message queued before the pick does not carry it")
@@ -152,9 +156,55 @@ struct ChatConversationModelTests {
              sessions: [session("s1", launch, engine: claude, model: "fable", level: "xhigh")])
         model.selectModel("haiku")
         let drained = ConversationRunID("r2")
-        model.notePicksCarried(by: drained, conversationID: launch, modelID: "fable", thoughtLevelID: "xhigh")
+        model.notePicksCarried(by: drained, engineID: claude, conversationID: launch,
+                               modelID: "fable", thoughtLevelID: "xhigh")
         model.noteRunEnded(drained, conversationID: launch)
         #expect(model.hasPendingModel)
+    }
+
+    @Test("A pick made after the carrying run was sent waits for the next message")
+    func pickAfterSendSurvivesSettle() {
+        let (model, _) = makeModel()
+        open(model, launch, runs: [run("r1", launch, engine: claude, model: nil, level: nil)],
+             sessions: [session("s1", launch, engine: claude, model: "fable", level: "xhigh")])
+        model.selectModel("haiku")
+        let carrying = ConversationRunID("r2")
+        model.notePicksCarried(by: carrying, engineID: claude, conversationID: launch,
+                               modelID: "haiku", thoughtLevelID: "xhigh")
+        // While it runs, the user picks for the message after it.
+        model.selectModel("sonnet")
+        model.confirmModel("haiku", thoughtLevelID: nil, engineID: claude, conversationID: launch, runID: carrying)
+        #expect(model.pendingModelIDs[launch]?.value == "sonnet")
+        model.noteRunEnded(carrying, conversationID: launch)
+        #expect(model.selectedModelID == "sonnet", "the later pick still rides the next message")
+    }
+
+    @Test("A run on another engine does not carry this engine's picks")
+    func otherEngineRunDoesNotCarry() {
+        let (model, _) = makeModel()
+        open(model, launch, runs: [run("r1", launch, engine: claude, model: nil, level: nil)],
+             sessions: [session("s1", launch, engine: claude, model: "fable", level: "xhigh")])
+        model.selectThoughtLevel("medium")
+        let codexRun = ConversationRunID("r2")
+        model.notePicksCarried(by: codexRun, engineID: codex, conversationID: launch,
+                               modelID: "gpt-5", thoughtLevelID: "medium")
+        model.noteRunEnded(codexRun, conversationID: launch)
+        #expect(model.pendingThoughtLevelIDs[launch]?.value == "medium")
+    }
+
+    @Test("The agent's word about a run is filed under that run's engine")
+    func confirmationUsesTheRunsEngine() {
+        let (model, _) = makeModel()
+        open(model, launch, runs: [run("r1", launch, engine: claude, model: nil, level: nil)],
+             sessions: [session("s1", launch, engine: claude, model: "fable", level: "xhigh")])
+        let started = ConversationRunID("r2")
+        model.notePicksCarried(by: started, engineID: claude, conversationID: launch,
+                               modelID: "fable", thoughtLevelID: "xhigh")
+        // The user picks Codex for the next message while the Claude run reports.
+        model.selectedEngineID = codex
+        #expect(model.confirmingEngineID(runID: started, conversationID: launch) == claude)
+        #expect(model.confirmingEngineID(runID: .init("elsewhere"), conversationID: other) == nil,
+                "an unopened chat waits for its detail, not the new-chat agent")
     }
 
     @Test("A session from before Core kept the model shows its latest run's request")

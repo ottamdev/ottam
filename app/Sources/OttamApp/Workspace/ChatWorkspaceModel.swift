@@ -660,10 +660,20 @@ final class ChatWorkspaceModel {
     /// not confirmed. It rides on the next message; there is no live apply.
     private(set) var pendingModelIDs: [ConversationID: EnginePick] = [:]
     private(set) var pendingThoughtLevelIDs: [ConversationID: EnginePick] = [:]
-    /// The run that carried each conversation's pending picks. Its
-    /// confirmation or end settles them, so a run cancelled before the switch
-    /// took leaves the chat showing what the agent actually runs.
-    @ObservationIgnored private var pickRunIDs: [ConversationID: ConversationRunID] = [:]
+    /// The run that carried each conversation's pending picks, and the values
+    /// it carried. Its confirmation or end settles those picks, so a run
+    /// cancelled before the switch took leaves the chat showing what the agent
+    /// actually runs; a pick made after it was sent waits for the next message.
+    struct CarriedPicks {
+        var runID: ConversationRunID
+        var engineID: EngineID
+        var modelID: String?
+        var thoughtLevelID: String?
+    }
+    @ObservationIgnored private var carriedPicks: [ConversationID: CarriedPicks] = [:]
+    /// The engine of each run this window started, so the agent's word about a
+    /// run is filed under that run's engine even before its detail loads.
+    @ObservationIgnored private var runEngineIDs: [ConversationRunID: EngineID] = [:]
 
     /// `conversationID`'s engine; nil is a draft. A chat whose detail has not
     /// loaded yet shows the new-chat default until it does.
@@ -817,14 +827,28 @@ final class ChatWorkspaceModel {
         engineID: EngineID, conversationID: ConversationID, runID: ConversationRunID? = nil
     ) {
         var confirmed = confirmedModels[conversationID]?[engineID] ?? ModelSelection()
-        if let modelID { confirmed.modelID = modelID }
+        // As Core stores it: levels belong to a model, so a new model reported
+        // without one drops the old model's.
+        if let modelID, modelID != confirmed.modelID {
+            confirmed.modelID = modelID
+            confirmed.thoughtLevelID = nil
+        }
         if let thoughtLevelID { confirmed.thoughtLevelID = thoughtLevelID }
         confirmedModels[conversationID, default: [:]][engineID] = confirmed
-        if let runID, pickRunIDs[conversationID] == runID {
+        if let runID, carriedPicks[conversationID]?.runID == runID {
             settlePicks(conversationID)
         } else {
             clearConfirmedPicks(conversationID, engineID: engineID)
         }
+    }
+
+    /// The engine the agent's word about `runID` belongs to: the run's own,
+    /// else the conversation's. Never a pick for the next message or the
+    /// new-chat default; nil leaves it to the detail Core sends on reload.
+    func confirmingEngineID(runID: ConversationRunID, conversationID: ConversationID) -> EngineID? {
+        selectedDetail?.runs.first { $0.runID == runID }?.engineID
+            ?? runEngineIDs[runID]
+            ?? conversationEngineIDs[conversationID]
     }
 
     private func clearConfirmedPicks(_ conversationID: ConversationID, engineID: EngineID) {
@@ -839,29 +863,47 @@ final class ChatWorkspaceModel {
         }
     }
 
-    /// Mark `runID` as the run carrying `conversationID`'s pending picks, when
-    /// it requested them: a message queued before the pick does not.
+    /// Note a run this window started on `engineID`, and mark it as carrying
+    /// `conversationID`'s pending picks it requested: a message queued before
+    /// the pick, or one on another engine, does not.
     func notePicksCarried(
-        by runID: ConversationRunID, conversationID: ConversationID,
+        by runID: ConversationRunID, engineID: EngineID, conversationID: ConversationID,
         modelID: String?, thoughtLevelID: String?
     ) {
-        let carriesModel = pendingModelIDs[conversationID].map { $0.value == modelID } ?? false
-        let carriesLevel = pendingThoughtLevelIDs[conversationID].map { $0.value == thoughtLevelID } ?? false
-        guard carriesModel || carriesLevel else { return }
-        pickRunIDs[conversationID] = runID
+        runEngineIDs[runID] = engineID
+        let carried = { (pick: EnginePick?, value: String?) -> String? in
+            guard let pick, pick.engineID == engineID, pick.value == value else { return nil }
+            return value
+        }
+        let model = carried(pendingModelIDs[conversationID], modelID)
+        let level = carried(pendingThoughtLevelIDs[conversationID], thoughtLevelID)
+        guard model != nil || level != nil else { return }
+        carriedPicks[conversationID] = CarriedPicks(
+            runID: runID, engineID: engineID, modelID: model, thoughtLevelID: level
+        )
     }
 
-    /// The run carrying the picks ended: drop them, so the chat shows what
-    /// the agent confirmed rather than a pick it may never have taken.
+    /// `runID` ended. If it carried the picks, drop them, so the chat shows
+    /// what the agent confirmed rather than a pick it may never have taken.
     func noteRunEnded(_ runID: ConversationRunID, conversationID: ConversationID) {
-        guard pickRunIDs[conversationID] == runID else { return }
+        runEngineIDs[runID] = nil
+        guard carriedPicks[conversationID]?.runID == runID else { return }
         settlePicks(conversationID)
     }
 
+    /// Settle the picks the carrying run took. A pick changed since it was
+    /// sent is the user's word for the next message and stays pending.
     private func settlePicks(_ conversationID: ConversationID) {
-        pickRunIDs[conversationID] = nil
-        pendingModelIDs[conversationID] = nil
-        pendingThoughtLevelIDs[conversationID] = nil
+        guard let carried = carriedPicks.removeValue(forKey: conversationID) else { return }
+        let isCarried = { (pick: EnginePick?, value: String?) in
+            pick.map { $0.engineID == carried.engineID && $0.value == value } ?? false
+        }
+        if isCarried(pendingModelIDs[conversationID], carried.modelID) {
+            pendingModelIDs[conversationID] = nil
+        }
+        if isCarried(pendingThoughtLevelIDs[conversationID], carried.thoughtLevelID) {
+            pendingThoughtLevelIDs[conversationID] = nil
+        }
     }
 
     /// Record a conversation's runs and sessions from its loaded detail: its
@@ -2829,7 +2871,7 @@ final class ChatWorkspaceModel {
             )
             pendingStartConversationID = nil
             notePicksCarried(
-                by: run.run.runID, conversationID: conversationID,
+                by: run.run.runID, engineID: run.run.engineID, conversationID: conversationID,
                 modelID: modelID, thoughtLevelID: thoughtLevelID
             )
             if terminalRunIDs.remove(run.run.runID) != nil {
@@ -3128,7 +3170,7 @@ final class ChatWorkspaceModel {
         // `terminalRunIDs` or it is held forever. The ordinary submit path
         // makes the same check for the same reason.
         notePicksCarried(
-            by: run.run.runID, conversationID: conversationID,
+            by: run.run.runID, engineID: run.run.engineID, conversationID: conversationID,
             modelID: message.modelID, thoughtLevelID: message.thoughtLevelID
         )
         guard terminalRunIDs.remove(run.run.runID) == nil else {
@@ -3287,7 +3329,7 @@ final class ChatWorkspaceModel {
             runInputID: retryInput.runInputID
         )
         notePicksCarried(
-            by: started.run.runID, conversationID: conversationID,
+            by: started.run.runID, engineID: started.run.engineID, conversationID: conversationID,
             modelID: modelID, thoughtLevelID: thoughtLevelID
         )
         if terminalRunIDs.contains(started.run.runID) {
@@ -3728,8 +3770,7 @@ final class ChatWorkspaceModel {
                     confirmMode(modeID, conversationID: event.conversationID)
                 }
                 if incoming.currentModelId != nil || incoming.currentThoughtLevelId != nil,
-                   let engineID = selectedDetail?.runs.first(where: { $0.runID == event.runID })?.engineID
-                    ?? engineID(for: event.conversationID) {
+                   let engineID = confirmingEngineID(runID: event.runID, conversationID: event.conversationID) {
                     confirmModel(
                         incoming.currentModelId, thoughtLevelID: incoming.currentThoughtLevelId,
                         engineID: engineID, conversationID: event.conversationID, runID: event.runID

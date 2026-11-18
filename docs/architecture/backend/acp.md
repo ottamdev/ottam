@@ -173,7 +173,8 @@ new/load/switch or the agent's own `config_option_update`); a historical run's
 request proves nothing about the live session. A run that requests none of
 them keeps the confirmed ones on restore or fresh fallback
 (`resolve_conversation_session`); a run that picks a model keeps no level
-from the old one. `EngineCapability.liveModeChange` (Claude)
+from the old one, and a different model confirmed without a level clears the
+stored one (`RunRepository::set_session_model`). `EngineCapability.liveModeChange` (Claude)
 marks adapters whose change reaches the running turn; codex-acp reads its mode
 at turn start. A mode change never answers or clears a pending permission card.
 

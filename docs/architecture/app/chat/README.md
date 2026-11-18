@@ -97,9 +97,11 @@ there is no separate clear verb.
   An existing chat's "Default" row sends the engine's default id, since nil
   means "keep what the session confirmed" to Core.
 - Modes apply to a live session at once or defer; model and effort picks
-  ride the next message. The run that carries them settles them when it
-  confirms or ends, so a cancelled switch shows what the agent runs. Pending
-  picks are not persisted. Without `liveModeChange`, a mode pick during a
+  ride the next message. The run that carries them settles the picks it
+  carried when it confirms or ends, so a cancelled switch shows what the agent
+  runs; a pick made after that send stays for the next one. The agent's word
+  is filed under the run's engine, never a pending or new-chat engine.
+  Pending picks are not persisted. Without `liveModeChange`, a mode pick during a
   turn applies to the next turn.
 - "Always allow tool actions" appears only for agents that support it; in a
   draft it edits the default, in a chat that chat's value.
