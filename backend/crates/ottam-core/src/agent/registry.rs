@@ -2779,7 +2779,7 @@ fn opencode_definition() -> AgentDefinition {
         sign_in_proof: SignInProof::Session,
         terminal_login_args: None,
         mcp_connections: McpConnections::PerDirectory,
-        // At 2.2.5 every `session/new` stores a session row, and
+        // At 2.3.0 every `session/new` stores a session row, and
         // `session/delete` removes it.
         catalog_probe: ProbeCleanup::DeleteSession,
     }
