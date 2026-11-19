@@ -1,11 +1,13 @@
 use crate::storage::database::recorded_transaction;
 use crate::storage::error::StorageError;
 use crate::storage::models::{
-    NewProjectRow, NewProjectSourceRow, NewWorkspaceProjectRow, NewWorkspaceRow, Project,
-    ProjectId, ProjectRow, ProjectSource, ProjectSourceId, ProjectSourceKind, ProjectSourceRow,
-    Workspace,
+    ConversationId, ManagedWorktree, NewProjectRow, NewProjectSourceRow, NewWorkspaceProjectRow,
+    NewWorkspaceRow, Project, ProjectId, ProjectRow, ProjectSource, ProjectSourceId,
+    ProjectSourceKind, ProjectSourceRow, Workspace,
 };
-use crate::storage::schema::{project_sources, projects, workspace_projects, workspaces};
+use crate::storage::schema::{
+    conversation_projects, project_sources, projects, workspace_projects, workspaces,
+};
 use chrono::{DateTime, Utc};
 use diesel::prelude::*;
 use diesel::sqlite::SqliteConnection;
@@ -15,6 +17,16 @@ pub struct OpenedProject {
     pub project: Project,
     pub source: ProjectSource,
     pub created_workspace: Option<Workspace>,
+}
+
+/// A managed worktree whose source is archived, with what removing its
+/// directory needs.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ReleasedWorktree {
+    pub source: ProjectSource,
+    pub worktree: ManagedWorktree,
+    /// The primary checkout it was cut from, when the project still has one.
+    pub primary_path: Option<String>,
 }
 
 pub struct ProjectRepository;
@@ -35,6 +47,15 @@ impl ProjectRepository {
             .first::<ProjectSourceRow>(connection)
             .optional()?;
         if let Some(source) = existing {
+            // A managed worktree belongs to its conversation. Opening it as a
+            // project would make it the workspace's default source.
+            if source.worktree_branch.is_some() {
+                return Err(StorageError::new(
+                    "managedWorktreePath",
+                    "this folder is a worktree Ottam made for a conversation; open that conversation instead",
+                )
+                .recoverable(true));
+            }
             diesel::update(projects::table.find(&source.project_id))
                 .set(projects::last_opened_at.eq(now))
                 .execute(connection)?;
@@ -74,10 +95,158 @@ impl ProjectRepository {
                 updated_at: now,
                 last_seen_at: now,
                 archived_at: None,
+                worktree_branch: None,
+                worktree_base_commit: None,
             })
             .execute(connection)?;
         Ok((Self::get_opened_by_source_id(connection, &source_id)?, true))
     }
+
+    /// Record a worktree Core just made as a non-primary source of `project_id`.
+    pub(crate) fn insert_worktree_source_in_transaction(
+        connection: &mut SqliteConnection,
+        project_id: &ProjectId,
+        canonical_path: &str,
+        worktree: &ManagedWorktree,
+        now: DateTime<Utc>,
+    ) -> Result<ProjectSource, StorageError> {
+        let now = now.timestamp_millis();
+        let source_id = ProjectSourceId::new_v7();
+        let source_id_value = source_id.to_string();
+        let project_id_value = project_id.to_string();
+        diesel::insert_into(project_sources::table)
+            .values(NewProjectSourceRow {
+                id: &source_id_value,
+                project_id: &project_id_value,
+                kind: ProjectSourceKind::LocalGit.as_storage_str(),
+                display_name: &worktree.branch,
+                canonical_path,
+                is_primary: 0,
+                created_at: now,
+                updated_at: now,
+                last_seen_at: now,
+                archived_at: None,
+                worktree_branch: Some(&worktree.branch),
+                worktree_base_commit: Some(&worktree.base_commit),
+            })
+            .execute(connection)?;
+        Self::get_source(connection, &source_id)
+    }
+
+    /// Archive a managed worktree source, so every conversation on it reads
+    /// as detached. Returns what the caller needs to remove its directory;
+    /// `archived` is false when the source was archived already.
+    pub fn archive_worktree_source_in_transaction(
+        connection: &mut SqliteConnection,
+        source_id: &ProjectSourceId,
+        now: DateTime<Utc>,
+    ) -> Result<(ReleasedWorktree, bool), StorageError> {
+        let source = Self::get_source(connection, source_id)?;
+        let archived = source.archived_at.is_none();
+        if archived {
+            let now = now.timestamp_millis();
+            diesel::update(project_sources::table.find(source_id.to_string()))
+                .set((
+                    project_sources::archived_at.eq(now),
+                    project_sources::updated_at.eq(now),
+                ))
+                .execute(connection)?;
+        }
+        let source = Self::get_source(connection, source_id)?;
+        Ok((Self::released(connection, source)?, archived))
+    }
+
+    fn released(
+        connection: &mut SqliteConnection,
+        source: ProjectSource,
+    ) -> Result<ReleasedWorktree, StorageError> {
+        let Some(worktree) = source.worktree.clone() else {
+            return Err(StorageError::new(
+                "notManagedWorktree",
+                "the ProjectSource is not a worktree Ottam made",
+            )
+            .recoverable(true));
+        };
+        let primary_path = match Self::primary_source(connection, &source.project_id) {
+            Ok(primary) => Some(primary.canonical_path),
+            Err(error) if error.kind == "workingRootUnavailable" => None,
+            Err(error) => return Err(error),
+        };
+        Ok(ReleasedWorktree {
+            source,
+            worktree,
+            primary_path,
+        })
+    }
+
+    /// The project's active primary checkout, which worktrees are cut from.
+    pub fn primary_source(
+        connection: &mut SqliteConnection,
+        project_id: &ProjectId,
+    ) -> Result<ProjectSource, StorageError> {
+        project_sources::table
+            .filter(project_sources::project_id.eq(project_id.to_string()))
+            .filter(project_sources::is_primary.eq(1))
+            .filter(project_sources::archived_at.is_null())
+            .select(ProjectSourceRow::as_select())
+            .first::<ProjectSourceRow>(connection)
+            .optional()?
+            .ok_or_else(|| {
+                StorageError::new(
+                    "workingRootUnavailable",
+                    "the Project has no active checkout to make a worktree from",
+                )
+                .recoverable(true)
+            })?
+            .try_into()
+    }
+
+    /// Conversations whose project link uses `source_id`.
+    pub fn conversations_on_source(
+        connection: &mut SqliteConnection,
+        source_id: &ProjectSourceId,
+    ) -> Result<Vec<ConversationId>, StorageError> {
+        conversation_projects::table
+            .filter(conversation_projects::source_id.eq(source_id.to_string()))
+            .filter(conversation_projects::removed_at.is_null())
+            .select(conversation_projects::conversation_id)
+            .distinct()
+            .load::<String>(connection)?
+            .into_iter()
+            .map(ConversationId::try_from)
+            .collect()
+    }
+
+    /// Archived worktree sources whose directories Core may still owe a
+    /// removal. A path an active source has since claimed is left out, so a
+    /// retry never deletes a live checkout.
+    pub fn archived_worktree_sources(
+        connection: &mut SqliteConnection,
+    ) -> Result<Vec<ReleasedWorktree>, StorageError> {
+        let archived = project_sources::table
+            .filter(project_sources::worktree_branch.is_not_null())
+            .filter(project_sources::archived_at.is_not_null())
+            .select(ProjectSourceRow::as_select())
+            .load::<ProjectSourceRow>(connection)?
+            .into_iter()
+            .map(ProjectSource::try_from)
+            .collect::<Result<Vec<_>, _>>()?;
+        let paths = archived
+            .iter()
+            .map(|source| source.canonical_path.clone())
+            .collect::<Vec<_>>();
+        let claimed = project_sources::table
+            .filter(project_sources::canonical_path.eq_any(&paths))
+            .filter(project_sources::archived_at.is_null())
+            .select(project_sources::canonical_path)
+            .load::<String>(connection)?;
+        archived
+            .into_iter()
+            .filter(|source| !claimed.contains(&source.canonical_path))
+            .map(|source| Self::released(connection, source))
+            .collect()
+    }
+
 
     pub fn get_project(
         connection: &mut SqliteConnection,

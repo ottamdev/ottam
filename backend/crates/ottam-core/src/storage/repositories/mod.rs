@@ -16,7 +16,7 @@ pub use attachments::{
     MAX_ATTACHMENT_BYTES, MAX_ATTACHMENT_BYTES_PER_MESSAGE,
 };
 pub use conversations::{
-    ConversationCreateRecord, ConversationListRecord, ConversationRepository,
+    ConversationCreateRecord, ConversationDeletion, ConversationListRecord, ConversationRepository,
     ConversationRootSelection, CreateConversationParams, DelegationLink, InitialMessage,
     MessageWithInput, JSON_PAYLOAD_MAX_BYTES, USER_MESSAGE_MAX_BYTES,
 };
@@ -24,7 +24,7 @@ pub use core_settings::{CoreSettingsRepository, ALWAYS_ALLOW_TOOL_ACTIONS_DEFAUL
 pub use mcp_servers::{McpServerRecord, McpServerRepository};
 pub use named_agents::{NamedAgentRecord, NamedAgentRepository};
 pub use pagination::{Page, PageRequest};
-pub use projects::{OpenedProject, ProjectRepository};
+pub use projects::{OpenedProject, ProjectRepository, ReleasedWorktree};
 pub use runs::{
     AutonomousRunParams, CreateRunParams, DeliveryResolutionAction, DeliveryResolutionRecord,
     FinalizeRunParams, InterruptFollowupParams, InterruptFollowupRecord, RecoveryCounts,

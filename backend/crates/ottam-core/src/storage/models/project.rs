@@ -39,6 +39,8 @@ pub struct ProjectSourceRow {
     pub updated_at: i64,
     pub last_seen_at: i64,
     pub archived_at: Option<i64>,
+    pub worktree_branch: Option<String>,
+    pub worktree_base_commit: Option<String>,
 }
 
 #[derive(Debug, Insertable)]
@@ -54,6 +56,8 @@ pub struct NewProjectSourceRow<'a> {
     pub updated_at: i64,
     pub last_seen_at: i64,
     pub archived_at: Option<i64>,
+    pub worktree_branch: Option<&'a str>,
+    pub worktree_base_commit: Option<&'a str>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -93,6 +97,16 @@ pub struct ProjectSource {
     pub updated_at: DateTime<Utc>,
     pub last_seen_at: DateTime<Utc>,
     pub archived_at: Option<DateTime<Utc>>,
+    /// Set when Core made this source as a managed worktree.
+    pub worktree: Option<ManagedWorktree>,
+}
+
+/// What Core recorded when it made a worktree source: the branch it created
+/// and the primary checkout's HEAD commit the branch started from.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ManagedWorktree {
+    pub branch: String,
+    pub base_commit: String,
 }
 
 impl TryFrom<ProjectSourceRow> for ProjectSource {
@@ -110,6 +124,19 @@ impl TryFrom<ProjectSourceRow> for ProjectSource {
             updated_at: timestamp(row.updated_at, "ProjectSource.updated_at")?,
             last_seen_at: timestamp(row.last_seen_at, "ProjectSource.last_seen_at")?,
             archived_at: optional_timestamp(row.archived_at, "ProjectSource.archived_at")?,
+            worktree: match (row.worktree_branch, row.worktree_base_commit) {
+                (Some(branch), Some(base_commit)) => Some(ManagedWorktree {
+                    branch,
+                    base_commit,
+                }),
+                (None, None) => None,
+                _ => {
+                    return Err(StorageError::new(
+                        "storageCorrupt",
+                        "persisted worktree ProjectSource is missing its branch or base commit",
+                    ))
+                }
+            },
         })
     }
 }

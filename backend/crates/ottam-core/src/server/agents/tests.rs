@@ -352,6 +352,7 @@ impl ChatEnv {
                     idempotency_key: format!("key-{}", uuid::Uuid::now_v7()),
                     attachment_ids: Vec::new(),
                 }),
+                None,
             )
             .await
             .expect("creates conversation");
@@ -2245,7 +2246,8 @@ async fn deleting_conversation_cancels_active_run_and_deletes_harness_session() 
             ottam_protocol::ConversationDeleteChildren::Keep,
         )
         .await
-        .expect("deletes conversation");
+        .expect("deletes conversation")
+        .0;
     assert_eq!(
         result.harness_session_cleanup,
         vec![HarnessSessionCleanup {
@@ -2291,7 +2293,8 @@ async fn deleting_conversation_reports_unsupported_harness_cleanup_but_deletes_l
             ottam_protocol::ConversationDeleteChildren::Keep,
         )
         .await
-        .expect("deletes local conversation");
+        .expect("deletes local conversation")
+        .0;
     assert_eq!(
         result.harness_session_cleanup,
         vec![HarnessSessionCleanup {

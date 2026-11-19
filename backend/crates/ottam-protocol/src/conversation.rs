@@ -640,6 +640,11 @@ pub struct ConversationCreateParams {
     pub title: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub message: Option<ConversationInitialMessage>,
+    /// Work in a new git worktree: Core cuts a branch off the project's
+    /// primary checkout HEAD and links the conversation to it. Needs a
+    /// project working root.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub create_worktree: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
@@ -698,6 +703,9 @@ pub struct ConversationDeleteResult {
     #[serde(rename = "conversationID")]
     pub conversation_id: ConversationID,
     pub harness_session_cleanup: Vec<HarnessSessionCleanup>,
+    /// The worktree removed with the last conversation working in it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub worktree: Option<crate::WorktreeRemoval>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]

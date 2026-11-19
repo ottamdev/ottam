@@ -407,6 +407,7 @@ pub(super) fn workspace_detail(
             project_id: None,
             source_id: None,
             availability: WorkingRootAvailability::Available,
+            worktree: None,
         },
         projects: detail
             .projects

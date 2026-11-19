@@ -23,6 +23,7 @@ use crate::mcp::{McpGrant, McpService, SessionGrant};
 use crate::server::chat::{BeginRunRecord, ChatService, ConfirmedSelection};
 use crate::server::deferred::DeferredLane;
 use crate::server::outbound::OutboundSink;
+use crate::storage::repositories::ReleasedWorktree;
 use ottam_protocol::{
     AgentSessionID, AgentStopReason, AgentUpdate, ConversationCancelRunResult,
     ConversationDeleteResult, ConversationEventKind, ConversationHistoryReplay, ConversationID,
@@ -3033,11 +3034,50 @@ impl ConversationRunCoordinator {
         self.attribution.forget_project(workspace_id, project_id);
     }
 
+    /// Stop the active runs of `conversations`, whose worktree is going away.
+    pub(super) async fn cancel_conversations_runs(
+        &self,
+        workspace_id: &WorkspaceID,
+        conversations: &[ConversationID],
+    ) {
+        let runs = {
+            let active = self.active_runs().await;
+            active
+                .values()
+                .filter(|run| {
+                    run.context.workspace_id == *workspace_id
+                        && conversations.contains(&run.context.conversation_id)
+                })
+                .map(|run| {
+                    (
+                        run.context.chat.clone(),
+                        run.context.conversation_id.clone(),
+                        run.context.run_id.clone(),
+                    )
+                })
+                .collect::<Vec<_>>()
+        };
+        for (chat, conversation_id, run_id) in runs {
+            if let Err(error) = self
+                .cancel_conversation_run(&chat, &conversation_id, &run_id)
+                .await
+            {
+                tracing::warn!(
+                    error = %error,
+                    run_id = %run_id.0,
+                    "failed to cancel a run for a removed worktree"
+                );
+            }
+        }
+    }
+
+    /// Also returns the worktrees the delete archived, whose directories the
+    /// caller removes.
     pub(super) async fn delete_conversation(
         &self,
         chat: &ChatService,
         conversation_id: &ConversationID,
-    ) -> Result<ConversationDeleteResult, CoreError> {
+    ) -> Result<(ConversationDeleteResult, Vec<ReleasedWorktree>), CoreError> {
         // No run opens while the conversation goes.
         let _launch = self.lock_launch(conversation_id).await;
         if let Some(mcp) = self.mcp.get() {
@@ -3099,13 +3139,17 @@ impl ConversationRunCoordinator {
             harness_session_cleanup.push(cleanup);
         }
 
-        chat.delete_conversation(conversation_id).await?;
+        let released = chat.delete_conversation(conversation_id).await?;
         self.attribution.forget_conversation(conversation_id);
         self.forget_prompted_runs(conversation_id);
-        Ok(ConversationDeleteResult {
-            conversation_id: conversation_id.clone(),
-            harness_session_cleanup,
-        })
+        Ok((
+            ConversationDeleteResult {
+                conversation_id: conversation_id.clone(),
+                harness_session_cleanup,
+                worktree: None,
+            },
+            released,
+        ))
     }
 
     /// Ottam is quitting. The app's shutdown preparation stops adapters

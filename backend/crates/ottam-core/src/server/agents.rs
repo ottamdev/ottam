@@ -518,6 +518,16 @@ impl AgentRuntimeBridge {
             .await;
     }
 
+    pub(super) async fn cancel_conversations_runs(
+        &self,
+        workspace_id: &WorkspaceID,
+        conversations: &[ConversationID],
+    ) {
+        self.conversation
+            .cancel_conversations_runs(workspace_id, conversations)
+            .await;
+    }
+
     #[cfg(test)]
     async fn reserve_followup_launch(
         &self,
@@ -532,14 +542,21 @@ impl AgentRuntimeBridge {
     }
 
     /// Deletes a conversation, and its delegated children if `children`
-    /// says so; kept ones stop working.
+    /// says so; kept ones stop working. Also returns the worktrees released
+    /// with the last conversation working in them.
     pub(super) async fn delete_conversation_with_children(
         &self,
         chat: &ChatService,
         workspace_id: &WorkspaceID,
         conversation_id: &ConversationID,
         children: ottam_protocol::ConversationDeleteChildren,
-    ) -> Result<ConversationDeleteResult, CoreError> {
+    ) -> Result<
+        (
+            ConversationDeleteResult,
+            Vec<crate::storage::repositories::ReleasedWorktree>,
+        ),
+        CoreError,
+    > {
         self.conversation
             .delete_with_children(chat, workspace_id, conversation_id, children)
             .await

@@ -49,6 +49,9 @@ pub struct WorkingRootSummary {
     #[serde(rename = "sourceID", skip_serializing_if = "Option::is_none")]
     pub source_id: Option<ProjectSourceID>,
     pub availability: WorkingRootAvailability,
+    /// Set when the source is a worktree Core made for a conversation.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub worktree: Option<crate::WorktreeSummary>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]

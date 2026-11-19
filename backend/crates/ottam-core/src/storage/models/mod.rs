@@ -22,7 +22,8 @@ pub use conversation_run::{
     NewConversationRunRow, NewConversationRunSourceRow, NewRunEventRow, RunEvent, RunEventRow,
 };
 pub use project::{
-    NewProjectRow, NewProjectSourceRow, Project, ProjectRow, ProjectSource, ProjectSourceRow,
+    ManagedWorktree, NewProjectRow, NewProjectSourceRow, Project, ProjectRow, ProjectSource,
+    ProjectSourceRow,
 };
 pub use run_input::{
     AssignedDelivery, ConversationRunInput, ConversationRunInputRow, NewConversationRunInputRow,

@@ -206,6 +206,8 @@ diesel::table! {
         updated_at -> BigInt,
         last_seen_at -> BigInt,
         archived_at -> Nullable<BigInt>,
+        worktree_branch -> Nullable<Text>,
+        worktree_base_commit -> Nullable<Text>,
     }
 }
 

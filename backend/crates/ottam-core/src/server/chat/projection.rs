@@ -25,6 +25,7 @@ pub(super) fn project_working_root(root: ResolvedWorkingRoot<'_>) -> WorkingRoot
             project_id: None,
             source_id: None,
             availability: WorkingRootAvailability::Available,
+            worktree: None,
         },
         ResolvedWorkingRoot::Project {
             primary_link: None, ..
@@ -35,6 +36,7 @@ pub(super) fn project_working_root(root: ResolvedWorkingRoot<'_>) -> WorkingRoot
             project_id: None,
             source_id: None,
             availability: WorkingRootAvailability::Detached,
+            worktree: None,
         },
         ResolvedWorkingRoot::Project {
             primary_link: Some(link),
@@ -59,6 +61,7 @@ pub(super) fn project_working_root(root: ResolvedWorkingRoot<'_>) -> WorkingRoot
                 } else {
                     WorkingRootAvailability::Detached
                 },
+                worktree: source.and_then(crate::storage::worktree_summary),
             }
         }
     }

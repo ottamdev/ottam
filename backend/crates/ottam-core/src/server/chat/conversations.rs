@@ -15,12 +15,13 @@ use crate::storage::ensure_workspace_paths;
 use crate::storage::error::StorageError;
 use crate::storage::models::{
     Conversation, ConversationId, ConversationProject, ConversationProjectRole, ConversationRun,
-    ConversationRunId, WorkingRootKind as DomainWorkingRootKind, WorkspaceId,
+    ConversationRunId, ManagedWorktree, ProjectSourceId, WorkingRootKind as DomainWorkingRootKind,
+    WorkspaceId,
 };
 use crate::storage::repositories::{
     AttachmentRepository, ConversationListRecord, ConversationRepository,
     ConversationRootSelection, CreateConversationParams, InitialMessage, NamedAgentRepository,
-    PageRequest, ProjectRepository, RunRepository, WorkspaceRepository,
+    PageRequest, ProjectRepository, ReleasedWorktree, RunRepository, WorkspaceRepository,
 };
 use chrono::Utc;
 use ottam_protocol::{
@@ -380,25 +381,49 @@ fn clean_title(title: Option<&str>, message: Option<&str>) -> String {
     candidate.chars().take(80).collect()
 }
 
+/// A worktree Core just made, recorded in the transaction that creates the
+/// conversation working in it.
+pub(in crate::server) struct NewWorktreeSource {
+    pub canonical_path: String,
+    pub worktree: ManagedWorktree,
+}
+
 impl ChatService {
+    /// Create a conversation. A project root links the source it names when
+    /// that is one of the project's managed worktrees, or the new `worktree`
+    /// when given; otherwise the workspace's default source.
     pub(in crate::server) async fn create_conversation(
         &self,
         working_root: WorkingRootSelection,
         context_project_ids: Vec<ProjectID>,
         title: Option<String>,
         message: Option<ConversationInitialMessage>,
+        worktree: Option<NewWorktreeSource>,
     ) -> Result<ConversationCreateResult, CoreError> {
         let workspace_id = self.workspace()?;
         let home = self.home.clone();
         self.database
             .run("conversation.create", move |connection| {
                 ensure_workspace_active(connection, &workspace_id)?;
-                let root_project = match &working_root {
-                    WorkingRootSelection::WorkspaceFiles => None,
-                    WorkingRootSelection::Project { project_id, .. } => {
-                        Some(parse_project_id(project_id)?)
-                    }
+                let (root_project, requested_source) = match &working_root {
+                    WorkingRootSelection::WorkspaceFiles => (None, None),
+                    WorkingRootSelection::Project {
+                        project_id,
+                        source_id,
+                    } => (
+                        Some(parse_project_id(project_id)?),
+                        // A malformed id names no worktree, so it keeps the
+                        // default source like any other.
+                        ProjectSourceId::try_from(source_id.0.as_str()).ok(),
+                    ),
                 };
+                if worktree.is_some() && root_project.is_none() {
+                    return Err(StorageError::new(
+                        "worktreeNeedsProject",
+                        "a worktree conversation needs a project working root",
+                    )
+                    .recoverable(true));
+                }
                 let context_projects = context_project_ids
                     .iter()
                     .map(parse_project_id)
@@ -425,6 +450,20 @@ impl ChatService {
                 // than leave a half-formed one behind.
                 let record =
                     recorded_transaction(connection, "conversation.create", |connection| {
+                        let new_source = match (&worktree, &root_project) {
+                            (Some(worktree), Some(project_id)) => Some(
+                                ProjectRepository::insert_worktree_source_in_transaction(
+                                    connection,
+                                    project_id,
+                                    &worktree.canonical_path,
+                                    &worktree.worktree,
+                                    now,
+                                )?
+                                .id,
+                            ),
+                            _ => None,
+                        };
+                        let source_id = new_source.as_ref().or(requested_source.as_ref());
                         let record = ConversationRepository::create_in_transaction(
                             connection,
                             &CreateConversationParams {
@@ -432,7 +471,7 @@ impl ChatService {
                                 title: &title,
                                 root: match &root_project {
                                     Some(project_id) => {
-                                        ConversationRootSelection::Project(project_id)
+                                        ConversationRootSelection::Project(project_id, source_id)
                                     }
                                     None => ConversationRootSelection::WorkspaceFiles,
                                 },
@@ -710,10 +749,12 @@ impl ChatService {
             .map_err(CoreError::from)
     }
 
+    /// Returns the worktrees this delete archived, as the last conversation
+    /// working in them; the caller removes their directories.
     pub(in crate::server) async fn delete_conversation(
         &self,
         conversation_id: &ConversationID,
-    ) -> Result<(), CoreError> {
+    ) -> Result<Vec<ReleasedWorktree>, CoreError> {
         let wire_conversation = conversation_id.clone();
         let workspace_id = self.workspace()?;
         let conversation_id = parse_conversation_id(conversation_id)?;
@@ -750,8 +791,8 @@ impl ChatService {
         })
         .await;
         self.database.payload_worker().notify_changed();
-        unlink_attachment_files(&home, &sweep_workspace_id, &removed);
-        Ok(())
+        unlink_attachment_files(&home, &sweep_workspace_id, &removed.attachment_paths);
+        Ok(removed.released_worktrees)
     }
 
     pub(in crate::server) async fn working_root(

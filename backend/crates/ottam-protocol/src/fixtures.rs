@@ -130,6 +130,7 @@ fn workspace_files_root_fixture() -> WorkingRootSummary {
         project_id: None,
         source_id: None,
         availability: WorkingRootAvailability::Available,
+        worktree: None,
     }
 }
 
@@ -145,6 +146,18 @@ fn project_working_root_fixture() -> WorkingRootSummary {
             "019b0000-0000-7000-8000-000000000002".to_string(),
         )),
         availability: WorkingRootAvailability::Available,
+        worktree: None,
+    }
+}
+
+fn worktree_removal_fixture() -> WorktreeRemoval {
+    WorktreeRemoval {
+        project_source_id: ProjectSourceID("019b0000-0000-7000-8000-000000000009".to_string()),
+        branch: "ottam/fix-login-a1b2".to_string(),
+        path: "/Users/example/.ottam/worktrees/ottam/fix-login-a1b2".to_string(),
+        removed: true,
+        branch_kept: true,
+        message: None,
     }
 }
 
@@ -1371,6 +1384,7 @@ pub fn conversation_create_request_fixture() -> ConversationCreateRequest {
                 idempotency_key: "client-key-1".to_string(),
                 attachment_ids: Vec::new(),
             }),
+            create_worktree: true,
         },
     )
 }
@@ -1408,6 +1422,7 @@ pub fn conversation_delete_response_fixture() -> ConversationDeleteResponse {
                 status: HarnessSessionCleanupStatus::Deleted,
                 message: None,
             }],
+            worktree: Some(worktree_removal_fixture()),
         },
     )
 }
@@ -1724,6 +1739,52 @@ pub fn tool_permissions_set_response_fixture() -> ToolPermissionsSetResponse {
         RequestID::Number(457),
         ToolPermissionsState {
             always_allow_tool_actions: true,
+        },
+    )
+}
+
+fn worktree_source_params_fixture() -> WorktreeSourceParams {
+    WorktreeSourceParams {
+        workspace_id: WorkspaceID("019b0000-0000-7000-8000-000000000003".to_string()),
+        project_source_id: ProjectSourceID("019b0000-0000-7000-8000-000000000009".to_string()),
+    }
+}
+
+pub fn worktree_status_request_fixture() -> WorktreeStatusRequest {
+    ProtocolRequest::new(
+        RequestID::Number(458),
+        METHOD_WORKTREE_STATUS,
+        worktree_source_params_fixture(),
+    )
+}
+
+pub fn worktree_status_response_fixture() -> WorktreeStatusResponse {
+    ProtocolResponse::success(
+        RequestID::Number(458),
+        WorktreeStatusResult {
+            project_source_id: ProjectSourceID("019b0000-0000-7000-8000-000000000009".to_string()),
+            branch: "ottam/fix-login-a1b2".to_string(),
+            path: "/Users/example/.ottam/worktrees/ottam/fix-login-a1b2".to_string(),
+            uncommitted_changes: 3,
+            commits: 1,
+            conversation_count: 2,
+        },
+    )
+}
+
+pub fn worktree_remove_request_fixture() -> WorktreeRemoveRequest {
+    ProtocolRequest::new(
+        RequestID::Number(459),
+        METHOD_WORKTREE_REMOVE,
+        worktree_source_params_fixture(),
+    )
+}
+
+pub fn worktree_remove_response_fixture() -> WorktreeRemoveResponse {
+    ProtocolResponse::success(
+        RequestID::Number(459),
+        WorktreeRemoveResult {
+            removal: worktree_removal_fixture(),
         },
     )
 }

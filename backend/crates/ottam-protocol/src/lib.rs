@@ -20,6 +20,7 @@ pub mod swift;
 mod terminal;
 mod transcript;
 mod workspace;
+mod worktree;
 
 pub use agent::*;
 pub use agent_install::*;
@@ -38,6 +39,7 @@ pub use schema::*;
 pub use terminal::*;
 pub use transcript::*;
 pub use workspace::*;
+pub use worktree::*;
 
 pub type InitializeRequest = ProtocolRequest<InitializeParams>;
 pub type InitializeResponse = ProtocolResponse<InitializeResult>;
@@ -186,6 +188,10 @@ pub type ConversationListChangedNotification = ProtocolNotification<Conversation
 pub type ToolPermissionsGetResponse = ProtocolResponse<ToolPermissionsState>;
 pub type ToolPermissionsSetRequest = ProtocolRequest<ToolPermissionsState>;
 pub type ToolPermissionsSetResponse = ProtocolResponse<ToolPermissionsState>;
+pub type WorktreeStatusRequest = ProtocolRequest<WorktreeStatusParams>;
+pub type WorktreeStatusResponse = ProtocolResponse<WorktreeStatusResult>;
+pub type WorktreeRemoveRequest = ProtocolRequest<WorktreeRemoveParams>;
+pub type WorktreeRemoveResponse = ProtocolResponse<WorktreeRemoveResult>;
 pub type ConversationResolveRunInputDeliveryRequest =
     ProtocolRequest<ConversationResolveRunInputDeliveryParams>;
 pub type ConversationResolveRunInputDeliveryResponse =

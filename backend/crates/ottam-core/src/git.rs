@@ -67,9 +67,20 @@ pub fn run_git_with_allowed_exit_codes(
     args: &[&str],
     allowed_exit_codes: &[i32],
 ) -> Result<GitCommandResult, CoreError> {
+    run_git_with_timeout(repo_path, args, allowed_exit_codes, git_timeout())
+}
+
+/// [`run_git_with_allowed_exit_codes`] with its own deadline, for commands
+/// whose cost grows with the checkout (a worktree's checkout or removal) and
+/// so cannot share the snapshot timeout.
+pub fn run_git_with_timeout(
+    repo_path: &str,
+    args: &[&str],
+    allowed_exit_codes: &[i32],
+    timeout: Duration,
+) -> Result<GitCommandResult, CoreError> {
     let started = Instant::now();
     let git_path = git_executable();
-    let timeout = git_timeout();
     let mut command = Command::new(&git_path);
     command
         .arg("-C")
@@ -226,6 +237,126 @@ pub fn canonical_git_root(path: &str) -> Result<String, CoreError> {
             .recoverable(true)
         })
         .map(|path| path.to_string_lossy().to_string())
+}
+
+/// Checking out or deleting a whole tree takes longer than a status read.
+const WORKTREE_TIMEOUT: Duration = Duration::from_secs(120);
+
+/// The commit `HEAD` names, or `None` in a repository with no commits yet.
+pub fn head_commit(repo_path: &str) -> Result<Option<String>, CoreError> {
+    let result = run_git_with_allowed_exit_codes(
+        repo_path,
+        &["rev-parse", "--verify", "--quiet", "HEAD^{commit}"],
+        &[0, 1],
+    )?;
+    let commit = result.stdout.trim();
+    Ok((result.status_code == Some(0) && !commit.is_empty()).then(|| commit.to_string()))
+}
+
+/// The commit a local branch points at, or `None` when there is no such branch.
+pub fn branch_commit(repo_path: &str, branch: &str) -> Result<Option<String>, CoreError> {
+    let reference = format!("refs/heads/{branch}");
+    let result = run_git_with_allowed_exit_codes(
+        repo_path,
+        &["rev-parse", "--verify", "--quiet", &reference],
+        &[0, 1],
+    )?;
+    let commit = result.stdout.trim();
+    Ok((result.status_code == Some(0) && !commit.is_empty()).then(|| commit.to_string()))
+}
+
+/// `git worktree add -b <branch> <path> <commit>` from the primary checkout.
+pub fn worktree_add(
+    primary_path: &str,
+    worktree_path: &Path,
+    branch: &str,
+    commit: &str,
+) -> Result<(), CoreError> {
+    let worktree_path = worktree_path.to_string_lossy();
+    run_git_with_timeout(
+        primary_path,
+        &["worktree", "add", "-b", branch, &worktree_path, commit],
+        &[0],
+        WORKTREE_TIMEOUT,
+    )
+    .map(|_| ())
+}
+
+/// `git worktree remove` from the primary checkout. Forced twice, so neither
+/// uncommitted changes nor a lock keep the directory: the user confirmed the
+/// removal.
+pub fn worktree_remove(primary_path: &str, worktree_path: &Path) -> Result<(), CoreError> {
+    let worktree_path = worktree_path.to_string_lossy();
+    run_git_with_timeout(
+        primary_path,
+        &["worktree", "remove", "--force", "--force", &worktree_path],
+        &[0],
+        WORKTREE_TIMEOUT,
+    )
+    .map(|_| ())
+}
+
+/// Forget worktrees whose directories are gone.
+pub fn worktree_prune(primary_path: &str) -> Result<(), CoreError> {
+    run_git(primary_path, ["worktree", "prune"]).map(|_| ())
+}
+
+/// What a worktree holds that its removal would discard.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct WorktreeChanges {
+    /// Changed, staged and untracked paths.
+    pub uncommitted: u32,
+    /// Commits on `HEAD` since `base_commit`.
+    pub commits: u32,
+}
+
+pub fn worktree_changes(worktree_path: &str, base_commit: &str) -> Result<WorktreeChanges, CoreError> {
+    let status = run_git(
+        worktree_path,
+        ["status", "--porcelain=v1", "-z", "--untracked-files=all"],
+    )?;
+    let range = format!("{base_commit}..HEAD");
+    let commits = run_git_with_allowed_exit_codes(worktree_path, &["rev-list", "--count", &range], &[0])?
+        .stdout
+        .trim()
+        .parse::<u32>()
+        .unwrap_or(0);
+    Ok(WorktreeChanges {
+        uncommitted: porcelain_entry_count(&status),
+        commits,
+    })
+}
+
+/// Entries in `status --porcelain=v1 -z` output. A rename or copy carries its
+/// source path as a second field, which is not a second change.
+fn porcelain_entry_count(status: &str) -> u32 {
+    let mut fields = status.split('\0').filter(|field| !field.is_empty());
+    let mut count = 0;
+    while let Some(entry) = fields.next() {
+        count += 1;
+        if entry.starts_with('R') || entry.starts_with('C') {
+            fields.next();
+        }
+    }
+    count
+}
+
+/// Delete `branch` when it still points at `base_commit`, so a worktree whose
+/// agent committed nothing leaves no branch behind. Returns whether the branch
+/// is still there afterwards.
+pub fn delete_branch_if_unchanged(
+    repo_path: &str,
+    branch: &str,
+    base_commit: &str,
+) -> Result<bool, CoreError> {
+    match branch_commit(repo_path, branch)? {
+        None => Ok(false),
+        Some(commit) if commit == base_commit => {
+            run_git_with_allowed_exit_codes(repo_path, &["branch", "-D", branch], &[0])?;
+            Ok(false)
+        }
+        Some(_) => Ok(true),
+    }
 }
 
 fn read_git_stream<R>(mut reader: R, max_bytes: usize) -> GitStreamReader
