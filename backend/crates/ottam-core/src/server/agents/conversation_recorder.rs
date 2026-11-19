@@ -342,13 +342,7 @@ impl ConversationRecorderHandle {
                 {
                     if let (Some(prior), Some(next)) = (prior.as_object_mut(), payload.as_object())
                     {
-                        // Absent fields serialize as null; they must not erase
-                        // a coalesced value such as an announced mode.
-                        prior.extend(
-                            next.iter()
-                                .filter(|(_, value)| !value.is_null())
-                                .map(|(key, value)| (key.clone(), value.clone())),
-                        );
+                        coalesce_metadata(prior, next);
                     } else {
                         *prior = payload;
                     }
@@ -565,5 +559,71 @@ async fn recorder_loop(
                 break;
             }
         }
+    }
+}
+
+/// Fold a newer metadata payload into the one still waiting to be recorded.
+/// Absent fields serialize as null; they must not erase a coalesced value such
+/// as an announced mode. A level belongs to its model, so a different model
+/// announced without one drops the waiting level rather than inheriting it.
+fn coalesce_metadata(
+    prior: &mut serde_json::Map<String, Value>,
+    next: &serde_json::Map<String, Value>,
+) {
+    let present = |object: &serde_json::Map<String, Value>, key: &str| {
+        object.get(key).filter(|value| !value.is_null()).cloned()
+    };
+    let next_model = present(next, "currentModelId");
+    if next_model.is_some()
+        && next_model != present(prior, "currentModelId")
+        && present(next, "currentThoughtLevelId").is_none()
+    {
+        prior.remove("currentThoughtLevelId");
+    }
+    prior.extend(
+        next.iter()
+            .filter(|(_, value)| !value.is_null())
+            .map(|(key, value)| (key.clone(), value.clone())),
+    );
+}
+
+#[cfg(test)]
+mod coalesce_tests {
+    use super::coalesce_metadata;
+    use serde_json::{json, Value};
+
+    fn coalesced(prior: Value, next: Value) -> Value {
+        let mut prior = prior.as_object().unwrap().clone();
+        coalesce_metadata(&mut prior, next.as_object().unwrap());
+        Value::Object(prior)
+    }
+
+    #[test]
+    fn a_new_model_without_a_level_drops_the_waiting_level() {
+        assert_eq!(
+            coalesced(
+                json!({"currentModelId": "opus", "currentThoughtLevelId": "high", "currentModeId": "plan"}),
+                json!({"currentModelId": "haiku", "currentThoughtLevelId": null})
+            ),
+            json!({"currentModelId": "haiku", "currentModeId": "plan"})
+        );
+    }
+
+    #[test]
+    fn the_same_model_or_a_level_alone_keeps_the_pair() {
+        assert_eq!(
+            coalesced(
+                json!({"currentModelId": "opus", "currentThoughtLevelId": "high"}),
+                json!({"currentModelId": "opus"})
+            ),
+            json!({"currentModelId": "opus", "currentThoughtLevelId": "high"})
+        );
+        assert_eq!(
+            coalesced(
+                json!({"currentModelId": "opus", "currentThoughtLevelId": "high"}),
+                json!({"currentThoughtLevelId": "low", "title": null})
+            ),
+            json!({"currentModelId": "opus", "currentThoughtLevelId": "low"})
+        );
     }
 }

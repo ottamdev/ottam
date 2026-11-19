@@ -2630,8 +2630,14 @@ async fn conversation_restore_passes_mode_and_does_not_replace_session_on_config
         "a requested mode wins over the persisted one"
     );
     // A follow-up requests no mode, model or level: the restore reapplies the
-    // session's persisted confirmed ones rather than the agent's defaults.
+    // session's persisted confirmed ones rather than what the load reports.
     adapter.forget_sessions();
+    adapter.set_session_model(
+        &crate::agent::HarnessSessionId(prior.0.clone()),
+        Some("model-a".into()),
+        Some("low".into()),
+    );
+    let switches_before = adapter.recorded_applied_models().len();
     super::conversation_runner::resolve_conversation_session(
         &erased,
         Some(&prior),
@@ -2654,12 +2660,12 @@ async fn conversation_restore_passes_mode_and_does_not_replace_session_on_config
         Some("plan")
     );
     assert_eq!(
-        adapter.recorded_applied_models().last(),
-        Some(&ModelSwitch {
+        adapter.recorded_applied_models()[switches_before..],
+        [ModelSwitch {
             model_id: Some("model-b".into()),
             thought_level_id: Some("high".into()),
             restored: true,
-        }),
+        }],
         "the persisted model and level are reapplied after the load"
     );
     // A run that picks a model keeps no level from the old one.
@@ -2682,6 +2688,35 @@ async fn conversation_restore_passes_mode_and_does_not_replace_session_on_config
         Some(&ModelSwitch {
             model_id: Some("model-c".into()),
             thought_level_id: None,
+            restored: true,
+        })
+    );
+    // Naming the confirmed model again keeps its confirmed level: the load
+    // reports that model at another level, so only the level is switched.
+    adapter.forget_sessions();
+    adapter.set_session_model(
+        &crate::agent::HarnessSessionId(prior.0.clone()),
+        Some("model-b".into()),
+        Some("low".into()),
+    );
+    super::conversation_runner::resolve_conversation_session(
+        &erased,
+        Some(&prior),
+        &persisted,
+        &harness.root,
+        &SessionConfigRequest {
+            model_id: Some("model-b".into()),
+            ..SessionConfigRequest::default()
+        },
+        None,
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        adapter.recorded_applied_models().last(),
+        Some(&ModelSwitch {
+            model_id: None,
+            thought_level_id: Some("high".into()),
             restored: true,
         })
     );

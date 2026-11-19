@@ -539,7 +539,8 @@ final class ChatWorkspaceModel {
     private var permissionRegistration: AgentPermissionRegistrationToken?
     @ObservationIgnored private var subscribedWorkspaceID: WorkspaceID?
     @ObservationIgnored private var terminalRunIDs: Set<ConversationRunID> = []
-    @ObservationIgnored private var pendingStartConversationID: ConversationID?
+    /// The conversation whose run start is in flight. Internal for tests.
+    @ObservationIgnored var pendingStartConversationID: ConversationID?
     @ObservationIgnored private var lastEventSequenceByRun: [ConversationRunID: UInt64] = [:]
     @ObservationIgnored private var configureTask: Task<Void, Never>?
     @ObservationIgnored private var backendHandlersRetired = false
@@ -702,9 +703,9 @@ final class ChatWorkspaceModel {
         if let engineID { loadSavedCommands(for: engineID) }
     }
 
-    /// What `conversationID` has for `engineID`: a pending pick, else what its
-    /// session confirmed. Nil when the conversation has never run there, so
-    /// that engine's new-chat defaults apply.
+    /// What `conversationID` has for `engineID`: a pending pick over what its
+    /// session confirmed, or over that engine's new-chat defaults when it has
+    /// never run there. Nil when there is neither, so the defaults apply.
     func conversationModel(
         _ conversationID: ConversationID, engineID: EngineID
     ) -> ModelSelection? {
@@ -712,11 +713,17 @@ final class ChatWorkspaceModel {
         let level = pendingThoughtLevelIDs[conversationID].flatMap { $0.engineID == engineID ? $0 : nil }
         let confirmed = confirmedModels[conversationID]?[engineID]
         guard model != nil || level != nil || confirmed != nil else { return nil }
+        let base = confirmed ?? {
+            let saved = savedDefaults(for: engineID)
+            return ModelSelection(modelID: saved.modelID, thoughtLevelID: saved.thoughtLevelID)
+        }()
+        let modelID = model?.value ?? base.modelID
         return ModelSelection(
-            modelID: model?.value ?? confirmed?.modelID,
-            // A new model's levels are its own: an old level survives only
-            // where the model offers it (`thoughtLevelID(for:)` checks).
-            thoughtLevelID: level?.value ?? confirmed?.thoughtLevelID
+            modelID: modelID,
+            // Levels belong to a model: the base level rides only with the
+            // base model. A picked level survives a model pick where the new
+            // model offers it (`thoughtLevelID(for:)` checks).
+            thoughtLevelID: level?.value ?? (modelID == base.modelID ? base.thoughtLevelID : nil)
         )
     }
 
@@ -781,9 +788,11 @@ final class ChatWorkspaceModel {
         }
         guard let engineID = selectedEngineID else { return }
         let defaultModelID = selectedEngine?.defaultModelID
-        let resolved = modelID ?? defaultModelID
+        // An engine that names no default model has nothing to send for
+        // "Default", so the pick stands rather than falling back to the session's.
+        guard let resolved = modelID ?? defaultModelID else { return }
         let confirmed = confirmedModels[conversationID]?[engineID]
-        if let resolved, confirmed.map({ ($0.modelID ?? defaultModelID) != resolved }) ?? true {
+        if confirmed.map({ ($0.modelID ?? defaultModelID) != resolved }) ?? true {
             pendingModelIDs[conversationID] = EnginePick(engineID: engineID, value: resolved)
         } else {
             pendingModelIDs[conversationID] = nil
@@ -798,13 +807,13 @@ final class ChatWorkspaceModel {
         }
         guard let engineID = selectedEngineID else { return }
         let modelDefault = selectedEngine?.thoughtLevelSelect(forModel: modelID(for: conversationID)).defaultID
-        let resolved = thoughtLevelID ?? modelDefault
+        guard let resolved = thoughtLevelID ?? modelDefault else { return }
         // Re-picking what the session runs clears the pick, unless a pending
         // model would move the level: then the pick has to ride along.
         let confirmed = confirmedModels[conversationID]?[engineID]
         let modelPending = pendingModelIDs[conversationID]?.engineID == engineID
         let isCurrent = !modelPending && confirmed.map { ($0.thoughtLevelID ?? modelDefault) == resolved } == true
-        if let resolved, !isCurrent {
+        if !isCurrent {
             pendingThoughtLevelIDs[conversationID] = EnginePick(engineID: engineID, value: resolved)
         } else {
             pendingThoughtLevelIDs[conversationID] = nil
@@ -845,10 +854,15 @@ final class ChatWorkspaceModel {
     /// The engine the agent's word about `runID` belongs to: the run's own,
     /// else the conversation's. Never a pick for the next message or the
     /// new-chat default; nil leaves it to the detail Core sends on reload.
+    /// While a start is in flight an unknown run may be that start, on an
+    /// engine the conversation has not run yet, so it waits for the detail.
     func confirmingEngineID(runID: ConversationRunID, conversationID: ConversationID) -> EngineID? {
-        selectedDetail?.runs.first { $0.runID == runID }?.engineID
-            ?? runEngineIDs[runID]
-            ?? conversationEngineIDs[conversationID]
+        if let engineID = selectedDetail?.runs.first(where: { $0.runID == runID })?.engineID
+            ?? runEngineIDs[runID] {
+            return engineID
+        }
+        guard pendingStartConversationID != conversationID else { return nil }
+        return conversationEngineIDs[conversationID]
     }
 
     private func clearConfirmedPicks(_ conversationID: ConversationID, engineID: EngineID) {
@@ -926,20 +940,30 @@ final class ChatWorkspaceModel {
         }
     }
 
-    /// Each engine's confirmed model and level: its active session's, field
-    /// by field, else its latest run's request. Runs are newest first.
+    /// Each engine's confirmed model and level, as one pair since a level
+    /// belongs to its model: its active session's when that confirmed either,
+    /// else its latest run's request, skipping requests Core refused as no
+    /// longer offered. Runs are newest first.
     static func confirmedModels(
         runs: [ConversationRunSummary], sessions: [AgentSessionSummary]
     ) -> [EngineID: ModelSelection] {
         var result: [EngineID: ModelSelection] = [:]
         for run in runs where result[run.engineID] == nil {
             let session = sessions.first { $0.state == .active && $0.engineID == run.engineID }
-            result[run.engineID] = ModelSelection(
-                modelID: session?.currentModelID ?? run.modelID,
-                thoughtLevelID: session?.currentThoughtLevelID ?? run.thoughtLevelID
-            )
+            if let session, session.currentModelID != nil || session.currentThoughtLevelID != nil {
+                result[run.engineID] = ModelSelection(
+                    modelID: session.currentModelID, thoughtLevelID: session.currentThoughtLevelID
+                )
+            } else if !isRefusedSelection(run) {
+                result[run.engineID] = ModelSelection(modelID: run.modelID, thoughtLevelID: run.thoughtLevelID)
+            }
         }
         return result
+    }
+
+    /// Whether Core refused `run` because a setting it requested is no longer offered.
+    static func isRefusedSelection(_ run: ConversationRunSummary) -> Bool {
+        run.status == .failed && run.error.objectString("kind") == "selectionUnavailable"
     }
     /// The mode the agent last confirmed for each conversation's session: its
     /// acknowledgment of a request, or a change it made itself (leaving plan
@@ -1633,14 +1657,18 @@ final class ChatWorkspaceModel {
             // A pick made during the run applies to a message queued behind
             // it, or the drain would restore the old setting: a mode made on
             // the run's engine, the model and level while the picker is on it.
+            // Off it, what the run's engine now has (the agent may have moved
+            // since the run's request), else that request.
             let modeID = selectedConversationID
                 .flatMap { conversationModeID($0, engineID: run.engineID, advertisedBy: engine) } ?? run.modeID
             let onRunEngine = selectedEngineID == run.engineID
+            let routed = selectedConversationID.flatMap { conversationModel($0, engineID: run.engineID) }
             return SubmissionRouting(
                 engine: engine,
-                modelID: onRunEngine ? selectedModelID : run.modelID,
+                modelID: onRunEngine ? selectedModelID : routed.map(\.modelID) ?? run.modelID,
                 modeID: modeID,
-                thoughtLevelID: onRunEngine ? effectiveThoughtLevelID : run.thoughtLevelID
+                thoughtLevelID: onRunEngine
+                    ? effectiveThoughtLevelID : routed.map(\.thoughtLevelID) ?? run.thoughtLevelID
             )
         }
         // No live run, or a run whose Engine is no longer installed. Either way
@@ -1885,8 +1913,7 @@ final class ChatWorkspaceModel {
               detail.messages.last?.messageID == message.messageID,
               selectedLiveRun == nil,
               let run = detail.runs.first,
-              run.status == .failed,
-              run.error.objectString("kind") == "selectionUnavailable",
+              Self.isRefusedSelection(run),
               let engine = engines.first(where: { $0.engineID == run.engineID })
         else { return nil }
         let retry = retrySelections(for: run)
@@ -1944,7 +1971,7 @@ final class ChatWorkspaceModel {
     func retrySelections(for run: ConversationRunSummary) -> RetrySelections {
         Self.retrySelections(
             for: run,
-            refused: run.status == .failed && run.error.objectString("kind") == "selectionUnavailable",
+            refused: Self.isRefusedSelection(run),
             engine: engines.first { $0.engineID == run.engineID },
             picks: engineID(for: run.conversationID) == run.engineID
                 ? (modelID(for: run.conversationID), modeID(for: run.conversationID),
@@ -1970,15 +1997,19 @@ final class ChatWorkspaceModel {
             guard let recorded, let offered, !offered.isEmpty else { return false }
             return !offered.contains(recorded)
         }
-        if isStale(run.modelID, offered: engine?.models.map(\.modelID)) {
-            retry.modelID = picks.modelID
-        } else if isStale(run.modeID, offered: engine?.modes.map(\.id)) {
-            retry.modeID = picks.modeID
-        } else if isStale(
-            run.thoughtLevelID,
-            offered: engine?.thoughtLevelSelect(forModel: run.modelID).levels.map(\.id)
-        ) {
-            retry.thoughtLevelID = picks.thoughtLevelID
+        // A pick the refreshed catalog lacks is no replacement: the default is.
+        func offeredPick(_ pick: String?, offered: [String]?) -> String? {
+            isStale(pick, offered: offered) ? nil : pick
+        }
+        let models = engine?.models.map(\.modelID)
+        let modes = engine?.modes.map(\.id)
+        let levels = engine?.thoughtLevelSelect(forModel: run.modelID).levels.map(\.id)
+        if isStale(run.modelID, offered: models) {
+            retry.modelID = offeredPick(picks.modelID, offered: models)
+        } else if isStale(run.modeID, offered: modes) {
+            retry.modeID = offeredPick(picks.modeID, offered: modes)
+        } else if isStale(run.thoughtLevelID, offered: levels) {
+            retry.thoughtLevelID = offeredPick(picks.thoughtLevelID, offered: levels)
         }
         return retry
     }
@@ -3332,6 +3363,8 @@ final class ChatWorkspaceModel {
             thoughtLevelID = self.thoughtLevelID(for: conversationID)
         }
         await settleAlwaysAllowToolActions()
+        pendingStartConversationID = conversationID
+        defer { pendingStartConversationID = nil }
         let started = try await backend.startConversationRun(
             workspaceID: workspaceID,
             conversationID: conversationID,

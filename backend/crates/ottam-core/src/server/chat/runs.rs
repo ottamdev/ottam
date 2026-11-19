@@ -701,28 +701,22 @@ impl ChatService {
                         {
                             RunRepository::set_session_mode(connection, session_id, mode_id)?;
                         }
-                        // Likewise the model and level it confirmed, each from
-                        // the latest event that names it.
-                        let announced = |key: &str| {
-                            events
+                        // Likewise the model and level it confirmed, in event
+                        // order: a later model without a level drops the
+                        // earlier model's level, and a later level sets it.
+                        if let Some(session_id) = run.agent_session_id.as_ref() {
+                            for (_, payload) in events
                                 .iter()
-                                .rev()
                                 .filter(|(kind, _)| *kind == ConversationEventKind::SessionMetadata)
-                                .find_map(|(_, payload)| payload.get(key)?.as_str())
-                        };
-                        let announced_model = announced("currentModelId");
-                        let announced_level = announced("currentThoughtLevelId");
-                        if let Some(session_id) = run
-                            .agent_session_id
-                            .as_ref()
-                            .filter(|_| announced_model.is_some() || announced_level.is_some())
-                        {
-                            RunRepository::set_session_model(
-                                connection,
-                                session_id,
-                                announced_model,
-                                announced_level,
-                            )?;
+                            {
+                                let model = payload.get("currentModelId").and_then(|v| v.as_str());
+                                let level = payload
+                                    .get("currentThoughtLevelId")
+                                    .and_then(|v| v.as_str());
+                                RunRepository::set_session_model(
+                                    connection, session_id, model, level,
+                                )?;
+                            }
                         }
                         // Likewise the commands it announced, so `/` lists them
                         // after a relaunch. The recorder already drops oversized
