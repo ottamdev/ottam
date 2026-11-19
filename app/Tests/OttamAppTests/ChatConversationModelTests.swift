@@ -207,6 +207,61 @@ struct ChatConversationModelTests {
                 "an unopened chat waits for its detail, not the new-chat agent")
     }
 
+    @Test("While a start is in flight, an unknown run's word waits for the detail")
+    func unknownRunDuringStartWaits() {
+        let (model, _) = makeModel()
+        open(model, launch, runs: [run("r1", launch, engine: claude, model: nil, level: nil)],
+             sessions: [session("s1", launch, engine: claude, model: "fable", level: "xhigh")])
+        let unknown = ConversationRunID("r2")
+        model.pendingStartConversationID = launch
+        #expect(model.confirmingEngineID(runID: unknown, conversationID: launch) == nil,
+                "it may be the start, on an engine the chat has not run")
+        model.pendingStartConversationID = nil
+        #expect(model.confirmingEngineID(runID: unknown, conversationID: launch) == claude)
+    }
+
+    @Test("A session's model and level come as one pair, and a refused request is not confirmed")
+    func confirmedPairHasOneSource() {
+        let (model, _) = makeModel()
+        open(model, launch, runs: [run("r1", launch, engine: claude, model: "opus", level: "high")],
+             sessions: [session("s1", launch, engine: claude, model: "fable", level: nil)])
+        #expect(model.selectedModelID == "fable")
+        #expect(model.effectiveThoughtLevelID == nil, "the run's level was for another model")
+
+        var refused = run("r3", other, engine: claude, model: "opus[1m]", level: nil)
+        refused.status = .failed
+        refused.error = .object(["kind": .string("selectionUnavailable")])
+        open(model, other, runs: [refused, run("r2", other, engine: claude, model: "sonnet", level: "low")],
+             sessions: [])
+        #expect(model.selectedModelID == "sonnet", "the refused model is not what the chat runs")
+    }
+
+    @Test("A model pick keeps no level from the old model; an effort pick keeps the model")
+    func picksKeepLevelsWithTheirModel() {
+        let (model, defaults) = makeModel()
+        open(model, launch, runs: [run("r1", launch, engine: claude, model: nil, level: nil)],
+             sessions: [session("s1", launch, engine: claude, model: "fable", level: "xhigh")])
+        model.selectModel("haiku")
+        #expect(model.effectiveThoughtLevelID == nil, "haiku runs at its own default")
+
+        // On an engine the chat never ran, an effort pick sends the saved model.
+        defaults.set("gpt-5", forKey: "chat.selectedModelID.codex")
+        model.selectedEngineID = codex
+        model.selectThoughtLevel("low")
+        #expect(model.selectedModelID == "gpt-5")
+        #expect(model.effectiveThoughtLevelID == "low")
+    }
+
+    @Test("Default on an engine that names no default model leaves the pick")
+    func defaultWithoutIDKeepsPick() {
+        let (model, _) = makeModel()
+        open(model, launch, runs: [run("r1", launch, engine: claude, model: nil, level: nil)],
+             sessions: [session("s1", launch, engine: claude, model: "fable", level: "xhigh")])
+        model.selectModel("haiku")
+        model.selectModel(nil)
+        #expect(model.pendingModelIDs[launch]?.value == "haiku")
+    }
+
     @Test("A session from before Core kept the model shows its latest run's request")
     func legacySessionFallsBackToRun() {
         let (model, _) = makeModel()

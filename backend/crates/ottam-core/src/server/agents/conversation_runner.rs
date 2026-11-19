@@ -2136,6 +2136,7 @@ impl ConversationRunCoordinator {
                     &adapter,
                     &project_root,
                     &inputs,
+                    &prior_confirmed,
                     session_id,
                     session_key,
                     &cancel,
@@ -2432,6 +2433,7 @@ impl ConversationRunCoordinator {
         adapter: &Arc<dyn HarnessAdapter>,
         project_root: &Path,
         inputs: &ConversationPromptInputs,
+        prior_confirmed: &ConfirmedSelection,
         stale_session: HarnessSessionId,
         stale_key: (String, String),
         cancel: &CancellationToken,
@@ -2467,14 +2469,13 @@ impl ConversationRunCoordinator {
         };
         let mut resolution =
             ResolutionGuard::new(self.forwarders(), &self.attribution, agent_id, context);
-        // The adapter still tracks the stale session's mode, model and level
-        // for the restore.
-        let tracked = ConfirmedSelection::default();
+        // The adapter may have lost the stale session with its restart, so the
+        // restore falls back to what Core persisted for it.
         let resolved = tokio::select! {
             _ = cancel.cancelled() => {
                 return (Ok(HarnessStopReason::Cancelled), stale_session, stale_key);
             }
-            result = resolve_conversation_session(adapter, Some(&prior), &tracked, project_root, &session_config, Some(&mut resolution)) => result,
+            result = resolve_conversation_session(adapter, Some(&prior), prior_confirmed, project_root, &session_config, Some(&mut resolution)) => result,
         };
         let (session_id, origin) = match resolved {
             Ok(resolved) => resolved,
@@ -3431,34 +3432,33 @@ pub(super) async fn resolve_conversation_session(
     // A run that requests no mode, model or level (a steer or interrupt
     // follow-up) keeps the one the agent last confirmed: tracked by the
     // adapter across its own restart, persisted across Core's. Never the
-    // agent's startup default. Levels belong to a model, so a run that picks
-    // a model keeps no level from the old one.
-    let (known_mode, known_model, known_level) = known
-        .map(|session| {
-            (
-                session.current_mode_id,
-                session.current_model_id,
-                session.current_thought_level_id,
-            )
-        })
-        .unwrap_or_default();
-    let keeps_model = config.model_id.is_none();
+    // agent's startup default. Levels belong to a model, so the model and its
+    // level come from one source (the adapter's, else the persisted pair), and
+    // a run that picks another model keeps no level from the old one.
+    let (known_mode, confirmed_model, confirmed_level) = match known {
+        Some(session) if session.current_model_id.is_some() => (
+            session.current_mode_id,
+            session.current_model_id,
+            session.current_thought_level_id,
+        ),
+        known => (
+            known.and_then(|session| session.current_mode_id),
+            prior_confirmed.model_id.clone(),
+            prior_confirmed.thought_level_id.clone(),
+        ),
+    };
+    let keeps_model = config.model_id.is_none() || config.model_id == confirmed_model;
     let config = &SessionConfigRequest {
         mode_id: config
             .mode_id
             .clone()
             .or(known_mode)
             .or_else(|| prior_confirmed.mode_id.clone()),
-        model_id: config
-            .model_id
+        model_id: config.model_id.clone().or(confirmed_model),
+        thought_level_id: config
+            .thought_level_id
             .clone()
-            .or(known_model)
-            .or_else(|| prior_confirmed.model_id.clone()),
-        thought_level_id: config.thought_level_id.clone().or_else(|| {
-            keeps_model
-                .then(|| known_level.or_else(|| prior_confirmed.thought_level_id.clone()))
-                .flatten()
-        }),
+            .or_else(|| keeps_model.then_some(confirmed_level).flatten()),
         ..config.clone()
     };
     if let Some(resolution) = resolution.as_deref() {

@@ -91,11 +91,13 @@ there is no separate clear verb.
 
 - Engine, model, effort and mode belong to each conversation; the saved
   per-engine picks are new-chat defaults only, changed only from a draft.
-  Opening a chat never writes them. Sends use the chat's pending pick, then
+  Opening a chat never writes them. Sends use the chat's pending pick over
   what its session on that engine confirmed (a pre-migration session falls
-  back to its latest run's request), then that engine's new-chat default.
-  An existing chat's "Default" row sends the engine's default id, since nil
-  means "keep what the session confirmed" to Core.
+  back to its latest run's request, never one Core refused), else over that
+  engine's new-chat default. Model and level are one pair: a model pick
+  keeps no level from the old model. An existing chat's "Default" row sends
+  the engine's default id, since nil means "keep what the session
+  confirmed" to Core.
 - Modes apply to a live session at once or defer; model and effort picks
   ride the next message. The run that carries them settles the picks it
   carried when it confirms or ends, so a cancelled switch shows what the agent

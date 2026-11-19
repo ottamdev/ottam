@@ -1287,11 +1287,11 @@ private struct ChatSessionSelector: View {
         label.localizedCaseInsensitiveContains("default")
     }
 
-    /// A model or effort picked in an existing chat reaches the agent with
-    /// the next message; there is no live switch.
+    /// A model or effort picked in an existing chat reaches the agent when the
+    /// next turn starts; there is no live switch, and a steer does not carry it.
     @ViewBuilder private var pendingModelNote: some View {
         if model.hasPendingModel {
-            Text("Applies to your next message")
+            Text("Applies when the next turn starts")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
