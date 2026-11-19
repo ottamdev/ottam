@@ -68,6 +68,8 @@ Terminal identities and Terminal scrollback do not.
 - Durable authority stays behind the Core protocol. Swift does not own Git
   operations, canonical paths, databases, transcript files, or remote
   workspace lifecycle.
+- Core decides attention, which conversations want the user and when to
+  alert; clients report focus and present it ([Attention](app/macos-ui.md#attention)).
 - A Workspace is a durable grouping, a Project is a stable logical identity,
   and a ProjectSource is one concrete checkout or future endpoint.
 - There is exactly one local Core owner per `OTTAM_HOME`.

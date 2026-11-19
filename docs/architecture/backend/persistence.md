@@ -24,7 +24,7 @@ commits survive app crashes; the last commits may roll back after power loss.
 | Store | Owns |
 | --- | --- |
 | `workspaces`, `workspace_projects`, `projects`, `project_sources` | Identity and membership. IDs are UUIDv7 strings generated in Rust, never derived from a path. |
-| `conversations`, `conversation_messages`, `conversation_attachments` | Conversation, user/system Message bodies, bounded attachment metadata. Message order is a projection of the transcript spine; no separate ordering column or allocator. A conversation's unseen finished run is the one attention state that persists; asks and focus live only in the running Core. |
+| `conversations`, `conversation_messages`, `conversation_attachments` | Conversation, user/system Message bodies, bounded attachment metadata. Message order is a projection of the transcript spine; no separate ordering column or allocator. A conversation's unseen finished run is the one [attention](../app/macos-ui.md#attention) state that persists; asks and focus live only in the running Core. |
 | `agent_instances`, `agent_sessions` | Agent profiles and external ACP session identity; the latest mode, commands and context usage are copied onto the active session row so they restore after relaunch. |
 | `conversation_runs`, `conversation_run_inputs`, `conversation_run_sources`, `run_events` | Runs, durable input intent and delivery state, immutable per-Run working-root snapshots, bounded lifecycle events. No raw adapter updates or transcript text in `run_events`. |
 | `transcript_items` | The single ordering spine: local identity, immutable `(conversation_id, position)`, revision, kind, completion, Run ownership. |

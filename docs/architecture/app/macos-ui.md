@@ -70,9 +70,9 @@ hold UI state only; durable domain authority stays behind the Core protocol
 ## Sidebar And Toolbar
 
 - The sidebar (`SidebarView`, `OttamWorkspaceLogic/SidebarSections.swift`) is
-  one merged `List`. A selected, waiting or working row always shows regardless
-  of a section's visible cap. Section collapse restores with the window; "Show
-  more" and parent folds do not persist.
+  one merged `List`. A selected, waiting, working or unseen row always shows
+  regardless of a section's visible cap. Section collapse restores with the
+  window; "Show more" and parent folds do not persist.
 - Delegated children are indented rows under their parent, not a
   `DisclosureGroup`: the system triangle sits only at the leading edge and the
   parent's fold chevron must trail its title.
@@ -82,6 +82,30 @@ hold UI state only; durable domain authority stays behind the Core protocol
 - The agents pill is an `NSMenuToolbarItem` (AX "Agents") beside the title,
   shown only while the selected conversation has a parent or children. Names
   live in its tooltip and AX label, not in the pill.
+
+## Attention
+
+Core decides which conversations want the user, needing input or unseen, and
+when a client alerts; the app reports focus and presents
+(`server/attention.rs`, `AttentionStore`). Decided 2026-11-17: a backgrounded
+remote client cannot hold a connection, so the decision cannot live in one.
+
+- Focus is the selected conversation of the main workspace window (main, not
+  key, so sheets, alerts and the quit panel keep it) while Ottam is active,
+  that window is on screen, and the screen is awake, unlocked and the
+  console's. Otherwise, Settings in front included, there is none.
+- Focus is the seen signal: focusing an unseen conversation clears it. There
+  is no mark-seen call.
+- Banners only open their conversation, reopening a closed window: one per
+  conversation and state, replacing the last, threaded by workspace.
+  Authorization is asked on the first banner, never at launch. The Settings
+  toggles gate banners only; the sidebar and Dock badge show regardless.
+- Sidebar marks in priority order: approval (derived in the app from pending
+  asks), running (the system's small spinner), unseen (the accent dot, as
+  Mail's unread). The Dock badge counts conversations with any attention.
+- Deliberate absence: an approval whose workspace window is closed is still
+  answered `cancelled`, so it never needs input; asks do not outlive the
+  client that would answer them.
 
 ## Surfaces And Materials
 

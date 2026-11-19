@@ -16,7 +16,8 @@ services; canonical path validation and ProjectSource identity; both SQLite
 databases and their migrations ([Persistence](persistence.md)); Git status,
 diffs, branches and worktrees; process-lifetime PTY Terminals
 ([Terminal](../terminal/README.md)); ACP adapters ([ACP](acp.md)); the MCP
-proxy and server sign-ins ([MCP](mcp.md)); and the ordered event stream.
+proxy and server sign-ins ([MCP](mcp.md)); conversation attention
+([Attention](../app/macos-ui.md#attention)); and the ordered event stream.
 
 The Swift app may seed an initial path for development or automation, but
 Core resolves it through `project.openPath` and owns the resulting identity
@@ -31,7 +32,8 @@ or transcript files.
 While Core runs, `core.sock` beside the home accepts attached JSONL clients
 (`ottam-inspect`) with the primary's dispatcher; it is 0600 and
 unauthenticated, the sqlite file's trust domain. `OTTAM_ATTACH=off` disables
-it (`server/attach.rs`).
+it (`server/attach.rs`). An attached client may hold attention focus like the
+primary; its focus ends when it disconnects.
 
 ## Release Contents
 
