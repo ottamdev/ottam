@@ -146,8 +146,34 @@ agent shells, and first wherever npm or npx re-resolve it from their shebang
 - OpenCode is outside `ACP_ADAPTERS` (no terminal output, `_auth/status_update`
   or steering); sign-in is validated by session creation. Every launch loads
   `agent/plugins/opencode-foreground.js`, which strips `background` from
-  `shell` and `subagent` (OpenCode doesn't forward the resumed turn) and
-  restores core's environment from `OTTAM_SHELL_ENVIRONMENT`. A managed
+  `shell` (OpenCode resumes the session for its result with no task
+  lifecycle, so nothing arms a follow-up) and restores core's environment
+  from `OTTAM_SHELL_ENVIRONMENT`. Subagents always run in the background:
+  core advertises `opencode/child-session-updates`, and
+  `agent/acp/child_sessions.rs` threads each child from the run statuses in
+  `opencode/session/child_update`, not from its control call, which
+  completes as the child starts. A `subagent` call naming a finished child's
+  `sessionID` is a resumed run (`<child>:generation:<n>`) whose prompt it
+  carries; one naming a running child joins that run and shows as a
+  follow-up. The parent's turn woken by a child's report arrives with no
+  prompt and lands in a follow-up run (the child's end arms it).
+  `session/cancel` reaches neither a background child nor a woken turn, and
+  a child's report, even a cancelled one, wakes the parent. So Stop on a
+  root that has had a child sends `session/close` to the open children,
+  waits a second for the wake their reports cause, then closes the root,
+  which interrupts it (`actor.rs::close_background_tree`); a root closed
+  before the wake leaves the woken turn running. The close runs beside the
+  actor's command loop, so other sessions keep being served while that root
+  refuses new prompts. Until then the woken turn's own output is dropped, so
+  none of it reaches the stopped run. The next run loads the root again. A
+  failed or timed-out close fails the Stop; a child it missed stays open
+  for the next Stop, and a root it missed stays held. A stopped follow-up
+  run ends with that error. An in-turn Stop's run still ends cancelled, as
+  Stop never waits on the cancelled prompt
+  ([Stop And Steer](persistence.md#stop-and-steer)); the actor logs the
+  failure. The whole close gets one budget (`OUT_OF_TURN_STOP_BUDGET`)
+  below the runner's out-of-turn wait, itself below the cancel grace that
+  aborts the run's worker, so the result reaches the run. A managed
   profile disables the CLI's shared background service (`config/service.json`;
   fixed port 49374 would mix profiles' sign-ins). At 2.0.27: plan mode not
   enforced, write/patch emit no diffs, slash output doesn't stream.

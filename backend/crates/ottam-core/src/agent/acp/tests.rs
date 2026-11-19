@@ -13,7 +13,7 @@ use agent_client_protocol::schema::v1::{
     SetSessionConfigOptionRequest, StopReason,
 };
 use agent_client_protocol::ErrorCode;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::future::Future;
 use std::path::PathBuf;
 use std::pin::Pin;
@@ -115,7 +115,7 @@ fn recorded_sessions_carry_turn_usage_and_context_usage() {
             include_str!("../fixtures/claude-agent-acp-0.108.0.json"),
         ),
         ("codex", include_str!("../fixtures/codex-acp-2.7.0.json")),
-        ("opencode", include_str!("../fixtures/opencode-2.2.5.json")),
+        ("opencode", include_str!("../fixtures/opencode-2.3.0.json")),
         ("omp", include_str!("../fixtures/omp-18.22.0.json")),
     ] {
         let messages = serde_json::from_str::<Vec<serde_json::Value>>(recording).unwrap();
@@ -700,7 +700,7 @@ fn unhandled_nothing_in_the_recorded_sessions() {
     let recorded = [
         include_str!("../fixtures/codex-acp-2.7.0.json"),
         include_str!("../fixtures/claude-agent-acp-0.108.0.json"),
-        include_str!("../fixtures/opencode-2.2.5.json"),
+        include_str!("../fixtures/opencode-2.3.0.json"),
         include_str!("../fixtures/omp-18.22.0.json"),
     ]
     .into_iter()
@@ -748,6 +748,25 @@ fn unhandled_nothing_in_the_recorded_sessions() {
                         .unwrap(),
                 ),
             ),
+            // OpenCode's child status and frames; a frame is a tagged
+            // `session/update` of its own.
+            Some(method @ "opencode/session/child_update") => {
+                let typed: super::child_sessions::ChildUpdate =
+                    serde_json::from_value(params.clone()).unwrap();
+                if let super::child_sessions::ChildEvent::Update { update } = &typed.event {
+                    let inner =
+                        serde_json::json!({"sessionId": typed.root_session_id, "update": update});
+                    let decoded =
+                        to_json(&serde_json::from_value::<SessionNotification>(inner.clone()).unwrap());
+                    // The frame's own kind decides which defaults may be omitted.
+                    let tag = inner["update"]["sessionUpdate"].as_str().unwrap_or("none");
+                    let dropped = dropped_paths(&inner, &decoded, &|path, value| {
+                        is_omitted_default(tag, path, value)
+                    });
+                    assert!(dropped.is_empty(), "{method} frame loses {dropped:?}: {params}");
+                }
+                (method, to_json(&typed))
+            }
             Some(method @ "$/cancel_request") => (
                 method,
                 to_json(
@@ -791,6 +810,12 @@ struct ScriptedCommandConnection {
     hold_config: Arc<std::sync::atomic::AtomicBool>,
     config_started: Arc<Notify>,
     config_release: Arc<Notify>,
+    /// Sessions whose `session/close` answers with an error.
+    fail_close: Arc<Mutex<BTreeSet<String>>>,
+    /// Holds `session/close` until `close_release`.
+    hold_close: Arc<std::sync::atomic::AtomicBool>,
+    close_started: Arc<Notify>,
+    close_release: Arc<Notify>,
 }
 
 impl ScriptedCommandConnection {
@@ -910,6 +935,18 @@ impl AcpCommandConnection for ScriptedCommandConnection {
     ) -> Pin<Box<dyn Future<Output = Result<(), agent_client_protocol::Error>> + Send + '_>> {
         Box::pin(async move {
             self.record(format!("close:{session_id}"));
+            if self.hold_close.load(std::sync::atomic::Ordering::SeqCst) {
+                self.close_started.notify_one();
+                self.close_release.notified().await;
+            }
+            if self
+                .fail_close
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .contains(&session_id)
+            {
+                return Err(agent_client_protocol::Error::internal_error());
+            }
             Ok(())
         })
     }
@@ -1952,6 +1989,331 @@ async fn reloading_a_held_session_closes_it_first_when_the_agent_can() {
         ]
     );
     assert_eq!(shared.sessions().len(), 1, "the reload holds it again");
+    stop_command_loop(&command_tx, task).await;
+}
+
+/// An agent whose subagents outlive the turn (OpenCode), with `session/close`.
+fn background_children_shared() -> Arc<SharedState> {
+    let (status_tx, _) = watch::channel(AdapterStatus::stopped());
+    status_tx.send_modify(|status| {
+        status
+            .capabilities
+            .agent_advertises
+            .insert(AcpFeature::SessionClose, true);
+    });
+    Arc::new(SharedState {
+        status_tx,
+        updates_tx: HarnessUpdateSender::default(),
+        sessions: Mutex::new(BTreeMap::new()),
+        update_sequences: Mutex::new(BTreeMap::new()),
+        announced_commands: Mutex::new(BTreeMap::new()),
+        child_sessions: Some(super::child_sessions::ChildSessions::new(
+            super::super::types::ChildSessionTags {
+                meta_key: "opencode/child-session",
+                control_tool: "subagent",
+                name: "description",
+                prompt: "prompt",
+                target: "sessionID",
+                updates: "opencode/session/child_update",
+            },
+        )),
+        sign_in_proof: SignInProof::Session,
+    })
+}
+
+fn child_started(shared: &SharedState, root: &str, child: &str) {
+    child_status(shared, root, child, "created");
+}
+
+fn child_status(shared: &SharedState, root: &str, child: &str, status: &str) {
+    let notification = serde_json::from_value(serde_json::json!({
+        "rootSessionId": root, "childSessionId": child, "parentSessionId": root,
+        "depth": 1, "title": "Story", "type": "status", "status": status}))
+    .expect("child update");
+    shared
+        .child_sessions
+        .as_ref()
+        .expect("child sessions")
+        .child_update(notification, |_| None);
+}
+
+/// Stops one prompt on `root` and returns how it answered.
+async fn stop_prompt(
+    connection: &ScriptedCommandConnection,
+    command_tx: &mpsc::Sender<AdapterCommand>,
+    root: &HarnessSessionId,
+) -> HarnessStopReason {
+    let (prompt_reply, prompt_response) = oneshot::channel();
+    command_tx
+        .send(AdapterCommand::Prompt {
+            session_id: root.clone(),
+            prompt: HarnessPrompt::text("story"),
+            reply: prompt_reply,
+        })
+        .await
+        .unwrap();
+    connection.prompt_started.notified().await;
+    let (cancel_reply, cancel_response) = oneshot::channel();
+    command_tx
+        .send(AdapterCommand::Cancel {
+            session_id: root.clone(),
+            reply: cancel_reply,
+        })
+        .await
+        .unwrap();
+    cancel_response.await.unwrap().expect("cancel sent");
+    connection.prompt_release.notify_one();
+    prompt_response.await.unwrap().expect("prompt answers")
+}
+
+#[tokio::test]
+async fn stop_closes_open_background_children_then_the_root_before_answering() {
+    let connection = ScriptedCommandConnection::default();
+    let shared = background_children_shared();
+    let root = HarnessSessionId::new("root");
+    shared.insert_session(root.clone(), PathBuf::from("/tmp/project"));
+    child_started(&shared, "root", "story");
+    let (command_tx, task) = spawn_command_loop(connection.clone(), Arc::clone(&shared));
+
+    stop_prompt(&connection, &command_tx, &root).await;
+    assert_eq!(
+        connection.recorded_calls(),
+        vec!["prompt:root", "cancel:root", "close:story", "close:root"]
+    );
+    assert!(
+        shared.sessions().is_empty(),
+        "the next run loads the closed root again"
+    );
+    stop_command_loop(&command_tx, task).await;
+}
+
+/// A child that already ended may still have a report on its way, which
+/// would wake the root after the cancel.
+#[tokio::test]
+async fn stop_closes_the_root_when_its_child_already_ended() {
+    let connection = ScriptedCommandConnection::default();
+    let shared = background_children_shared();
+    let root = HarnessSessionId::new("root");
+    shared.insert_session(root.clone(), PathBuf::from("/tmp/project"));
+    child_started(&shared, "root", "story");
+    child_status(&shared, "root", "story", "completed");
+    let (command_tx, task) = spawn_command_loop(connection.clone(), Arc::clone(&shared));
+
+    stop_prompt(&connection, &command_tx, &root).await;
+    assert_eq!(
+        connection.recorded_calls(),
+        vec!["prompt:root", "cancel:root", "close:root"]
+    );
+    assert!(shared.sessions().is_empty());
+    stop_command_loop(&command_tx, task).await;
+}
+
+/// A close that fails stopped nothing: Stop says so, and the session stays
+/// held rather than loaded again while the agent still runs it.
+#[tokio::test]
+async fn a_failed_stop_close_keeps_the_session_and_reports_the_error() {
+    let connection = ScriptedCommandConnection::default();
+    connection.fail_close.lock().unwrap().insert("root".into());
+    let shared = background_children_shared();
+    let root = HarnessSessionId::new("root");
+    shared.insert_session(root.clone(), PathBuf::from("/tmp/project"));
+    let (command_tx, task) = spawn_command_loop(connection.clone(), Arc::clone(&shared));
+    let (reply, response) = oneshot::channel();
+    command_tx
+        .send(AdapterCommand::CancelOutOfTurn {
+            session_id: root.clone(),
+            reply,
+        })
+        .await
+        .unwrap();
+    assert!(response.await.unwrap().is_err());
+    assert_eq!(connection.recorded_calls(), vec!["close:root"]);
+    assert_eq!(shared.sessions().len(), 1);
+    stop_command_loop(&command_tx, task).await;
+}
+
+/// A subagent whose close fails may still be running: the stopped prompt
+/// answers with that failure, though the root itself closed, and a later
+/// Stop on the reloaded root closes the child again.
+#[tokio::test]
+async fn a_failed_child_close_fails_the_in_turn_stop() {
+    let connection = ScriptedCommandConnection::default();
+    connection.fail_close.lock().unwrap().insert("story".into());
+    let shared = background_children_shared();
+    let root = HarnessSessionId::new("root");
+    shared.insert_session(root.clone(), PathBuf::from("/tmp/project"));
+    child_started(&shared, "root", "story");
+    let (command_tx, task) = spawn_command_loop(connection.clone(), Arc::clone(&shared));
+    let (prompt_reply, prompt_response) = oneshot::channel();
+    command_tx
+        .send(AdapterCommand::Prompt {
+            session_id: root.clone(),
+            prompt: HarnessPrompt::text("story"),
+            reply: prompt_reply,
+        })
+        .await
+        .unwrap();
+    connection.prompt_started.notified().await;
+    let (cancel_reply, cancel_response) = oneshot::channel();
+    command_tx
+        .send(AdapterCommand::Cancel {
+            session_id: root.clone(),
+            reply: cancel_reply,
+        })
+        .await
+        .unwrap();
+    cancel_response.await.unwrap().expect("cancel sent");
+    connection.prompt_release.notify_one();
+    let error = prompt_response.await.unwrap().expect_err("the Stop failed");
+    assert!(error.message.contains("background work may still be running"), "{error:?}");
+    assert_eq!(
+        connection.recorded_calls(),
+        vec!["prompt:root", "cancel:root", "close:story", "close:root"]
+    );
+    assert!(shared.sessions().is_empty(), "the root itself closed");
+
+    // The child is still open: once the root loads again, the next Stop
+    // closes it again.
+    connection.fail_close.lock().unwrap().clear();
+    shared.insert_session(root.clone(), PathBuf::from("/tmp/project"));
+    let (stop_reply, stop_response) = oneshot::channel();
+    command_tx
+        .send(AdapterCommand::CancelOutOfTurn {
+            session_id: root.clone(),
+            reply: stop_reply,
+        })
+        .await
+        .unwrap();
+    stop_response.await.unwrap().expect("the retry closed the tree");
+    assert_eq!(
+        connection.recorded_calls()[4..],
+        ["close:story", "close:root"]
+    );
+    stop_command_loop(&command_tx, task).await;
+}
+
+/// A close the agent never answers fails the Stop within the budget and
+/// leaves the root held.
+#[tokio::test]
+async fn an_unanswered_stop_close_fails_within_the_budget() {
+    let connection = ScriptedCommandConnection::default();
+    connection
+        .hold_close
+        .store(true, std::sync::atomic::Ordering::SeqCst);
+    let shared = background_children_shared();
+    let root = HarnessSessionId::new("root");
+    shared.insert_session(root.clone(), PathBuf::from("/tmp/project"));
+    child_started(&shared, "root", "story");
+    let (command_tx, task) = spawn_command_loop(connection.clone(), Arc::clone(&shared));
+    let (stop_reply, stop_response) = oneshot::channel();
+    command_tx
+        .send(AdapterCommand::CancelOutOfTurn {
+            session_id: root.clone(),
+            reply: stop_reply,
+        })
+        .await
+        .unwrap();
+    let error = tokio::time::timeout(
+        crate::agent::OUT_OF_TURN_STOP_BUDGET * 2,
+        stop_response,
+    )
+    .await
+    .expect("the Stop answers within the budget")
+    .unwrap()
+    .expect_err("the Stop failed");
+    assert!(error.message.contains("timed out"), "{error:?}");
+    assert_eq!(shared.sessions().len(), 1, "the root is still held");
+    stop_command_loop(&command_tx, task).await;
+}
+
+/// The close runs beside the command loop: other sessions are served, and
+/// the closing root takes no prompt, until it ends.
+#[tokio::test]
+async fn a_closing_root_holds_only_itself() {
+    let connection = ScriptedCommandConnection::default();
+    connection
+        .hold_close
+        .store(true, std::sync::atomic::Ordering::SeqCst);
+    let shared = background_children_shared();
+    let root = HarnessSessionId::new("root");
+    let other = HarnessSessionId::new("other");
+    shared.insert_session(root.clone(), PathBuf::from("/tmp/project"));
+    shared.insert_session(other.clone(), PathBuf::from("/tmp/project"));
+    let (command_tx, task) = spawn_command_loop(connection.clone(), Arc::clone(&shared));
+    let (stop_reply, mut stop_response) = oneshot::channel();
+    command_tx
+        .send(AdapterCommand::CancelOutOfTurn {
+            session_id: root.clone(),
+            reply: stop_reply,
+        })
+        .await
+        .unwrap();
+    connection.close_started.notified().await;
+
+    let (cancel_reply, cancel_response) = oneshot::channel();
+    command_tx
+        .send(AdapterCommand::Cancel {
+            session_id: other.clone(),
+            reply: cancel_reply,
+        })
+        .await
+        .unwrap();
+    cancel_response.await.unwrap().expect("another session is served");
+    let (prompt_reply, prompt_response) = oneshot::channel();
+    command_tx
+        .send(AdapterCommand::Prompt {
+            session_id: root.clone(),
+            prompt: HarnessPrompt::text("again"),
+            reply: prompt_reply,
+        })
+        .await
+        .unwrap();
+    assert_eq!(
+        prompt_response.await.unwrap().expect_err("still stopping").kind,
+        HarnessErrorKind::SessionBusy
+    );
+    assert!(stop_response.try_recv().is_err(), "the Stop waits for its close");
+
+    connection.close_release.notify_one();
+    stop_response.await.unwrap().expect("stops");
+    assert_eq!(shared.sessions().len(), 1, "only the root is forgotten");
+    stop_command_loop(&command_tx, task).await;
+}
+
+#[tokio::test]
+async fn stop_with_no_open_background_child_only_cancels() {
+    let connection = ScriptedCommandConnection::default();
+    let shared = background_children_shared();
+    let root = HarnessSessionId::new("root");
+    shared.insert_session(root.clone(), PathBuf::from("/tmp/project"));
+    let (command_tx, task) = spawn_command_loop(connection.clone(), Arc::clone(&shared));
+
+    stop_prompt(&connection, &command_tx, &root).await;
+    assert_eq!(connection.recorded_calls(), vec!["prompt:root", "cancel:root"]);
+    assert_eq!(shared.sessions().len(), 1);
+    stop_command_loop(&command_tx, task).await;
+}
+
+/// `session/cancel` never reaches a turn the agent started on its own, so
+/// stopping one closes the session even with no child left running.
+#[tokio::test]
+async fn stopping_an_out_of_turn_cycle_closes_the_session_when_children_outlive_turns() {
+    let connection = ScriptedCommandConnection::default();
+    let shared = background_children_shared();
+    let root = HarnessSessionId::new("root");
+    shared.insert_session(root.clone(), PathBuf::from("/tmp/project"));
+    let (command_tx, task) = spawn_command_loop(connection.clone(), Arc::clone(&shared));
+    let (reply, response) = oneshot::channel();
+    command_tx
+        .send(AdapterCommand::CancelOutOfTurn {
+            session_id: root.clone(),
+            reply,
+        })
+        .await
+        .unwrap();
+    response.await.unwrap().expect("stops");
+    assert_eq!(connection.recorded_calls(), vec!["close:root"]);
+    assert!(shared.sessions().is_empty());
     stop_command_loop(&command_tx, task).await;
 }
 

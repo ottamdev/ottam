@@ -2648,20 +2648,17 @@ fn test_binary_definition() -> Option<AgentDefinition> {
 /// OpenCode v2 ships as Bun-compiled executables inside npm platform
 /// tarballs; there are no GitHub release assets for v2. The digests are
 /// sha256 of each tarball, cross-checked against npm's sha512 integrity.
-/// Held at 2.2.5: 2.3.0 runs subagents in the background, ending each control
-/// call before its child's first frame, which `acp/child_sessions.rs` does
-/// not thread yet.
-const OPENCODE_VERSION: &str = "2.2.5";
+const OPENCODE_VERSION: &str = "2.3.0";
 const OPENCODE_ARTIFACTS: [(&str, &str, &str); 2] = [
     (
         "aarch64",
-        "https://registry.npmjs.org/@opencode/cli-darwin-arm64/-/cli-darwin-arm64-2.2.5.tgz",
-        "dfd827de3281b4c3ca2b0bfc8f4beb103fa660c419d148a1a515c4344f9e9c02",
+        "https://registry.npmjs.org/@opencode/cli-darwin-arm64/-/cli-darwin-arm64-2.3.0.tgz",
+        "c25247a72bb9d0cb8feca67eb95f1417b61c9cfb042908756fbaf8d6c170641e",
     ),
     (
         "x86_64",
-        "https://registry.npmjs.org/@opencode/cli-darwin-x64/-/cli-darwin-x64-2.2.5.tgz",
-        "304f4666e7e37eac338de258f763b7f5b8987ab1bde2341dc1a613a8205c0010",
+        "https://registry.npmjs.org/@opencode/cli-darwin-x64/-/cli-darwin-x64-2.3.0.tgz",
+        "a75749c0d77ef2cf4b234b45ad1b59a570afdaae23e0da416f258733557e795e",
     ),
 ];
 
@@ -2735,12 +2732,24 @@ fn opencode_definition() -> AgentDefinition {
                 target: HomeTarget::Dir("state"),
             },
         ],
-        subagent_messages: SubagentMessageTools::default(),
+        // A follow-up to a running child joins its run, so `acp/child_sessions.rs`
+        // releases that call and it is stamped here. One to a finished child
+        // starts a run whose prompt it becomes.
+        subagent_messages: SubagentMessageTools {
+            handback: None,
+            follow_up: Some(SubagentFollowUpTool {
+                tool: "subagent",
+                target: "sessionID",
+                message: "prompt",
+            }),
+        },
         child_sessions: Some(ChildSessionTags {
             meta_key: "opencode/child-session",
             control_tool: "subagent",
             name: "description",
             prompt: "prompt",
+            target: "sessionID",
+            updates: "opencode/session/child_update",
         }),
         // `OPENCODE_CONFIG_CONTENT` is OpenCode's highest-precedence config
         // layer, so the plugin loads for an Ottam profile and an existing
@@ -2770,7 +2779,7 @@ fn opencode_definition() -> AgentDefinition {
         sign_in_proof: SignInProof::Session,
         terminal_login_args: None,
         mcp_connections: McpConnections::PerDirectory,
-        // At 2.2.5 every `session/new` stores a session row, and
+        // At 2.3.0 every `session/new` stores a session row, and
         // `session/delete` removes it.
         catalog_probe: ProbeCleanup::DeleteSession,
     }
