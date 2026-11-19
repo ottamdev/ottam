@@ -687,8 +687,17 @@ fn a_bumped_pin_keeps_reporting_the_older_install_until_it_lands() {
     .expect("writes manifest");
 
     let fake = FakeAcpRuntime::new();
-    let mut core = CoreProcess::new_in_home_with_env(home.path(), installs_on(&fake));
+    let mut environment = installs_on(&fake);
+    // The fake npm finishes at once, so without the hold the reinstall can
+    // land before the list below reads the package mid-update.
+    environment.push((
+        "OTTAM_FAKE_NPM_HOLD_UNTIL_RELEASE".to_string(),
+        "1".to_string(),
+    ));
+    let mut core = CoreProcess::new_in_home_with_env(home.path(), environment);
+    let npm_release = fake.npm_release_guard();
     core.initialize();
+    fake.wait_for_npm_started(Duration::from_secs(30));
 
     let during = codex_package(&mut core, 880);
     assert_eq!(during["installState"], "installed", "{during}");
@@ -698,6 +707,7 @@ fn a_bumped_pin_keeps_reporting_the_older_install_until_it_lands() {
         ["updating", "pending"].contains(&during["update"]["state"].as_str().unwrap_or("")),
         "{during}"
     );
+    npm_release.release();
 
     let deadline = Instant::now() + Duration::from_secs(60);
     let install_id = loop {
