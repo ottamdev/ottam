@@ -50,7 +50,8 @@ Failed runs are covered by the protocol test, not by hand.
   - Done when: step 1's prompt appears on a bundle that has never asked;
     the banners in steps 2, 5 and 8 read as written; clicking them brings
     Ottam forward on the conversation (step 8 reopens the window); the Dock
-    badge shows the count.
+    badge shows the count; with banners denied, Settings' "Open System
+    Settings…" lands on Ottam's Notifications pane.
   - Verify with: the walkthrough, driven by a person. Background automation
     keeps Ottam inactive and cannot see system UI.
 
