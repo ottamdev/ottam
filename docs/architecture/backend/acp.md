@@ -165,9 +165,15 @@ agent shells, and first wherever npm or npx re-resolve it from their shebang
   before the wake leaves the woken turn running. The close runs beside the
   actor's command loop, so other sessions keep being served while that root
   refuses new prompts. Until then the woken turn's own output is dropped, so
-  none of it reaches the stopped run. The next run loads the root again; a
-  failed child or root close fails the Stop (the stopped run ends with the
-  error) and a failed root close leaves the root held. A managed
+  none of it reaches the stopped run. The next run loads the root again. A
+  failed or timed-out close fails the Stop; a child it missed stays open
+  for the next Stop, and a root it missed stays held. A stopped follow-up
+  run ends with that error. An in-turn Stop's run still ends cancelled, as
+  Stop never waits on the cancelled prompt
+  ([Stop And Steer](persistence.md#stop-and-steer)); the actor logs the
+  failure. The whole close gets one budget (`OUT_OF_TURN_STOP_BUDGET`)
+  below the runner's out-of-turn wait, itself below the cancel grace that
+  aborts the run's worker, so the result reaches the run. A managed
   profile disables the CLI's shared background service (`config/service.json`;
   fixed port 49374 would mix profiles' sign-ins). At 2.0.27: plan mode not
   enforced, write/patch emit no diffs, slash output doesn't stream.

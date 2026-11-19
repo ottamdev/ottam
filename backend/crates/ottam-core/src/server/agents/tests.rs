@@ -570,8 +570,9 @@ struct FakeConversationAdapter {
     scripted_turn: StdMutex<Vec<HarnessUpdateKind>>,
     /// Sessions core asked to stop working on their own.
     out_of_turn_cancels: StdMutex<Vec<String>>,
-    /// What such a Stop answers instead of success.
+    /// What such a Stop answers instead of success, and how long it takes.
     out_of_turn_cancel_error: StdMutex<Option<crate::agent::HarnessError>>,
+    out_of_turn_cancel_delay: StdMutex<Duration>,
     /// Each session's mode, as the actor would track it.
     session_modes: StdMutex<HashMap<String, String>>,
     /// Each session's announced commands, as the actor would track them.
@@ -628,6 +629,7 @@ impl FakeConversationAdapter {
             scripted_turn: StdMutex::new(Vec::new()),
             out_of_turn_cancels: StdMutex::new(Vec::new()),
             out_of_turn_cancel_error: StdMutex::new(None),
+            out_of_turn_cancel_delay: StdMutex::new(Duration::ZERO),
             session_modes: StdMutex::new(HashMap::new()),
             session_commands: StdMutex::new(HashMap::new()),
             applied_modes: StdMutex::new(Vec::new()),
@@ -1284,7 +1286,14 @@ impl HarnessAdapter for FakeConversationAdapter {
             .unwrap_or_else(|poisoned| poisoned.into_inner())
             .clone()
             .map_or(Ok(()), Err);
-        Box::pin(std::future::ready(answer))
+        let delay = *self
+            .out_of_turn_cancel_delay
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        Box::pin(async move {
+            tokio::time::sleep(delay).await;
+            answer
+        })
     }
 }
 
@@ -7335,7 +7344,8 @@ async fn autonomous_follow_up_cancel_stops_the_agent_and_disarms() {
 }
 
 /// A Stop the agent could not carry out (its sessions would not close) ends
-/// the follow-up with that error, not as cleanly cancelled.
+/// the follow-up with that error, not as cleanly cancelled, even when the
+/// agent is slow to say so.
 #[tokio::test]
 async fn autonomous_follow_up_cancel_reports_a_stop_that_failed() {
     let harness = continuity_harness("follow_up_cancel_failed", FakeFactory::new(true)).await;
@@ -7347,6 +7357,8 @@ async fn autonomous_follow_up_cancel_reports_a_stop_that_failed() {
             "Stop could not close the agent's session",
         ),
     );
+    // A slow close still answers before the cancel grace aborts the worker.
+    *harness.adapter().out_of_turn_cancel_delay.lock().unwrap() = Duration::from_millis(40);
     harness
         .send_after_turn(
             &session,

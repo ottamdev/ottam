@@ -7,6 +7,7 @@ use std::future::Future;
 use std::path::PathBuf;
 use std::pin::Pin;
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 use tokio::sync::{mpsc, watch};
 
 pub type HarnessFuture<'a, T> = Pin<Box<dyn Future<Output = Result<T, HarnessError>> + Send + 'a>>;
@@ -1106,6 +1107,16 @@ impl fmt::Display for HarnessError {
 }
 
 impl std::error::Error for HarnessError {}
+
+/// The longest a Stop that closes the agent's sessions may take before it
+/// gives up and fails (`acp/actor.rs::close_background_tree`). The runner's
+/// wait for [`HarnessAdapter::cancel_out_of_turn`] sits between this and its
+/// cancel grace, so a slow close still reaches the run. Runner tests drive a
+/// fake adapter, so the test value only has to outlast the actor's own tests.
+#[cfg(not(test))]
+pub const OUT_OF_TURN_STOP_BUDGET: Duration = Duration::from_secs(3);
+#[cfg(test)]
+pub const OUT_OF_TURN_STOP_BUDGET: Duration = Duration::from_millis(250);
 
 pub trait HarnessAdapter: Send + Sync {
     fn definition(&self) -> &AgentDefinition;

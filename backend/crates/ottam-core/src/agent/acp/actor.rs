@@ -6,6 +6,7 @@ use super::super::types::{
     HarnessQuestionRequest, HarnessSessionId, HarnessSessionState, HarnessSessionSummary,
     HarnessStopReason, HarnessTurnUsage, HarnessUpdate, HarnessUpdateKind, HarnessUpdateSender,
     McpServerEntry, ModelSwitch, SessionConfigRequest, SignInProof, SteeringCapability,
+    OUT_OF_TURN_STOP_BUDGET,
 };
 use super::async_tasks::StopAsyncTaskRequest;
 use super::child_sessions::{ChildSessions, ChildUpdate};
@@ -1967,9 +1968,6 @@ async fn close_held_session(
     }
 }
 
-/// Bounds each `session/close` Stop sends.
-const STOP_CLOSE_TIMEOUT: Duration = Duration::from_secs(5);
-
 /// How long Stop waits between closing children and closing their root. A
 /// closed child's report wakes the root within milliseconds (OpenCode
 /// 2.3.0), and closing the root interrupts only a turn already running: one
@@ -2139,31 +2137,42 @@ async fn close_background_tree(
     let close = |session_id: String| {
         let connection = connection.clone();
         async move {
-            match tokio::time::timeout(STOP_CLOSE_TIMEOUT, connection.close_session(session_id))
+            connection
+                .close_session(session_id)
                 .await
-            {
-                Ok(result) => result.map_err(|error| map_acp_error(&error)),
-                Err(_) => Err(HarnessError::new(
-                    HarnessErrorKind::Protocol,
-                    "session/close timed out".to_owned(),
-                )),
-            }
+                .map_err(|error| map_acp_error(&error))
         }
     };
-    let mut result = Ok(());
-    if let Some(children) = shared.child_sessions.as_ref().filter(|_| had_children) {
-        for child in children.open_children(&root) {
-            if let Err(error) = close(child).await {
-                result = result.and(Err(error));
+    // One deadline over the whole tree, settle included, so the Stop answers
+    // within the budget however many children it closes. A tree cut short
+    // leaves the root held, and its still-open children for the next Stop.
+    let closed = tokio::time::timeout(OUT_OF_TURN_STOP_BUDGET, async {
+        let mut result = Ok(());
+        if let Some(children) = shared.child_sessions.as_ref().filter(|_| had_children) {
+            for child in children.open_children(&root) {
+                if let Err(error) = close(child).await {
+                    result = result.and(Err(error));
+                }
             }
+            tokio::time::sleep(STOP_WAKE_SETTLE).await;
         }
-        tokio::time::sleep(STOP_WAKE_SETTLE).await;
-    }
-    let closed = close(root.0.clone()).await;
+        let closed = close(root.0.clone()).await;
+        (closed.is_ok(), closed.and(result))
+    })
+    .await;
+    let (root_closed, result) = closed.unwrap_or_else(|_| {
+        (
+            false,
+            Err(HarnessError::new(
+                HarnessErrorKind::Protocol,
+                "session/close timed out".to_owned(),
+            )),
+        )
+    });
     TreeClosed {
         root,
-        root_closed: closed.is_ok(),
-        result: closed.and(result),
+        root_closed,
+        result,
     }
 }
 

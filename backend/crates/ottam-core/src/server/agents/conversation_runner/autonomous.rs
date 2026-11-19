@@ -15,12 +15,14 @@
 
 use super::{
     wait_for_conversation_worker, ActiveConversationRun, ConversationRunCompletionGuard,
-    ConversationRunContext, ConversationRunCoordinator,
+    ConversationRunContext, ConversationRunCoordinator, CONVERSATION_CANCEL_GRACE_PERIOD,
 };
 use crate::agent::{
     AdapterLifecycleState, AdapterStatus, AgentId, HarnessAdapter, HarnessError, HarnessErrorKind,
     HarnessSessionId,
 };
+#[cfg(not(test))]
+use crate::agent::OUT_OF_TURN_STOP_BUDGET;
 use crate::core_error::CoreError;
 use crate::server::agents::attribution::{
     AttributionOp, DropReason, FollowUpJoin, OpenRequest, RunEnd, SessionKey,
@@ -72,9 +74,17 @@ const PERMISSION_OPEN_WAIT: Duration = Duration::from_secs(2);
 const FOLLOW_UP_BLOCKED: &str = "followUpBlocked";
 
 /// How long a cancel waits to tell the agent to stop its cycle. A plain
-/// cancel answers at once; one that closes the agent's sessions waits out its
-/// subagents' closes (`acp/actor.rs::background_tree_to_close`).
-const OUT_OF_TURN_CANCEL_WAIT: Duration = Duration::from_secs(15);
+/// cancel answers at once; one that closes the agent's sessions answers
+/// within [`crate::agent::OUT_OF_TURN_STOP_BUDGET`]. The wait ends before the
+/// cancel grace aborts the worker, so a failed close still ends the run.
+#[cfg(not(test))]
+const OUT_OF_TURN_CANCEL_WAIT: Duration = Duration::from_secs(4);
+#[cfg(test)]
+const OUT_OF_TURN_CANCEL_WAIT: Duration = Duration::from_millis(70);
+#[cfg(not(test))]
+const _: () = assert!(OUT_OF_TURN_STOP_BUDGET.as_millis() < OUT_OF_TURN_CANCEL_WAIT.as_millis());
+const _: () =
+    assert!(OUT_OF_TURN_CANCEL_WAIT.as_millis() < CONVERSATION_CANCEL_GRACE_PERIOD.as_millis());
 
 /// What an autonomous run's close rules watch, fed by the forwarder and the
 /// permission broker.

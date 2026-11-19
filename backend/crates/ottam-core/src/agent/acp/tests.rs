@@ -2133,7 +2133,8 @@ async fn a_failed_stop_close_keeps_the_session_and_reports_the_error() {
 }
 
 /// A subagent whose close fails may still be running: the stopped prompt
-/// answers with that failure, though the root itself closed.
+/// answers with that failure, though the root itself closed, and a later
+/// Stop on the reloaded root closes the child again.
 #[tokio::test]
 async fn a_failed_child_close_fails_the_in_turn_stop() {
     let connection = ScriptedCommandConnection::default();
@@ -2170,6 +2171,58 @@ async fn a_failed_child_close_fails_the_in_turn_stop() {
         vec!["prompt:root", "cancel:root", "close:story", "close:root"]
     );
     assert!(shared.sessions().is_empty(), "the root itself closed");
+
+    // The child is still open: once the root loads again, the next Stop
+    // closes it again.
+    connection.fail_close.lock().unwrap().clear();
+    shared.insert_session(root.clone(), PathBuf::from("/tmp/project"));
+    let (stop_reply, stop_response) = oneshot::channel();
+    command_tx
+        .send(AdapterCommand::CancelOutOfTurn {
+            session_id: root.clone(),
+            reply: stop_reply,
+        })
+        .await
+        .unwrap();
+    stop_response.await.unwrap().expect("the retry closed the tree");
+    assert_eq!(
+        connection.recorded_calls()[4..],
+        ["close:story", "close:root"]
+    );
+    stop_command_loop(&command_tx, task).await;
+}
+
+/// A close the agent never answers fails the Stop within the budget and
+/// leaves the root held.
+#[tokio::test]
+async fn an_unanswered_stop_close_fails_within_the_budget() {
+    let connection = ScriptedCommandConnection::default();
+    connection
+        .hold_close
+        .store(true, std::sync::atomic::Ordering::SeqCst);
+    let shared = background_children_shared();
+    let root = HarnessSessionId::new("root");
+    shared.insert_session(root.clone(), PathBuf::from("/tmp/project"));
+    child_started(&shared, "root", "story");
+    let (command_tx, task) = spawn_command_loop(connection.clone(), Arc::clone(&shared));
+    let (stop_reply, stop_response) = oneshot::channel();
+    command_tx
+        .send(AdapterCommand::CancelOutOfTurn {
+            session_id: root.clone(),
+            reply: stop_reply,
+        })
+        .await
+        .unwrap();
+    let error = tokio::time::timeout(
+        crate::agent::OUT_OF_TURN_STOP_BUDGET * 2,
+        stop_response,
+    )
+    .await
+    .expect("the Stop answers within the budget")
+    .unwrap()
+    .expect_err("the Stop failed");
+    assert!(error.message.contains("timed out"), "{error:?}");
+    assert_eq!(shared.sessions().len(), 1, "the root is still held");
     stop_command_loop(&command_tx, task).await;
 }
 
