@@ -157,6 +157,14 @@ public final class OttamCoreProcessClient: @unchecked Sendable {
         try await connection.shutdownReadinessIfRunning()
     }
 
+    public func listAttention() async throws -> AttentionListResult {
+        try await connection.request(method: "attention.list", params: AttentionListParams())
+    }
+
+    public func setAttentionFocusIfRunning(conversationID: ConversationID?) async throws {
+        try await connection.setAttentionFocusIfRunning(conversationID: conversationID)
+    }
+
     public func prepareShutdownIfRunning(operationKey: String) async throws {
         try await connection.prepareShutdownIfRunning(operationKey: operationKey)
     }

@@ -37,7 +37,7 @@ public enum SettingsPane: String, CaseIterable, Hashable, Identifiable, Sendable
     /// without a keyword edit here.
     public func searchText(agents: [AgentSummary] = []) -> String {
         switch self {
-        case .app: "\(title) theme appearance light dark system font typography typeface family size monospace code ui"
+        case .app: "\(title) theme appearance light dark system font typography typeface family size monospace code ui notifications banner alert finished approval question dock badge"
         case .agents:
             (["\(title) agent engine node runtime sign in account"]
                 + agents.flatMap { [$0.displayName, $0.vendorName] })

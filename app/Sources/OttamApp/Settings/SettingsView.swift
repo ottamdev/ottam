@@ -165,6 +165,11 @@ struct SettingsView: View {
             }
 
             TypographySettingsCard(settings: typography)
+
+            SettingsSectionHeader("Notifications")
+                .padding(.top, 6)
+
+            NotificationSettingsCard(settings: .shared, presenter: runtime.notifications)
         }
     }
 

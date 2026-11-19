@@ -19,7 +19,14 @@ struct OttamMain: App {
         // Before anything else can crash or exit, and before this launch's
         // marker replaces the previous session's.
         ExitDiagnostics.install()
-        let runtime = OttamAppRuntime(updater: AppUpdater.makeIfConfigured())
+        // The delegate goes in before launch finishes, so a banner click that
+        // launches Ottam still opens its conversation.
+        let notificationCenter = LiveNotificationCenter.makeIfAvailable()
+        notificationCenter?.installAsDelegate()
+        let runtime = OttamAppRuntime(
+            updater: AppUpdater.makeIfConfigured(),
+            notificationCenter: notificationCenter
+        )
         _runtime = State(initialValue: runtime)
         WorkspaceWindowRestoration.runtime = runtime
         TerminationSignalHandler.install()

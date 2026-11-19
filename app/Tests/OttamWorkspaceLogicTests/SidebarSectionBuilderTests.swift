@@ -348,7 +348,8 @@ struct WorkingRootMatchesTests {
 
     private func family(
         attention: Bool = false,
-        running: Bool = false
+        running: Bool = false,
+        unseen: Bool = false
     ) -> (parent: SidebarConversationItem, child: ConversationID) {
         let parent = Fixture.workspaceFilesConversation("parent")
         var child = Fixture.workspaceFilesConversation("review-bot: review")
@@ -358,9 +359,34 @@ struct WorkingRootMatchesTests {
             selectedProject: nil,
             conversations: [child, parent],
             attentionConversationIDs: attention ? [child.conversationID] : [],
-            runningConversationIDs: running ? [child.conversationID] : []
+            runningConversationIDs: running ? [child.conversationID] : [],
+            unseenConversationIDs: unseen ? [child.conversationID] : []
         )
         return (result[0].allItems[0], child.conversationID)
+    }
+
+    @Test("an unseen row stays past the cap and counts toward a collapsed section's badge")
+    func unseenRows() {
+        let conversations = (0..<8).map { Fixture.workspaceFilesConversation("chat-\($0)") }
+        let last = conversations[7].conversationID
+        let result = SidebarSectionBuilder.sections(
+            projects: [],
+            selectedProject: nil,
+            conversations: conversations,
+            attentionConversationIDs: [],
+            runningConversationIDs: [],
+            unseenConversationIDs: [last]
+        )
+        let item = result[0].allItems[7]
+        #expect(item.isUnseen && !item.needsAttention)
+        #expect(item.staysPastCap(selected: nil))
+        #expect(item.attentionCount == 1)
+        #expect(!result[0].allItems[0].isUnseen)
+
+        let finished = family(unseen: true).parent
+        #expect(!finished.isUnseen && finished.childIsUnseen)
+        #expect(finished.attentionCount == 1)
+        #expect(finished.staysPastCap(selected: nil))
     }
 
     @Test("a parent carries its children's approvals and work")
