@@ -9,6 +9,8 @@ import Testing
 @Suite("Chat conversation mode")
 @MainActor
 struct ChatConversationModeTests {
+    private let claude = EngineID("claude")
+
     private func makeModel() -> ChatWorkspaceModel {
         let suite = "ChatConversationModeTests.\(UUID().uuidString)"
         let model = ChatWorkspaceModel(defaults: UserDefaults(suiteName: suite)!)
@@ -32,7 +34,7 @@ struct ChatConversationModeTests {
         let conversation = ConversationID("conversation-a")
         model.selectedConversationID = conversation
         #expect(model.effectiveModeID == "plan", "nothing confirmed yet: the default")
-        model.confirmMode("default", conversationID: conversation)
+        model.confirmMode("default", engineID: claude, conversationID: conversation)
         #expect(model.effectiveModeID == "default")
         #expect(model.draftModeID == "plan", "the new-chat default is untouched")
     }
@@ -51,7 +53,7 @@ struct ChatConversationModeTests {
         model.selectMode("plan")
         let conversation = ConversationID("conversation-a")
         model.selectedConversationID = conversation
-        model.confirmMode("default", conversationID: conversation)
+        model.confirmMode("default", engineID: claude, conversationID: conversation)
 
         model.selectMode("acceptEdits")
         await model.applyPendingMode(send: noLiveSession)
@@ -60,10 +62,10 @@ struct ChatConversationModeTests {
         #expect(model.draftModeID == "plan")
 
         // The agent changing mode on its own mid-run keeps the user's pick.
-        model.confirmMode("plan", conversationID: conversation)
+        model.confirmMode("plan", engineID: claude, conversationID: conversation)
         #expect(model.effectiveModeID == "acceptEdits")
         // The agent confirming the pick completes it.
-        model.confirmMode("acceptEdits", conversationID: conversation)
+        model.confirmMode("acceptEdits", engineID: claude, conversationID: conversation)
         #expect(model.hasPendingMode == false)
         #expect(model.effectiveModeID == "acceptEdits")
     }
@@ -73,7 +75,7 @@ struct ChatConversationModeTests {
         let model = makeModel()
         let conversation = ConversationID("conversation-a")
         model.selectedConversationID = conversation
-        model.confirmMode("default", conversationID: conversation)
+        model.confirmMode("default", engineID: claude, conversationID: conversation)
         model.selectMode("plan")
         await model.applyPendingMode(send: noLiveSession)
         #expect(model.hasPendingMode)
@@ -88,8 +90,8 @@ struct ChatConversationModeTests {
         model.selectMode("plan")
         let first = ConversationID("conversation-a")
         let second = ConversationID("conversation-b")
-        model.confirmMode("default", conversationID: first)
-        model.confirmMode("acceptEdits", conversationID: second)
+        model.confirmMode("default", engineID: claude, conversationID: first)
+        model.confirmMode("acceptEdits", engineID: claude, conversationID: second)
 
         model.selectedConversationID = first
         #expect(model.effectiveModeID == "default")
@@ -109,7 +111,7 @@ struct ChatConversationModeTests {
     func queuedMessageTakesCurrentMode() {
         let model = makeModel()
         let conversation = ConversationID("conversation-a")
-        model.confirmMode("acceptEdits", conversationID: conversation)
+        model.confirmMode("acceptEdits", engineID: claude, conversationID: conversation)
         var runEngine = TranscriptFixture.engine()
         runEngine.modes = [
             EngineSelectOption(id: "acceptEdits", displayName: "Accept edits"),
@@ -117,13 +119,48 @@ struct ChatConversationModeTests {
         ]
         model.selectedConversationID = conversation
         model.selectMode("plan")
-        #expect(model.conversationModeID(conversation, advertisedBy: runEngine) == "plan")
+        #expect(model.conversationModeID(conversation, engineID: claude, advertisedBy: runEngine) == "plan")
 
         runEngine.modes = [EngineSelectOption(id: "acceptEdits", displayName: "Accept edits")]
         #expect(
-            model.conversationModeID(conversation, advertisedBy: runEngine) == "acceptEdits",
+            model.conversationModeID(conversation, engineID: claude, advertisedBy: runEngine) == "acceptEdits",
             "a mode the run's engine does not offer falls back to the confirmed one"
         )
+    }
+
+    /// An engine whose modes have not loaded yet cannot reject another
+    /// engine's mode by its list, so a mode keeps the engine it was made on.
+    @Test("Another engine's mode never shows or sends before that engine is probed")
+    func modeStaysWithItsEngine() async {
+        let model = makeModel()
+        let conversation = TranscriptFixture.conversationID
+        let codex = EngineID("codex")
+        model.noteConversationSelections(
+            runs: [ConversationRunSummary(
+                runID: .init("run-claude"), conversationID: conversation,
+                engineID: claude, modelID: nil, modeID: "auto", status: .completed,
+                startedAt: "2026-10-15T10:05:00Z", agentSessionID: AgentSessionID("external-claude"),
+                cost: .object([:]), error: .object([:])
+            )],
+            sessions: [], conversationID: conversation
+        )
+        model.selectedConversationID = conversation
+        model.confirmMode("auto", engineID: claude, conversationID: conversation)
+        #expect(model.effectiveModeID == "auto")
+
+        model.selectedEngineID = codex
+        #expect(model.effectiveModeID == nil, "Claude's mode is not Codex's")
+        model.selectMode("read-only")
+        await model.applyPendingMode { _, _, _ in
+            Issue.record("the live session is Claude's: the pick waits for Codex's first message")
+            return ConversationSetModeResult(outcome: .applied)
+        }
+        #expect(model.effectiveModeID == "read-only")
+        #expect(model.hasPendingMode)
+
+        model.selectedEngineID = claude
+        #expect(model.effectiveModeID == "auto", "Codex's pick is not Claude's either")
+        #expect(model.hasPendingMode == false)
     }
 
     /// Claude → Codex → Claude leaves both sessions active, Codex's newer.
@@ -160,7 +197,7 @@ struct ChatConversationModeTests {
         let session = AgentSessionID("session-a")
         model.selectedConversationID = conversation
         model.noteActiveAgentSession(session, conversationID: conversation)
-        model.confirmMode("default", conversationID: conversation)
+        model.confirmMode("default", engineID: claude, conversationID: conversation)
 
         model.selectMode("acceptEdits")
         var sent: [String] = []
@@ -182,7 +219,7 @@ struct ChatConversationModeTests {
         let model = makeModel()
         let conversation = ConversationID("conversation-a")
         model.selectedConversationID = conversation
-        model.confirmMode("default", conversationID: conversation)
+        model.confirmMode("default", engineID: claude, conversationID: conversation)
 
         model.selectMode("readOnly")
         await model.applyPendingMode { _, agentSessionID, modeID in
@@ -199,7 +236,7 @@ struct ChatConversationModeTests {
         let conversation = ConversationID("conversation-a")
         model.selectedConversationID = conversation
         model.noteActiveAgentSession(AgentSessionID("session-a"), conversationID: conversation)
-        model.confirmMode("default", conversationID: conversation)
+        model.confirmMode("default", engineID: claude, conversationID: conversation)
 
         model.selectMode("plan")
         await model.applyPendingMode { _, _, _ in
@@ -207,7 +244,7 @@ struct ChatConversationModeTests {
         }
         #expect(model.hasPendingMode)
         #expect(model.effectiveModeID == "plan")
-        model.confirmMode("plan", conversationID: conversation)
+        model.confirmMode("plan", engineID: claude, conversationID: conversation)
         #expect(model.hasPendingMode == false, "the next message's confirmation completes it")
     }
 
@@ -220,7 +257,7 @@ struct ChatConversationModeTests {
         let conversation = ConversationID("conversation-a")
         model.selectedConversationID = conversation
         model.noteActiveAgentSession(AgentSessionID("session-a"), conversationID: conversation)
-        model.confirmMode("default", conversationID: conversation)
+        model.confirmMode("default", engineID: claude, conversationID: conversation)
 
         model.selectMode("plan")
         await model.applyPendingMode { _, _, _ in throw Refused() }
@@ -237,7 +274,7 @@ struct ChatConversationModeTests {
         let conversation = ConversationID("conversation-a")
         model.selectedConversationID = conversation
         model.noteActiveAgentSession(AgentSessionID("session-old"), conversationID: conversation)
-        model.confirmMode("default", conversationID: conversation)
+        model.confirmMode("default", engineID: claude, conversationID: conversation)
 
         model.selectMode("plan")
         await model.applyPendingMode { _, _, _ in

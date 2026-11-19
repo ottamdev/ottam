@@ -2051,6 +2051,53 @@ async fn restored_session_reapplies_mode_before_becoming_promptable() {
     stop_command_loop(&command_tx, task).await;
 }
 
+/// A loaded session's mode and level are that chat's past picks, not the
+/// engine's defaults. With no `session/new` in this adapter generation to
+/// keep the defaults from, the load publishes no selects, so the catalog keeps
+/// the defaults it has instead of a level list with no default.
+#[tokio::test]
+async fn first_load_in_a_generation_publishes_no_selects() {
+    let connection = ScriptedCommandConnection::default();
+    *connection.config_options.lock().unwrap() = Some(vec![
+        SessionConfigOption::select(
+            "mode",
+            "Mode",
+            "plan",
+            vec![
+                SessionConfigSelectOption::new("auto", "Auto"),
+                SessionConfigSelectOption::new("plan", "Plan"),
+            ],
+        )
+        .category(SessionConfigOptionCategory::Mode),
+        SessionConfigOption::select(
+            "effort",
+            "Effort",
+            "high",
+            vec![
+                SessionConfigSelectOption::new("medium", "Medium"),
+                SessionConfigSelectOption::new("high", "High"),
+            ],
+        )
+        .category(SessionConfigOptionCategory::ThoughtLevel),
+    ]);
+    let shared = command_loop_shared();
+    let (command_tx, task) = spawn_command_loop(connection.clone(), Arc::clone(&shared));
+    let (reply, response) = oneshot::channel();
+    command_tx
+        .send(AdapterCommand::LoadSession {
+            session_id: HarnessSessionId::new("restored"),
+            cwd: PathBuf::from("/tmp/project"),
+            mode_id: None,
+            mcp_servers: Vec::new(),
+            reply,
+        })
+        .await
+        .unwrap();
+    response.await.unwrap().expect("loads");
+    assert_eq!(shared.status().session_selects, None);
+    stop_command_loop(&command_tx, task).await;
+}
+
 /// A live mode switch waits on the agent off the command loop: other commands
 /// keep flowing while it is held, and one the agent never answers times out
 /// instead of stalling the adapter.

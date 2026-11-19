@@ -2010,16 +2010,15 @@ pub(super) async fn run_command_loop(
                         let result = match connection.load_session(session_id.0.clone(), cwd.clone(), mcp_servers).await {
                             Ok(options) => {
                                 let selects = extract_session_selects(options.as_deref());
-                                if options.is_some() {
-                                    // A loaded session's level is a past pick, not
-                                    // a default: keep the thought half from session/new.
+                                // A loaded session's level is a past pick, not a
+                                // default: keep the thought half from session/new.
+                                // Without one this generation there is no default
+                                // to keep, so publish nothing and let the catalog's
+                                // stand rather than a level list with no default.
+                                if let (Some(_), Some(previous)) = (&options, shared.status().session_selects) {
                                     let mut advertised = selects.advertised();
-                                    let previous = shared.status().session_selects;
-                                    advertised.thought_levels = previous
-                                        .as_ref()
-                                        .map_or(advertised.thought_levels, |previous| previous.thought_levels.clone());
-                                    advertised.default_thought_level_id =
-                                        previous.and_then(|previous| previous.default_thought_level_id);
+                                    advertised.thought_levels = previous.thought_levels;
+                                    advertised.default_thought_level_id = previous.default_thought_level_id;
                                     shared.set_session_selects(advertised);
                                 }
                                 match apply_restored_mode(connection, &session_id, &selects, mode_id.as_deref()).await {

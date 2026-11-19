@@ -201,7 +201,10 @@ and `session/load` observations beat probe data for the TTL while the pin
 matches; after expiry or a pin change a probe replaces, never unions. Thought
 levels belong to the model: kept per model as observed live (`session/new` and
 a model switch's answer), newest wins, dropped when the pin changes or the
-model leaves; `session/load` records nothing. `engine.changed` is a hint;
+model leaves. A loaded session's level is a past pick, not a default:
+`session/load` records no per-model levels, and engine-wide selects only after
+a `session/new` in the same adapter generation, keeping that one's thought
+defaults. `engine.changed` is a hint;
 clients re-read `engine.list`. Core never emits it for a refreshed but
 unchanged entry: every `engine.list` folds the live answer into the cache, so
 each poll would trigger another.
