@@ -1113,8 +1113,8 @@ struct NativeTranscriptRendererTests {
             == "eading\nbo")
     }
 
-    @Test("selecting a whole code block copies its fence while a partial range stays raw")
-    func selectionCopyRefencesWholeCodeBlocks() throws {
+    @Test("a code block alone copies its code; a wider selection keeps the fence")
+    func selectionCopyFencesOnlyWithinWiderSelections() throws {
         let plan = [
             TranscriptItem(
                 id: "reply",
@@ -1139,7 +1139,53 @@ struct NativeTranscriptRendererTests {
             indexByID: indices
         )
         #expect(selection.copiedText(blocks: blocks, sourcePlan: plan, indexByID: indices)
-            == "```swift\nlet x = 1\nprint(x)\n```")
+            == "let x = 1\nprint(x)")
+        // Quote reply sends Markdown, so it keeps the fence.
+        #expect(selection.copiedText(
+            blocks: blocks, sourcePlan: plan, indexByID: indices, fencesLoneCodeBlock: true
+        ) == "```swift\nlet x = 1\nprint(x)\n```")
+
+        // Endpoints parked at the edges of the neighbor blocks select only
+        // the code, so it still copies bare.
+        selection.begin(
+            at: .init(blockID: blocks[0].id, utf16Offset: ("Intro" as NSString).length),
+            blockIndex: 0,
+            blocks: blocks
+        )
+        selection.extend(
+            to: .init(blockID: blocks[2].id, utf16Offset: 0),
+            blockIndex: 2,
+            blocks: blocks,
+            indexByID: indices
+        )
+        #expect(selection.copiedText(blocks: blocks, sourcePlan: plan, indexByID: indices)
+            == "let x = 1\nprint(x)")
+
+        // Each side alone: an empty range in only the leading or only the
+        // trailing neighbor.
+        let codeLength = ("let x = 1\nprint(x)" as NSString).length
+        selection.begin(at: .init(blockID: code.id, utf16Offset: 0), blockIndex: 1, blocks: blocks)
+        selection.extend(
+            to: .init(blockID: blocks[2].id, utf16Offset: 0),
+            blockIndex: 2,
+            blocks: blocks,
+            indexByID: indices
+        )
+        #expect(selection.copiedText(blocks: blocks, sourcePlan: plan, indexByID: indices)
+            == "let x = 1\nprint(x)")
+        selection.begin(
+            at: .init(blockID: blocks[0].id, utf16Offset: ("Intro" as NSString).length),
+            blockIndex: 0,
+            blocks: blocks
+        )
+        selection.extend(
+            to: .init(blockID: code.id, utf16Offset: codeLength),
+            blockIndex: 1,
+            blocks: blocks,
+            indexByID: indices
+        )
+        #expect(selection.copiedText(blocks: blocks, sourcePlan: plan, indexByID: indices)
+            == "let x = 1\nprint(x)")
 
         selection.begin(at: .init(blockID: blocks[0].id, utf16Offset: 2), blockIndex: 0, blocks: blocks)
         selection.extend(
@@ -1163,6 +1209,29 @@ struct NativeTranscriptRendererTests {
 
         #expect(TranscriptSelectionController.fencedSource("a ``` b", hint: nil)
             == "````\na ``` b\n````")
+
+        // A message that is only a fence copies its code, not the source.
+        let codeOnlyPlan = [
+            TranscriptItem(
+                id: "code-only",
+                content: .markdown("```sh\ncurl -i https://example.com\n```", syntax: .full, container: nil)
+            )
+        ]
+        let codeOnlyBlocks = TranscriptBlockProjector().project(codeOnlyPlan)
+        let codeOnlyIndices = Dictionary(
+            uniqueKeysWithValues: codeOnlyBlocks.indices.map { (codeOnlyBlocks[$0].id, $0) }
+        )
+        let only = try #require(codeOnlyBlocks.first)
+        #expect(codeOnlyBlocks.count == 1)
+        selection.begin(at: .init(blockID: only.id, utf16Offset: 0), blockIndex: 0, blocks: codeOnlyBlocks)
+        selection.extend(
+            to: .init(blockID: only.id, utf16Offset: ("curl -i https://example.com" as NSString).length),
+            blockIndex: 0,
+            blocks: codeOnlyBlocks,
+            indexByID: codeOnlyIndices
+        )
+        #expect(selection.copiedText(blocks: codeOnlyBlocks, sourcePlan: codeOnlyPlan, indexByID: codeOnlyIndices)
+            == "curl -i https://example.com")
     }
 
     @Test("projected selection text uses the rendered UTF-16 index space")

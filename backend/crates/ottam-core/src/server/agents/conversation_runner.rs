@@ -2102,7 +2102,13 @@ impl ConversationRunCoordinator {
             return;
         }
         let seeded = record_history_seed(&context, seed).await;
-        record_confirmed_session(&adapter, &context, &session_id, &self.recorded_commands).await;
+        // A recovery below restores what the agent confirmed just now, not
+        // what was stored when the run launched.
+        let mut prior_confirmed = prior_confirmed;
+        prior_confirmed.confirm(
+            record_confirmed_session(&adapter, &context, &session_id, &self.recorded_commands)
+                .await,
+        );
         context
             .queue_event(
                 ConversationEventKind::RunStatus,
@@ -3561,18 +3567,24 @@ async fn apply_changed_selection(
 ///
 /// Separate events, so a command list too large to record never takes the
 /// mode with it. The list is recorded once per announcement, not every turn.
+/// Returns what it published, for a run that has to restore it later.
 async fn record_confirmed_session(
     adapter: &Arc<dyn HarnessAdapter>,
     context: &ConversationRunContext,
     session_id: &HarnessSessionId,
     recorded_commands: &RecordedCommands,
-) {
+) -> ConfirmedSelection {
     let Some(session) = adapter
         .sessions()
         .into_iter()
         .find(|session| &session.session_id == session_id)
     else {
-        return;
+        return ConfirmedSelection::default();
+    };
+    let published = ConfirmedSelection {
+        mode_id: session.current_mode_id.clone(),
+        model_id: session.current_model_id.clone(),
+        thought_level_id: session.current_thought_level_id.clone(),
     };
     if let Some(mode_id) = session.current_mode_id {
         context
@@ -3601,7 +3613,7 @@ async fn record_confirmed_session(
         .and_then(|payload| normalized_session_metadata("available_commands_update", &payload))
         .and_then(|metadata| metadata.commands)
     else {
-        return;
+        return published;
     };
     let fingerprint = {
         use std::hash::{Hash, Hasher};
@@ -3621,7 +3633,7 @@ async fn record_confirmed_session(
         if recorded.insert((agent, generation, session_id.clone()), fingerprint)
             == Some(fingerprint)
         {
-            return;
+            return published;
         }
     }
     context
@@ -3630,6 +3642,7 @@ async fn record_confirmed_session(
             json!({"commands": commands}),
         )
         .await;
+    published
 }
 
 /// A session the run opened or restored keeps the token it was sent. One
