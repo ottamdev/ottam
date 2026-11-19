@@ -84,6 +84,15 @@ impl Ended {
             detail,
         })
     }
+
+    /// A completed run shows the start of its last message as one plain
+    /// line; the banner truncates what it can't fit.
+    pub(crate) fn with_message(mut self, message: &str) -> Self {
+        if self.reason == AttentionReason::Completed {
+            self.detail = clip(&plain_line(message));
+        }
+        self
+    }
 }
 
 /// What an ask needs to be shown. The title is read while the ask waits, so
@@ -700,6 +709,27 @@ fn clip(text: &str) -> Option<String> {
     } else {
         clipped
     })
+}
+
+/// Markdown read as one line of plain text: fence lines dropped, heading,
+/// list and quote markers and emphasis and code marks removed, whitespace
+/// collapsed. Banners show plain text.
+fn plain_line(markdown: &str) -> String {
+    let mut words = Vec::new();
+    for line in markdown.lines() {
+        let line = line.trim();
+        if line.starts_with("```") || line.starts_with("~~~") {
+            continue;
+        }
+        let line = line.trim_start_matches(['#', '>']).trim_start();
+        let line = ["- ", "* ", "+ "]
+            .iter()
+            .find_map(|marker| line.strip_prefix(marker))
+            .unwrap_or(line);
+        let line = line.replace("**", "").replace("__", "").replace('`', "");
+        words.extend(line.split_whitespace().map(str::to_owned));
+    }
+    words.join(" ")
 }
 
 #[cfg(test)]

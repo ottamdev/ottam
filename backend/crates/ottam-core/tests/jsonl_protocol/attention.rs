@@ -256,6 +256,24 @@ fn an_unfocused_completion_is_unseen_until_focused() {
 }
 
 #[test]
+fn an_unseen_completion_reads_as_its_last_message() {
+    let runtime = FakeAcpRuntime::new();
+    runtime.set_next_streamed_prompt(
+        "## Done\n\nAll **12** tests pass.",
+        6,
+        Duration::from_millis(1),
+    );
+    let mut session = Session::start(runtime);
+    let (conversation, input) = session.conversation("Message");
+    session.start_run(&conversation, &input);
+
+    let unseen = session.wait_for_change(&conversation, "unseen", Duration::from_secs(10));
+    assert_eq!(unseen["entry"]["reason"], "completed");
+    assert_eq!(unseen["entry"]["detail"], "Done All 12 tests pass.");
+    session.core.shutdown();
+}
+
+#[test]
 fn a_focused_completion_stays_seen() {
     let mut session = Session::start(runtime(FakePromptBehavior::Complete));
     let (conversation, input) = session.conversation("Focused");

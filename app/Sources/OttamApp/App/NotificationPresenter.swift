@@ -14,7 +14,6 @@ private let notificationLogger = Logger(
 struct NotificationBanner: Equatable, Sendable {
     var identifier: String
     var title: String
-    var subtitle: String
     var body: String
     var threadIdentifier: String
     var workspaceID: WorkspaceID
@@ -79,7 +78,6 @@ final class LiveNotificationCenter: NSObject, NotificationCenterCapability, UNUs
     func add(_ banner: NotificationBanner) async {
         let content = UNMutableNotificationContent()
         content.title = banner.title
-        content.subtitle = banner.subtitle
         content.body = banner.body
         content.threadIdentifier = banner.threadIdentifier
         content.sound = .default
@@ -177,7 +175,6 @@ final class NotificationPresenter {
     private(set) var authorization: UNAuthorizationStatus = .notDetermined
     @ObservationIgnored private let center: any NotificationCenterCapability
     @ObservationIgnored private let settings: NotificationSettings
-    @ObservationIgnored var workspaceName: (WorkspaceID) -> String? = { _ in nil }
 
     init(center: any NotificationCenterCapability, settings: NotificationSettings) {
         self.center = center
@@ -232,7 +229,6 @@ final class NotificationPresenter {
         NotificationBanner(
             identifier: Self.identifier(entry.conversationID, entry.state),
             title: entry.title.isEmpty ? "Untitled Conversation" : entry.title,
-            subtitle: workspaceName(entry.workspaceID) ?? "",
             body: Self.body(for: entry),
             threadIdentifier: entry.workspaceID.rawValue,
             workspaceID: entry.workspaceID,
@@ -240,9 +236,11 @@ final class NotificationPresenter {
         )
     }
 
+    /// A finished run's banner reads as its last message; the system cuts
+    /// what doesn't fit.
     static func body(for entry: AttentionEntry) -> String {
         switch entry.reason {
-        case .completed: "Finished"
+        case .completed: entry.detail ?? "Finished"
         case .failed: entry.detail.map { "Failed: \($0)" } ?? "Failed"
         case .permission: entry.detail.map { "Approval needed: \($0)" } ?? "Approval needed"
         case .plan: "Plan needs approval"

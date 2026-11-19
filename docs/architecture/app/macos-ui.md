@@ -100,6 +100,10 @@ remote client cannot hold a connection, so the decision cannot live in one.
   conversation and state, replacing the last, threaded by workspace.
   Authorization is asked on the first banner, never at launch. The Settings
   toggles gate banners only; the sidebar and Dock badge show regardless.
+- A banner is the conversation's title over what it wants: a finished run's
+  last message, flattened by core to one plain line and cut by the system,
+  or the ask or failure. No subtitle; the workspace name added noise
+  (decided 2026-11-18).
 - Sidebar marks in priority order: approval (derived in the app from pending
   asks), running (the system's small spinner), unseen (the accent dot, as
   Mail's unread). The Dock badge counts conversations with any attention.

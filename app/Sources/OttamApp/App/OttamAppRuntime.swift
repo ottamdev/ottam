@@ -84,9 +84,6 @@ final class OttamAppRuntime {
         let windows = self.windows
         updater?.start(canRemind: { windows.showsSidebar })
         if let presenter = attention.presenter {
-            presenter.workspaceName = { [weak self] workspaceID in
-                self?.workspaces.first { $0.workspace.workspaceID == workspaceID }?.workspace.displayName
-            }
             presenter.onOpen = { [weak self] workspaceID, conversationID in
                 self?.reveal(conversationID, in: workspaceID)
             }

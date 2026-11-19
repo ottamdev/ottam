@@ -11,7 +11,8 @@ use chrono::Utc;
 use ottam_protocol::{
     ConversationID, ConversationListTranscriptParams, ConversationMessageID,
     ConversationReadTranscriptBodyParams, ConversationRunID, ConversationRunInput,
-    ConversationRunStatus, DelegationActivity, DelegationNote, DelegationTask, TranscriptItemKind,
+    ConversationRunStatus, ConversationTranscriptItem, DelegationActivity, DelegationNote,
+    DelegationTask, TranscriptItemKind,
 };
 
 /// A delegated child, as its parent lists it.
@@ -440,22 +441,7 @@ impl ChatService {
         conversation: &ConversationID,
         run: &ConversationRunID,
     ) -> Result<String, CoreError> {
-        parse_run_id(run)?;
-        let page = self
-            .list_transcript(ConversationListTranscriptParams {
-                workspace_id: self.workspace_id.clone(),
-                conversation_id: conversation.clone(),
-                limit: None,
-                cursor: None,
-                subagent_thread_id: None,
-            })
-            .await?;
-        // The page is newest first, and the run is the latest or near it.
-        let Some(item) = page.items.into_iter().find(|item| {
-            item.kind == TranscriptItemKind::AssistantText
-                && item.run_id.as_ref() == Some(run)
-                && item.subagent_thread_id.is_none()
-        }) else {
+        let Some(item) = self.final_message(conversation, run).await? else {
             return Ok(String::new());
         };
         if item.body_byte_count as usize <= item.body_preview.len() {
@@ -480,5 +466,43 @@ impl ChatService {
             }
         }
         Ok(text)
+    }
+
+    /// The start of the run's final message, enough for a banner: the
+    /// stored preview, with no body read. Empty when the run wrote none.
+    pub(in crate::server) async fn final_preview(
+        &self,
+        conversation: &ConversationID,
+        run: &ConversationRunID,
+    ) -> Result<String, CoreError> {
+        Ok(self
+            .final_message(conversation, run)
+            .await?
+            .map(|item| item.body_preview)
+            .unwrap_or_default())
+    }
+
+    /// The run's last assistant text item, outside any subagent thread.
+    async fn final_message(
+        &self,
+        conversation: &ConversationID,
+        run: &ConversationRunID,
+    ) -> Result<Option<ConversationTranscriptItem>, CoreError> {
+        parse_run_id(run)?;
+        let page = self
+            .list_transcript(ConversationListTranscriptParams {
+                workspace_id: self.workspace_id.clone(),
+                conversation_id: conversation.clone(),
+                limit: None,
+                cursor: None,
+                subagent_thread_id: None,
+            })
+            .await?;
+        // The page is newest first, and the run is the latest or near it.
+        Ok(page.items.into_iter().find(|item| {
+            item.kind == TranscriptItemKind::AssistantText
+                && item.run_id.as_ref() == Some(run)
+                && item.subagent_thread_id.is_none()
+        }))
     }
 }

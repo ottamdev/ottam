@@ -1745,13 +1745,23 @@ impl ConversationRunCoordinator {
                 .conversation_title(conversation)
                 .await
                 .unwrap_or_default();
-            Ended::from_status(
+            let ended = Ended::from_status(
                 workspace_id.clone(),
                 run.run_id.clone(),
                 &run.status,
                 &run.error,
                 title,
-            )
+            );
+            match ended {
+                Some(ended) if run.status == ConversationRunStatus::Completed => {
+                    let message = chat
+                        .final_preview(conversation, &run.run_id)
+                        .await
+                        .unwrap_or_default();
+                    Some(ended.with_message(&message))
+                }
+                ended => ended,
+            }
         } else {
             None
         };

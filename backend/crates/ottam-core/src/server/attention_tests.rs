@@ -273,3 +273,29 @@ fn only_completed_and_failed_runs_can_be_unseen() {
     assert!(make(ConversationRunStatus::Canceled).is_none());
     assert!(make(ConversationRunStatus::Interrupted).is_none());
 }
+
+#[test]
+fn a_completed_run_reads_as_its_last_message_on_one_plain_line() {
+    let message = "## Done\n\nAll **12** tests pass:\n\n- `cargo test`\n```sh\nexit 0\n```\n> ship it";
+    let completed = ended("r", AttentionReason::Completed).with_message(message);
+    assert_eq!(
+        completed.detail.as_deref(),
+        Some("Done All 12 tests pass: cargo test exit 0 ship it")
+    );
+    let long = ended("r", AttentionReason::Completed).with_message(&"word ".repeat(100));
+    let detail = long.detail.unwrap();
+    assert!(detail.chars().count() <= DETAIL_CHARS + 1);
+    assert!(detail.ends_with("word…"));
+    assert_eq!(
+        ended("r", AttentionReason::Completed).with_message(" \n``` \n").detail,
+        None
+    );
+    let failed = Ended {
+        detail: Some("Out of credits".to_owned()),
+        ..ended("r", AttentionReason::Failed)
+    };
+    assert_eq!(
+        failed.with_message("partial answer").detail.as_deref(),
+        Some("Out of credits")
+    );
+}

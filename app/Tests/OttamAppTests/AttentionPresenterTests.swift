@@ -71,9 +71,7 @@ struct AttentionPresenterTests {
     }
 
     private func presenter(_ center: FakeNotificationCenter, settings: NotificationSettings? = nil) -> NotificationPresenter {
-        let presenter = NotificationPresenter(center: center, settings: settings ?? self.settings())
-        presenter.workspaceName = { $0 == WorkspaceID("w") ? "Workspace" : nil }
-        return presenter
+        NotificationPresenter(center: center, settings: settings ?? self.settings())
     }
 
     @Test("the first banner asks for permission while undecided, and never again")
@@ -121,15 +119,15 @@ struct AttentionPresenterTests {
         #expect(center.added.map(\.conversationID) == [ConversationID("ask"), ConversationID("done")])
     }
 
-    @Test("a banner names the conversation and workspace, threads by workspace, and keys by state")
+    @Test("a banner names the conversation, reads as its last message, threads by workspace, and keys by state")
     func bannerContent() {
         let presenter = presenter(FakeNotificationCenter(status: .authorized))
-        let finished = presenter.banner(for: entry("a"))
+        let finished = presenter.banner(for: entry("a", detail: "All 12 tests pass."))
         #expect(finished.title == "Title a")
-        #expect(finished.subtitle == "Workspace")
-        #expect(finished.body == "Finished")
+        #expect(finished.body == "All 12 tests pass.")
         #expect(finished.threadIdentifier == "w")
         #expect(finished.identifier == "attention.unseen.a")
+        #expect(presenter.banner(for: entry("a")).body == "Finished")
         let asking = presenter.banner(for: entry("a", .needsInput, reason: .permission, detail: "Run tests"))
         #expect(asking.body == "Approval needed: Run tests")
         #expect(asking.identifier == "attention.needsInput.a")

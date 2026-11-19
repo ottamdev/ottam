@@ -13,7 +13,8 @@ and the Dock badge.
 
 M1's core attention state, its persisted unseen marker, and the app presenter
 are in. The rules live in [Attention](../../architecture/app/macos-ui.md#attention).
-What is left is the real-window walkthrough.
+What is left is the part of the walkthrough only a person can drive: the
+system permission prompt, banner clicks, and the banner and Dock pixels.
 
 ## Active
 
@@ -24,8 +25,8 @@ Try it (approved). Run `./scripts/run-app.sh` with a real agent.
 1. In conversation A send a task that takes about 30 s. macOS asks to allow
    notifications; allow. A's row shows a spinner.
 2. Select conversation B. About 2 s after A finishes, a banner appears:
-   A's title, the workspace as subtitle, body "Finished". A's row shows the
-   accent dot. The Dock badge shows 1.
+   A's title over the start of its last message ("Finished" when it wrote
+   none). A's row shows the accent dot. The Dock badge shows 1.
 3. Click the banner. The window comes forward with A selected; the dot, the
    badge, and the Notification Center entry clear.
 4. Send in A again and stay on A until it finishes. No banner, dot, or badge.
@@ -45,15 +46,18 @@ Try it (approved). Run `./scripts/run-app.sh` with a real agent.
 
 Failed runs are covered by the protocol test, not by hand.
 
-- [ ] 3. App presenter verified in the real window.
-  - Done when: Try it steps 1–10 pass.
-  - Verify with: `./scripts/test-app.sh --filter Attention`; the walkthrough.
+- [ ] 3. Banners checked by hand.
+  - Done when: step 1's prompt appears on a bundle that has never asked;
+    the banners in steps 2, 5 and 8 read as written; clicking them brings
+    Ottam forward on the conversation (step 8 reopens the window); the Dock
+    badge shows the count.
+  - Verify with: the walkthrough, driven by a person. Background automation
+    keeps Ottam inactive and cannot see system UI.
 
 ## Backlog
 
 - Durable multi-client approvals, so an ask survives a closed window or a
   disconnected client and any client can answer it.
-- The final assistant message as a preview in the banner body.
 - Usage-limit and sign-in-required triggers.
 - Mark as Unread.
 - Allow and Deny actions on approval banners.

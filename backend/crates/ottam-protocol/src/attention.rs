@@ -77,7 +77,9 @@ pub struct AttentionEntry {
     /// The conversation's title when the entry was made.
     pub title: String,
     /// The asking tool's title for an ask; the failure message for a failed
-    /// run.
+    /// run; for a completed run, the start of its last message as one plain
+    /// line. A completed run restored after a restart has none: it never
+    /// alerts again.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub detail: Option<String>,
 }
