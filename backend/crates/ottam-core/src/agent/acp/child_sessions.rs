@@ -322,12 +322,19 @@ impl ChildSessions {
                 }
             }
             ChildStatus::Completed | ChildStatus::Failed | ChildStatus::Interrupted => {
-                if let Some(child) = state.children.get_mut(&tag.id).filter(|child| child.open) {
+                if let Some(run) = state
+                    .children
+                    .get(&tag.id)
+                    .filter(|child| child.open)
+                    .map(|child| HarnessSessionId::new(child.key(&tag.id)))
+                {
+                    settle(&mut state, &run, &mut out);
+                    let child = state.children.get_mut(&tag.id).expect("open");
                     child.open = false;
                     out.push((
                         child.parent.clone(),
                         HarnessUpdateKind::SubagentStateUpdate {
-                            child: child.key(&tag.id),
+                            child: run.0,
                             state: match status {
                                 ChildStatus::Failed => SubagentThreadState::Failed,
                                 ChildStatus::Interrupted => SubagentThreadState::Cancelled,
@@ -567,16 +574,18 @@ fn current_key(state: &State, id: &str) -> String {
         .map_or_else(|| id.to_owned(), |child| child.key(id))
 }
 
-/// The turn on `root` settled: a control call it still holds with no child
-/// is released. Children outlive the turn; only their status ends them.
+/// The turn or child run `session` ended: a control call it still holds
+/// with no child is released. Calls a child's run holds wait for that run,
+/// not the root's turn. Children outlive the turn; only their status ends
+/// them.
 fn settle(
     state: &mut State,
-    root: &HarnessSessionId,
+    session: &HarnessSessionId,
     out: &mut Vec<(HarnessSessionId, HarnessUpdateKind)>,
 ) {
     let (settled, held): (Vec<_>, Vec<_>) = std::mem::take(&mut state.controls)
         .into_iter()
-        .partition(|control| &control.root == root);
+        .partition(|control| &control.session == session);
     state.controls = held;
     for control in settled
         .into_iter()
@@ -1225,6 +1234,55 @@ mod tests {
         );
         assert!(
             matches!(out.last(), Some((session, HarnessUpdateKind::AgentMessageChunk(..))) if session == &id("inner"))
+        );
+    }
+
+    /// The root's turn settling leaves a child run's nested launch held: its
+    /// child still finds the launch prompt. A nested call still held when
+    /// that run ends is released then, on the run.
+    #[test]
+    fn a_nested_launch_waits_for_its_own_run() {
+        let children = ChildSessions::new(TAGS);
+        let nested = |mut frame: Value| {
+            frame["_meta"] = tag("outer", "root", "Outer");
+            update("root", frame)
+        };
+        let mut out = replay(
+            &children,
+            &[
+                update("root", pending("outer-call")),
+                status("root", "outer", "root", "Outer", "created"),
+                update("root", launched("outer-call", "outer")),
+                nested(pending("outer:inner-call")),
+                nested(control("outer:inner-call", "in_progress", task("Inner"))),
+                nested(pending("outer:stray-call")),
+                nested(control(
+                    "outer:stray-call",
+                    "in_progress",
+                    json!({"sessionID": "unknown", "prompt": "hi"}),
+                )),
+            ],
+        );
+        let settled = children.translate(id("root"), HarnessUpdateKind::PromptSettled, None);
+        assert!(shown_calls(&settled).is_empty(), "{settled:?}");
+        out.extend(settled);
+        out.extend(replay(
+            &children,
+            &[json!({"method": TAGS.updates, "params": {
+                "rootSessionId": "root", "childSessionId": "inner", "parentSessionId": "outer",
+                "depth": 2, "title": "Inner", "type": "status", "status": "created"}})],
+        ));
+        assert_eq!(
+            spawned(&out).last(),
+            Some(&("outer".to_owned(), "inner".to_owned(), Some("Do Inner".to_owned())))
+        );
+        let run_ended = replay(&children, &[status("root", "outer", "root", "Outer", "completed")]);
+        assert!(
+            matches!(&run_ended[..], [
+                (released, HarnessUpdateKind::ToolCall(call)),
+                (_, HarnessUpdateKind::SubagentStateUpdate { .. }),
+            ] if released == &id("outer") && call["toolCallId"] == "outer:stray-call"),
+            "{run_ended:?}"
         );
     }
 
