@@ -14,7 +14,8 @@ and the Dock badge.
 M1's core attention state, its persisted unseen marker, and the app presenter
 are in. The rules live in [Attention](../../architecture/app/macos-ui.md#attention).
 What is left is the part of the walkthrough only a person can drive: the
-system permission prompt, banner clicks, and the banner and Dock pixels.
+system permission prompt, the approval and closed-window banners, and the
+Dock badge.
 
 ## Active
 
@@ -48,7 +49,7 @@ Failed runs are covered by the protocol test, not by hand.
 
 - [ ] 3. Banners checked by hand.
   - Done when: step 1's prompt appears on a bundle that has never asked;
-    the banners in steps 2, 5 and 8 read as written; clicking them brings
+    the banners in steps 5 and 8 read as written and clicking them brings
     Ottam forward on the conversation (step 8 reopens the window); the Dock
     badge shows the count; with banners denied, Settings' "Open System
     Settings…" lands on Ottam's Notifications pane.
