@@ -947,8 +947,8 @@ impl AgentServer {
 
     /// `attention.list` and `attention.setFocus`. Focus is per connection, so
     /// these need `origin`; answered inline, so a focus change orders with
-    /// the requests around it.
-    pub(super) async fn handle_attention(
+    /// the requests around it, and without waiting on the database.
+    pub(super) fn handle_attention(
         &mut self,
         origin: super::ConnectionId,
         request: ProtocolRequest<Value>,
@@ -976,7 +976,7 @@ impl AgentServer {
             Ok(params) => params,
             Err(response) => return response,
         };
-        attention.set_focus(origin, params.conversation_id).await;
+        attention.set_focus(origin, params.conversation_id);
         success_response(request.id, ottam_protocol::AttentionSetFocusResult {})
     }
 

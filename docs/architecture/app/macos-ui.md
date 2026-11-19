@@ -94,17 +94,19 @@ remote client cannot hold a connection, so the decision cannot live in one.
   key, so sheets, alerts and the quit panel keep it) while Ottam is active,
   that window is on screen, and the screen is awake, unlocked and the
   console's. Otherwise, Settings in front included, there is none.
-- Focus is the seen signal: focusing an unseen conversation clears it. There
-  is no mark-seen call.
+- Focus is the seen signal: focusing a conversation clears it, a run end
+  still settling included. There is no mark-seen call.
 - Banners only open their conversation, reopening a closed window: one per
-  conversation and state, replacing the last, threaded by workspace.
-  Authorization is asked on the first banner, never at launch. The Settings
-  toggles gate banners only; the sidebar and Dock badge show regardless.
+  conversation and state, replacing the last, threaded by workspace; each
+  run that ends unseen alerts. Authorization is asked on the first banner,
+  never at launch. The Settings toggles gate banners only; the sidebar and
+  Dock badge show regardless.
 - A banner is the conversation's title over what it wants: a finished run's
   last message, or the ask or failure. No subtitle; the workspace name added
-  noise (decided 2026-11-18). Core sends the message's start as markdown;
-  the app renders it to plain text, one line per block, with Foundation's
-  parser, and the system cuts what doesn't fit.
+  noise (decided 2026-11-18). Every detail arrives as markdown, a finished
+  run's as its stored preview; the app renders it to plain text, one line
+  per block, with Foundation's parser, then cuts it, so a cut never leaves
+  syntax open.
 - Sidebar marks in priority order: approval (derived in the app from pending
   asks), running (the system's small spinner), unseen (the accent dot, as
   Mail's unread). The Dock badge counts conversations with any attention.

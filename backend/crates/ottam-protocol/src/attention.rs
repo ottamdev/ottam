@@ -84,8 +84,8 @@ pub struct AttentionEntry {
     pub detail: Option<String>,
 }
 
-/// One conversation's attention changed. `notify` is true at most once per
-/// state a conversation enters, when a client should alert its user.
+/// One conversation's attention changed. `notify` is true once per ask and
+/// once per run that becomes unseen, when a client should alert its user.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct AttentionChangedParams {

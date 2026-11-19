@@ -87,8 +87,9 @@ final class OttamAppRuntime {
             presenter.onOpen = { [weak self] workspaceID, conversationID in
                 self?.reveal(conversationID, in: workspaceID)
             }
-            focusReporter.onFocus = { [weak presenter] conversationID in
-                presenter?.withdraw(conversationID)
+            let attention = self.attention
+            focusReporter.onFocus = { [weak attention] conversationID in
+                attention?.withdrawBanners(for: conversationID)
             }
         }
     }

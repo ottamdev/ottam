@@ -1112,36 +1112,42 @@ pub struct UnseenRunRecord {
 }
 
 impl ConversationRepository {
-    /// Marks `run` as the conversation's unseen run, or clears the mark.
-    /// The column's key cannot name the workspace, so a run is set only when
-    /// it belongs to this conversation. Leaves `updated_at` alone: being
-    /// looked at is not activity.
+    /// Marks `run` as the conversation's unseen run, or clears the mark, and
+    /// says whether the conversation took it. The column's key cannot name
+    /// the workspace, so a run is set only when it belongs to this
+    /// conversation, and only while the workspace is not archived. Leaves
+    /// `updated_at` alone: being looked at is not activity.
     pub fn set_unseen_run(
         connection: &mut SqliteConnection,
         workspace_id: &WorkspaceId,
         conversation_id: &ConversationId,
         run_id: Option<&ConversationRunId>,
-    ) -> Result<(), StorageError> {
+    ) -> Result<bool, StorageError> {
         let conversation = conversations::table
             .find(conversation_id.to_string())
             .filter(conversations::workspace_id.eq(workspace_id.to_string()));
-        match run_id {
-            None => {
-                diesel::update(conversation)
-                    .set(conversations::unseen_run_id.eq(None::<String>))
-                    .execute(connection)?;
-            }
+        let updated = match run_id {
+            None => diesel::update(conversation)
+                .set(conversations::unseen_run_id.eq(None::<String>))
+                .execute(connection)?,
             Some(run_id) => {
                 let owned = conversation_runs::table
                     .find(run_id.to_string())
                     .filter(conversation_runs::conversation_id.eq(conversation_id.to_string()))
                     .filter(conversation_runs::workspace_id.eq(workspace_id.to_string()));
-                diesel::update(conversation.filter(diesel::dsl::exists(owned)))
-                    .set(conversations::unseen_run_id.eq(run_id.to_string()))
-                    .execute(connection)?;
+                let active = workspaces::table
+                    .find(workspace_id.to_string())
+                    .filter(workspaces::archived_at.is_null());
+                diesel::update(
+                    conversation
+                        .filter(diesel::dsl::exists(owned))
+                        .filter(diesel::dsl::exists(active)),
+                )
+                .set(conversations::unseen_run_id.eq(run_id.to_string()))
+                .execute(connection)?
             }
-        }
-        Ok(())
+        };
+        Ok(updated > 0)
     }
 
     pub fn clear_unseen_runs(

@@ -88,9 +88,7 @@ async fn an_ask_answered_quickly_or_focused_never_alerts() {
     tokio::time::sleep(ASK_NOTIFY_DELAY * 2).await;
     assert_eq!(states(&drain(&mut rx)), [("needsInput", false), ("none", false)]);
 
-    attention
-        .set_focus(ConnectionId::Primary, Some(conversation("b")))
-        .await;
+    attention.set_focus(ConnectionId::Primary, Some(conversation("b")));
     let _guard = attention.begin_ask(ask("b", AttentionReason::Plan));
     tokio::time::sleep(ASK_NOTIFY_DELAY * 2).await;
     assert_eq!(states(&drain(&mut rx)), [("needsInput", false)]);
@@ -115,9 +113,8 @@ async fn an_unfocused_end_becomes_unseen_and_focus_clears_it() {
     assert_eq!(states(&drain(&mut rx)), [("unseen", true)]);
     assert_eq!(attention.list().entries[0].state, AttentionState::Unseen);
 
-    attention
-        .set_focus(ConnectionId::Primary, Some(conversation("a")))
-        .await;
+    attention.set_focus(ConnectionId::Primary, Some(conversation("a")));
+    tokio::task::yield_now().await;
     assert_eq!(states(&drain(&mut rx)), [("none", false)]);
     assert!(attention.list().entries.is_empty());
 }
@@ -126,9 +123,8 @@ async fn an_unfocused_end_becomes_unseen_and_focus_clears_it() {
 async fn a_focused_end_is_seen() {
     let (sink, mut rx) = test_sink();
     let attention = Attention::new(sink);
-    attention
-        .set_focus(ConnectionId::Attached(4), Some(conversation("a")))
-        .await;
+    attention.connection_opened(ConnectionId::Attached(4));
+    attention.set_focus(ConnectionId::Attached(4), Some(conversation("a")));
     attention.run_ended(&conversation("a"), Some(ended("r1", AttentionReason::Completed)));
     settle_idle(&attention, "a").await;
     assert!(drain(&mut rx).is_empty());
@@ -136,28 +132,28 @@ async fn a_focused_end_is_seen() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn focus_arriving_during_the_settle_delay_counts_as_seen() {
+async fn a_glance_during_the_settle_delay_counts_as_seen() {
     let (sink, mut rx) = test_sink();
     let attention = Attention::new(sink);
     attention.run_ended(&conversation("a"), Some(ended("r1", AttentionReason::Failed)));
     attention.settle(&conversation("a"), || Box::pin(async { Settle::Idle }));
     tokio::time::sleep(SETTLE_DELAY / 2).await;
-    attention
-        .set_focus(ConnectionId::Primary, Some(conversation("a")))
-        .await;
+    attention.set_focus(ConnectionId::Primary, Some(conversation("a")));
+    attention.set_focus(ConnectionId::Primary, Some(conversation("b")));
     tokio::time::sleep(SETTLE_DELAY).await;
     assert!(drain(&mut rx).is_empty());
+    assert!(!attention.has_candidate(&conversation("a")));
 }
 
 #[tokio::test(start_paused = true)]
-async fn a_second_end_while_unseen_updates_silently() {
+async fn a_second_end_while_unseen_alerts_again() {
     let (sink, mut rx) = test_sink();
     let attention = Attention::new(sink);
     attention.run_ended(&conversation("a"), Some(ended("r1", AttentionReason::Completed)));
     settle_idle(&attention, "a").await;
     attention.run_ended(&conversation("a"), Some(ended("r2", AttentionReason::Failed)));
     settle_idle(&attention, "a").await;
-    assert_eq!(states(&drain(&mut rx)), [("unseen", true), ("unseen", false)]);
+    assert_eq!(states(&drain(&mut rx)), [("unseen", true), ("unseen", true)]);
     let entry = &attention.list().entries[0];
     assert_eq!(entry.run_id.as_ref().unwrap().0, "r2");
     assert_eq!(entry.reason, AttentionReason::Failed);
@@ -210,16 +206,16 @@ async fn an_older_settle_does_not_commit_a_newer_end_early() {
 async fn a_closed_connection_cannot_focus_again() {
     let (sink, mut rx) = test_sink();
     let attention = Attention::new(sink);
-    attention
-        .set_focus(ConnectionId::Attached(1), Some(conversation("a")))
-        .await;
+    attention.set_focus(ConnectionId::Attached(1), Some(conversation("a")));
+    assert!(!attention.is_focused(&conversation("a")), "only an open connection focuses");
+    attention.connection_opened(ConnectionId::Attached(1));
+    attention.set_focus(ConnectionId::Attached(1), Some(conversation("a")));
     assert!(attention.is_focused(&conversation("a")));
     attention.connection_closed(ConnectionId::Attached(1));
     assert!(!attention.is_focused(&conversation("a")));
-    attention
-        .set_focus(ConnectionId::Attached(1), Some(conversation("a")))
-        .await;
+    attention.set_focus(ConnectionId::Attached(1), Some(conversation("a")));
     assert!(!attention.is_focused(&conversation("a")));
+    assert!(attention.state().open.is_empty(), "a closed connection is not kept");
 
     attention.run_ended(&conversation("a"), Some(ended("r1", AttentionReason::Completed)));
     settle_idle(&attention, "a").await;
@@ -282,21 +278,13 @@ fn a_completed_run_carries_the_start_of_its_last_message_as_markdown() {
         completed.detail.as_deref(),
         Some("## Done\n\nAll **12** tests pass.")
     );
-    let long = ended("r", AttentionReason::Completed).with_message(&"word ".repeat(200));
+    let long = ended("r", AttentionReason::Completed).with_message(&"word ".repeat(1000));
     let detail = long.detail.unwrap();
     assert!(detail.chars().count() <= MESSAGE_CHARS + 1);
     assert!(detail.chars().count() > DETAIL_CHARS);
-    assert!(detail.ends_with("word…"));
+    assert!(detail.ends_with('…'));
     assert_eq!(
         ended("r", AttentionReason::Completed).with_message(" \n").detail,
         None
-    );
-    let failed = Ended {
-        detail: Some("Out of credits".to_owned()),
-        ..ended("r", AttentionReason::Failed)
-    };
-    assert_eq!(
-        failed.with_message("partial answer").detail.as_deref(),
-        Some("Out of credits")
     );
 }

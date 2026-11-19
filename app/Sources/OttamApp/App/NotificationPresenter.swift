@@ -237,16 +237,26 @@ final class NotificationPresenter {
         )
     }
 
-    /// A finished run's banner reads as its last message; the system cuts
-    /// what doesn't fit.
+    /// A finished run's banner reads as its last message. Every detail is
+    /// markdown, rendered and then cut, so a cut never leaves syntax open.
     static func body(for entry: AttentionEntry) -> String {
-        switch entry.reason {
-        case .completed: entry.detail.map(plainText).flatMap { $0.isEmpty ? nil : $0 } ?? "Finished"
-        case .failed: entry.detail.map { "Failed: \($0)" } ?? "Failed"
-        case .permission: entry.detail.map { "Approval needed: \($0)" } ?? "Approval needed"
+        let detail = entry.detail.map { clipped(plainText($0)) }.flatMap { $0.isEmpty ? nil : $0 }
+        return switch entry.reason {
+        case .completed: detail ?? "Finished"
+        case .failed: detail.map { "Failed: \($0)" } ?? "Failed"
+        case .permission: detail.map { "Approval needed: \($0)" } ?? "Approval needed"
         case .plan: "Plan needs approval"
-        case .question: entry.detail.map { "Question: \($0)" } ?? "Has a question"
+        case .question: detail.map { "Question: \($0)" } ?? "Has a question"
         }
+    }
+
+    /// Longest detail shown, in characters: more than a banner or
+    /// Notification Center shows.
+    static let detailCharacters = 400
+
+    private static func clipped(_ text: String) -> String {
+        guard text.count > detailCharacters else { return text }
+        return text.prefix(detailCharacters).trimmingCharacters(in: .whitespacesAndNewlines) + "…"
     }
 
     /// Markdown as banner text, which shows no styling: one line per block,

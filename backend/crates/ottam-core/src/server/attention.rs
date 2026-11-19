@@ -10,6 +10,7 @@
 //! the same lock that sends it, so revisions reach clients in order.
 
 use super::outbound::{ConnectionId, OutboundSink};
+use super::text::excerpt;
 use crate::storage::models::{ConversationId, ConversationRunId, RunStatus, WorkspaceId};
 use crate::storage::repositories::ConversationRepository;
 use crate::storage::Database;
@@ -33,9 +34,10 @@ const ASK_NOTIFY_DELAY: Duration = Duration::from_millis(400);
 const SETTLE_DELAY: Duration = Duration::from_secs(2);
 /// Longest detail sent, in characters.
 const DETAIL_CHARS: usize = 200;
-/// Longest message sent for a completed run, in characters: room for
-/// markdown that link targets and marks will drop once rendered.
-const MESSAGE_CHARS: usize = 400;
+/// Longest message sent for a completed run, in characters: the stored
+/// preview's size, so the cut a user sees is the client's, made after
+/// rendering, never one inside markdown syntax.
+const MESSAGE_CHARS: usize = 4096;
 
 pub(crate) type BoxFuture<T> = Pin<Box<dyn Future<Output = T> + Send>>;
 
@@ -88,12 +90,10 @@ impl Ended {
         })
     }
 
-    /// A completed run shows the start of its last message, as markdown:
-    /// presenting it as text is the client's job.
+    /// For a completed run: it shows the start of its last message, as
+    /// markdown, since presenting it as text is the client's job.
     pub(crate) fn with_message(mut self, message: &str) -> Self {
-        if self.reason == AttentionReason::Completed {
-            self.detail = clip_to(message, MESSAGE_CHARS);
-        }
+        self.detail = clip_to(message, MESSAGE_CHARS);
         self
     }
 }
@@ -132,9 +132,9 @@ struct State {
     unseen: HashMap<ConversationID, Ended>,
     candidates: HashMap<ConversationID, Candidate>,
     focus: HashMap<ConnectionId, ConversationID>,
-    /// Attached connections that closed: a `setFocus` still queued from one
-    /// must not bring its focus back.
-    closed: HashSet<ConnectionId>,
+    /// Attached connections still open: a `setFocus` still queued from one
+    /// that closed must not bring its focus back.
+    open: HashSet<ConnectionId>,
 }
 
 impl State {
@@ -276,26 +276,23 @@ impl Attention {
         }
     }
 
-    #[cfg(test)]
     pub(crate) fn is_focused(&self, conversation: &ConversationID) -> bool {
         self.state().focused(conversation)
     }
 
-    /// What `origin` looks at now. Focusing an unseen conversation marks it
-    /// seen.
-    pub(crate) async fn set_focus(
-        &self,
-        origin: ConnectionId,
-        conversation: Option<ConversationID>,
-    ) {
+    /// What `origin` looks at now. Focusing a conversation is seeing it: an
+    /// end still settling drops, and an unseen one clears in the background,
+    /// so a focus change never waits on the database.
+    pub(crate) fn set_focus(&self, origin: ConnectionId, conversation: Option<ConversationID>) {
         let clears = {
             let mut state = self.state();
-            if state.closed.contains(&origin) {
+            if matches!(origin, ConnectionId::Attached(_)) && !state.open.contains(&origin) {
                 return;
             }
             match &conversation {
                 Some(conversation) => {
                     state.focus.insert(origin, conversation.clone());
+                    state.candidates.remove(conversation);
                     state.unseen.contains_key(conversation)
                 }
                 None => {
@@ -309,15 +306,25 @@ impl Attention {
             "attention focus changed"
         );
         if let (true, Some(conversation)) = (clears, conversation) {
-            self.mark_seen(&conversation).await;
+            let this = self.this.clone();
+            self.spawn(async move {
+                if let Some(attention) = this.upgrade() {
+                    attention.mark_seen(&conversation).await;
+                }
+            });
         }
+    }
+
+    /// An attached connection opened, before any of its requests is read.
+    pub(crate) fn connection_opened(&self, origin: ConnectionId) {
+        self.state().open.insert(origin);
     }
 
     /// An attached connection closed: its focus ends, for good.
     pub(crate) fn connection_closed(&self, origin: ConnectionId) {
         let mut state = self.state();
         state.focus.remove(&origin);
-        state.closed.insert(origin);
+        state.open.remove(&origin);
     }
 
     async fn mark_seen(&self, conversation: &ConversationID) {
@@ -485,24 +492,29 @@ impl Attention {
         let _write = self.writes.lock().await;
         let ended = {
             let mut state = self.state();
-            let current = state
+            let Some(candidate) = state
                 .candidates
                 .get(conversation)
-                .is_some_and(|candidate| candidate.generation == generation);
-            if !current {
+                .filter(|candidate| candidate.generation == generation)
+            else {
                 return;
-            }
+            };
+            let ended = candidate.ended.clone();
             if state.focused(conversation) {
                 state.candidates.remove(conversation);
                 return;
             }
-            match state.candidates.get(conversation) {
-                Some(candidate) => candidate.ended.clone(),
-                None => return,
-            }
+            ended
         };
-        self.persist(&ended.workspace_id, conversation, Some(&ended.run_id))
-            .await;
+        if !self
+            .persist(&ended.workspace_id, conversation, Some(&ended.run_id))
+            .await
+        {
+            // The conversation went, or its workspace was archived, while
+            // the end settled: nothing of it is shown.
+            self.drop_candidate(conversation, Some(generation));
+            return;
+        }
         let workspace = ended.workspace_id.clone();
         let wanted = {
             let mut state = self.state();
@@ -513,10 +525,11 @@ impl Attention {
             if current && !state.focused(conversation) {
                 state.candidates.remove(conversation);
                 let before = state.entry(conversation);
-                let notify = !state.unseen.contains_key(conversation);
                 state.unseen.insert(conversation.clone(), ended);
-                tracing::info!(conversation_id = %conversation.0, notify, "conversation unseen");
-                self.emit(&mut state, conversation, before, notify);
+                tracing::info!(conversation_id = %conversation.0, "conversation unseen");
+                // Every run that becomes unseen alerts once, so a client's
+                // banner for an earlier one is replaced, never left stale.
+                self.emit(&mut state, conversation, before, true);
                 return;
             }
             // Looked at, or replaced by a newer run, while the marker was
@@ -624,14 +637,17 @@ impl Attention {
         tracing::info!(count = state.unseen.len(), "unseen conversations restored");
     }
 
+    /// Stores the conversation's marker. False only when the conversation
+    /// cannot hold `run`: it is gone, or its workspace was archived. A failed
+    /// write is logged and counts as stored, since the state still holds it.
     async fn persist(
         &self,
         workspace: &WorkspaceID,
         conversation: &ConversationID,
         run: Option<&ConversationRunID>,
-    ) {
+    ) -> bool {
         let Some(database) = self.store.get() else {
-            return;
+            return true;
         };
         let ids = (
             WorkspaceId::try_from(workspace.0.as_str()),
@@ -641,7 +657,7 @@ impl Attention {
         );
         let (Ok(workspace_id), Ok(conversation_id), Ok(run_id)) = ids else {
             tracing::warn!(conversation_id = %conversation.0, "unseen marker has an invalid id");
-            return;
+            return true;
         };
         let stored = database
             .run("attention.setUnseen", move |connection| {
@@ -653,13 +669,14 @@ impl Attention {
                 )
             })
             .await;
-        if let Err(error) = stored {
+        stored.unwrap_or_else(|error| {
             tracing::warn!(
                 conversation_id = %conversation.0,
                 kind = error.kind,
                 "failed to store the unseen marker"
             );
-        }
+            true
+        })
     }
 
     async fn persist_workspace_cleared(&self, workspace: &WorkspaceID) {
@@ -704,19 +721,9 @@ fn clip(text: &str) -> Option<String> {
     clip_to(text, DETAIL_CHARS)
 }
 
-/// `text` trimmed and cut to `limit` characters; `None` when blank.
+/// `text` as an [`excerpt`] of `limit`; `None` when blank.
 fn clip_to(text: &str, limit: usize) -> Option<String> {
-    let text = text.trim();
-    if text.is_empty() {
-        return None;
-    }
-    let mut chars = text.chars();
-    let clipped: String = chars.by_ref().take(limit).collect();
-    Some(if chars.next().is_some() {
-        format!("{}…", clipped.trim_end())
-    } else {
-        clipped
-    })
+    Some(excerpt(text, limit)).filter(|text| !text.is_empty())
 }
 
 #[cfg(test)]

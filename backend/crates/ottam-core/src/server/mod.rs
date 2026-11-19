@@ -46,6 +46,7 @@ mod outbound;
 mod request_params;
 mod responses;
 mod storage_cache;
+mod text;
 mod transport;
 mod workspaces;
 
@@ -695,7 +696,7 @@ impl AgentServer {
             request.method.as_str(),
             ottam_protocol::METHOD_ATTENTION_LIST | ottam_protocol::METHOD_ATTENTION_SET_FOCUS
         ) {
-            return Some(self.handle_attention(origin, request).await);
+            return Some(self.handle_attention(origin, request));
         }
         if request.method.starts_with("agent.") {
             return self.handle_agent_request(origin, request);

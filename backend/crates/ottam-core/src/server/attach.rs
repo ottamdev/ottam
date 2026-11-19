@@ -220,6 +220,10 @@ async fn serve_connection(
     let (read_half, write_half) = stream.into_split();
     let (writer_tx, writer_rx) = tokio::sync::mpsc::unbounded_channel();
     registry.register(id, writer_tx);
+    // Before any of its requests is read, so its focus counts.
+    if let Some(attention) = attention.upgrade() {
+        attention.connection_opened(ConnectionId::Attached(id));
+    }
     // Removes the registry entry on every exit path, including this task
     // being aborted at shutdown; the writer then drains out and exits.
     let registry_guard = RegistryGuard {

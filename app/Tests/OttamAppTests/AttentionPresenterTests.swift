@@ -129,11 +129,20 @@ struct AttentionPresenterTests {
         #expect(finished.identifier == "attention.unseen.a")
         #expect(presenter.banner(for: entry("a")).body == "Finished")
         #expect(presenter.banner(for: entry("a", detail: "---")).body == "Finished")
-        let asking = presenter.banner(for: entry("a", .needsInput, reason: .permission, detail: "Run tests"))
-        #expect(asking.body == "Approval needed: Run tests")
+        let asking = presenter.banner(for: entry("a", .needsInput, reason: .permission, detail: "`npm test`"))
+        #expect(asking.body == "Approval needed: npm test")
         #expect(asking.identifier == "attention.needsInput.a")
         #expect(NotificationPresenter.body(for: entry("a", reason: .failed, detail: "Out of tokens"))
             == "Failed: Out of tokens")
+    }
+
+    @Test("a long detail is cut after rendering, never inside markdown")
+    func clippedBody() {
+        let link = "[the notes](file:///Users/me/a/very/long/path/to/the/notes.md)"
+        let body = NotificationPresenter.body(for: entry("a", detail: String(repeating: "\(link) and ", count: 60)))
+        #expect(body.count == NotificationPresenter.detailCharacters + 1)
+        #expect(body.hasSuffix("…"))
+        #expect(!body.contains("]("))
     }
 
     @Test("a finished run's markdown reads as plain lines, one per block, links as their text")
@@ -201,7 +210,7 @@ struct AttentionStoreTests {
         #expect(store.unseenConversationIDs(in: WorkspaceID("w")).isEmpty)
     }
 
-    @Test("a notifying change posts and state none withdraws")
+    @Test("a notifying change posts, and state none withdraws it after the post lands")
     func postsAndWithdraws() async {
         let center = FakeNotificationCenter(status: .authorized)
         let suite = "attention-store-\(UUID().uuidString)"
@@ -209,13 +218,16 @@ struct AttentionStoreTests {
         defaults.removePersistentDomain(forName: suite)
         let presenter = NotificationPresenter(center: center, settings: NotificationSettings(defaults: defaults))
         let store = AttentionStore(client: client(), presenter: presenter) { _ in }
+        // The post awaits authorization; the withdraw right behind it must
+        // still run after it.
         store.receive(change(1, "a", .unseen, notify: true))
+        store.receive(change(2, "a", .none, notify: false))
         let deadline = ContinuousClock.now + .seconds(2)
-        while center.added.isEmpty, ContinuousClock.now < deadline {
+        while center.added.isEmpty || center.removed.isEmpty, ContinuousClock.now < deadline {
             await Task.yield()
         }
         #expect(center.added.map(\.identifier) == ["attention.unseen.a"])
-        store.receive(change(2, "a", .none, notify: false))
         #expect(center.removed.contains("attention.unseen.a"))
+        #expect(center.delivered.isEmpty)
     }
 }

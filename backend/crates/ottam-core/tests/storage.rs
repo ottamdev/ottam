@@ -286,12 +286,12 @@ async fn baseline_home_upgrades_to_the_unseen_run_marker() {
         .run("test.unseenRuns", move |connection| {
             let applied = applied_migrations(connection);
             let untouched = ConversationRepository::unseen_runs(connection)?;
-            ConversationRepository::set_unseen_run(
+            assert!(!ConversationRepository::set_unseen_run(
                 connection,
                 &workspace_id,
                 &finished_id,
                 Some(&other_run_id),
-            )?;
+            )?);
             let refused = ConversationRepository::unseen_runs(connection)?;
             ConversationRepository::set_unseen_run(
                 connection,
@@ -318,6 +318,15 @@ async fn baseline_home_upgrades_to_the_unseen_run_marker() {
             )?;
             connection.batch_execute("UPDATE workspaces SET archived_at = 1")?;
             let archived = ConversationRepository::unseen_runs(connection)?;
+            assert!(
+                !ConversationRepository::set_unseen_run(
+                    connection,
+                    &workspace_id,
+                    &finished_id,
+                    Some(&run_id),
+                )?,
+                "an archived workspace takes no marker"
+            );
             let failures =
                 diesel::sql_query("SELECT COUNT(*) AS value FROM pragma_foreign_key_check")
                     .get_result::<IntegerValue>(connection)?

@@ -23,6 +23,7 @@ use crate::server::chat::{
     ChatService, ChildLink, DelegatedChild, WaitingNote, HISTORY_DEFAULT_ENTRIES,
     HISTORY_MAX_ENTRIES,
 };
+use crate::server::text::excerpt;
 use crate::storage::repositories::{NamedAgentRecord, NamedAgentRepository};
 use crate::storage::Database;
 use ottam_protocol::{
@@ -243,15 +244,6 @@ fn task_title(title: Option<&str>, prompt: &str) -> String {
         .filter(|title| !title.is_empty())
         .unwrap_or_else(|| prompt.trim().lines().next().unwrap_or_default());
     excerpt(title, TITLE_CHARS)
-}
-
-fn excerpt(text: &str, chars: usize) -> String {
-    let text = text.trim();
-    let mut cut: String = text.chars().take(chars).collect();
-    if cut.len() < text.len() {
-        cut.push('…');
-    }
-    cut
 }
 
 /// Token usage by agent and scope, as `get_conversation_info` lists it.
@@ -1737,9 +1729,11 @@ impl ConversationRunCoordinator {
             .ok()
             .flatten()
             .map(|(parent, _)| parent);
-        // A child's run its parent's agent started reports to the parent.
-        let eligible =
-            !self.quitting() && (parent.is_none() || self.user_drove(conversation, run));
+        // A focused end was seen, so its title and message are not read; a
+        // child's run its parent's agent started reports to the parent.
+        let eligible = !self.quitting()
+            && !self.attention.is_focused(conversation)
+            && (parent.is_none() || self.user_drove(conversation, run));
         let ended = if eligible {
             let title = chat
                 .conversation_title(conversation)

@@ -21,6 +21,7 @@ final class AttentionStore {
     @ObservationIgnored private let setBadge: @MainActor (Int) -> Void
     @ObservationIgnored private var subscription: AgentEventSubscriptionToken?
     @ObservationIgnored private var seeding: Task<Void, Never>?
+    @ObservationIgnored private var presenting: Task<Void, Never>?
 
     init(
         client: OttamCoreProcessClient,
@@ -77,17 +78,33 @@ final class AttentionStore {
         perform(reducer.apply(change))
     }
 
+    /// Removes a conversation's banners after any banner work asked for
+    /// before.
+    func withdrawBanners(for conversationID: ConversationID) {
+        present { $0.withdraw(conversationID) }
+    }
+
+    /// Banner work runs one piece at a time, in the order it was asked for:
+    /// a post still waiting on authorization must not land after a later
+    /// withdraw, nor a reconcile remove a banner posted after its snapshot.
+    private func present(_ work: @escaping @MainActor (NotificationPresenter) async -> Void) {
+        guard let presenter else { return }
+        let previous = presenting
+        presenting = Task {
+            await previous?.value
+            await work(presenter)
+        }
+    }
+
     private func perform(_ effects: [AttentionEffect]) {
         for effect in effects {
             switch effect {
             case .post(let entry):
-                guard let presenter else { continue }
-                Task { await presenter.post(entry) }
+                present { await $0.post(entry) }
             case .withdraw(let conversationID):
-                presenter?.withdraw(conversationID)
+                present { $0.withdraw(conversationID) }
             case .reconcile(let states):
-                guard let presenter else { continue }
-                Task { await presenter.reconcile(states) }
+                present { await $0.reconcile(states) }
             case .setBadge(let count):
                 setBadge(count)
                 attentionLogger.info("dock badge count=\(count, privacy: .public)")
@@ -223,6 +240,8 @@ final class FocusReporter {
 
     /// One call in flight; a change meanwhile sends the latest after it, so
     /// core, which keeps the last focus it got, never ends on a stale one.
+    /// A failed call is sent again shortly, since core still holds the focus
+    /// before it.
     private func send() {
         guard !sending, !hasReported || wanted != reported else { return }
         let focus = wanted
@@ -231,13 +250,17 @@ final class FocusReporter {
         reported = focus
         if let focus { onFocus?(focus) }
         Task { [weak self, client] in
+            var failed = false
             do {
                 try await client.setAttentionFocusIfRunning(conversationID: focus)
             } catch {
                 attentionLogger.error("failed to report focus")
+                failed = true
+                try? await Task.sleep(for: .seconds(1))
             }
             guard let self else { return }
             self.sending = false
+            if failed { self.hasReported = false }
             self.send()
         }
     }
