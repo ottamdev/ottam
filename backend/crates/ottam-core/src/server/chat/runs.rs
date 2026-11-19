@@ -61,6 +61,24 @@ pub(in crate::server) struct ConfirmedSelection {
     pub thought_level_id: Option<String>,
 }
 
+impl ConfirmedSelection {
+    /// Fold in what the agent confirmed since, as `set_session_model` stores
+    /// it: an absent field keeps its value, and a different model confirmed
+    /// without a level drops the old model's.
+    pub(in crate::server) fn confirm(&mut self, newer: ConfirmedSelection) {
+        if newer.mode_id.is_some() {
+            self.mode_id = newer.mode_id;
+        }
+        if newer.model_id.is_some() && newer.model_id != self.model_id {
+            self.model_id = newer.model_id;
+            self.thought_level_id = None;
+        }
+        if newer.thought_level_id.is_some() {
+            self.thought_level_id = newer.thought_level_id;
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub(in crate::server) struct PreparedSteerRecord {
     pub run: ConversationRunSummary,
@@ -1260,5 +1278,29 @@ impl ChatService {
             })
             .await
             .map_err(CoreError::from)
+    }
+}
+
+#[cfg(test)]
+mod confirmed_selection_tests {
+    use super::ConfirmedSelection;
+
+    fn selection(mode: Option<&str>, model: Option<&str>, level: Option<&str>) -> ConfirmedSelection {
+        ConfirmedSelection {
+            mode_id: mode.map(str::to_string),
+            model_id: model.map(str::to_string),
+            thought_level_id: level.map(str::to_string),
+        }
+    }
+
+    #[test]
+    fn a_newer_confirmation_keeps_levels_with_their_model() {
+        let mut stored = selection(Some("plan"), Some("a"), Some("high"));
+        stored.confirm(selection(None, Some("a"), None));
+        assert_eq!(stored, selection(Some("plan"), Some("a"), Some("high")));
+        stored.confirm(selection(None, Some("b"), None));
+        assert_eq!(stored, selection(Some("plan"), Some("b"), None));
+        stored.confirm(selection(Some("auto"), None, Some("low")));
+        assert_eq!(stored, selection(Some("auto"), Some("b"), Some("low")));
     }
 }

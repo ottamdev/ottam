@@ -754,10 +754,17 @@ final class ChatWorkspaceModel {
     /// model honors. Effort levels belong to the model, so a pick it lacks is
     /// kept for the models that offer it rather than sent or erased.
     func thoughtLevelID(for conversationID: ConversationID?) -> String? {
-        let pick = thoughtLevelPick(for: conversationID)
-        guard let pick, let engine = engine(for: conversationID) else { return pick }
-        let levels = engine.thoughtLevelSelect(forModel: modelID(for: conversationID)).levels
-        return levels.contains { $0.id == pick } ? pick : nil
+        Self.offeredLevel(
+            thoughtLevelPick(for: conversationID),
+            engine: engine(for: conversationID), modelID: modelID(for: conversationID)
+        )
+    }
+
+    /// `pick` where `modelID` on `engine` offers it, else nil; an unlisted
+    /// engine cannot prove it unoffered.
+    private static func offeredLevel(_ pick: String?, engine: EngineSummary?, modelID: String?) -> String? {
+        guard let pick, let engine else { return pick }
+        return engine.thoughtLevelSelect(forModel: modelID).levels.contains { $0.id == pick } ? pick : nil
     }
 
     /// The new-chat defaults saved for `engineID`. The draft engine's are
@@ -1649,13 +1656,14 @@ final class ChatWorkspaceModel {
             let modeID = selectedConversationID
                 .flatMap { conversationModeID($0, advertisedBy: engine) } ?? run.modeID
             let onRunEngine = selectedEngineID == run.engineID
-            let routed = selectedConversationID.flatMap { conversationModel($0, engineID: run.engineID) }
+            let queued = onRunEngine
+                ? (modelID: selectedModelID, thoughtLevelID: effectiveThoughtLevelID)
+                : queuedSelection(on: run, engine: engine)
             return SubmissionRouting(
                 engine: engine,
-                modelID: onRunEngine ? selectedModelID : routed.map(\.modelID) ?? run.modelID,
+                modelID: queued.modelID,
                 modeID: modeID,
-                thoughtLevelID: onRunEngine
-                    ? effectiveThoughtLevelID : routed.map(\.thoughtLevelID) ?? run.thoughtLevelID
+                thoughtLevelID: queued.thoughtLevelID
             )
         }
         // No live run, or a run whose Engine is no longer installed. Either way
@@ -1667,6 +1675,19 @@ final class ChatWorkspaceModel {
             modeID: effectiveModeID,
             thoughtLevelID: effectiveThoughtLevelID
         )
+    }
+
+    /// What a message queued behind `run`, while the picker is on another
+    /// engine, requests on `run`'s `engine`: what the chat now has there,
+    /// with its effort only where that model offers it, else the run's own
+    /// request.
+    func queuedSelection(
+        on run: ConversationRunSummary, engine: EngineSummary
+    ) -> (modelID: String?, thoughtLevelID: String?) {
+        guard let routed = conversationModel(run.conversationID, engineID: run.engineID) else {
+            return (run.modelID, run.thoughtLevelID)
+        }
+        return (routed.modelID, Self.offeredLevel(routed.thoughtLevelID, engine: engine, modelID: routed.modelID))
     }
 
     /// The Engine that will actually receive the next Message.
@@ -1984,19 +2005,23 @@ final class ChatWorkspaceModel {
             guard let recorded, let offered, !offered.isEmpty else { return false }
             return !offered.contains(recorded)
         }
-        // A pick the refreshed catalog lacks is no replacement: the default is.
-        func offeredPick(_ pick: String?, offered: [String]?) -> String? {
-            isStale(pick, offered: offered) ? nil : pick
+        // A pick the refreshed catalog lacks is no replacement: the default
+        // is, named, since nil asks Core to keep what the session confirmed,
+        // which may be the refused value.
+        func replacement(_ pick: String?, offered: [String]?, default defaultID: String?) -> String? {
+            isStale(pick, offered: offered) ? defaultID : pick ?? defaultID
         }
         let models = engine?.models.map(\.modelID)
         let modes = engine?.modes.map(\.id)
-        let levels = engine?.thoughtLevelSelect(forModel: run.modelID).levels.map(\.id)
+        let levels = engine?.thoughtLevelSelect(forModel: run.modelID)
         if isStale(run.modelID, offered: models) {
-            retry.modelID = offeredPick(picks.modelID, offered: models)
+            retry.modelID = replacement(picks.modelID, offered: models, default: engine?.defaultModelID)
         } else if isStale(run.modeID, offered: modes) {
-            retry.modeID = offeredPick(picks.modeID, offered: modes)
-        } else if isStale(run.thoughtLevelID, offered: levels) {
-            retry.thoughtLevelID = offeredPick(picks.thoughtLevelID, offered: levels)
+            retry.modeID = replacement(picks.modeID, offered: modes, default: engine?.defaultModeID)
+        } else if isStale(run.thoughtLevelID, offered: levels?.levels.map(\.id)) {
+            retry.thoughtLevelID = replacement(
+                picks.thoughtLevelID, offered: levels?.levels.map(\.id), default: levels?.defaultID
+            )
         }
         return retry
     }

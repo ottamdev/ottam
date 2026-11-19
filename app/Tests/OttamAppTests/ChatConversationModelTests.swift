@@ -252,6 +252,31 @@ struct ChatConversationModelTests {
         #expect(model.effectiveThoughtLevelID == "low")
     }
 
+    @Test("A message queued from another engine sends the run engine's effort only where its model offers it")
+    func queuedSelectionGatesEffortByModel() {
+        let (model, _) = makeModel()
+        let level = { (id: String) in EngineSelectOption(id: id, displayName: id) }
+        var engine = TranscriptFixture.engine()
+        engine.thoughtLevels = [level("low"), level("high")]
+        engine.models = [
+            .init(modelID: "fable", displayName: "Fable"),
+            .init(modelID: "haiku", displayName: "Haiku", thoughtLevels: [level("low")])
+        ]
+        let live = run("r1", launch, engine: claude, model: "fable", level: "xhigh")
+        open(model, launch, runs: [live],
+             sessions: [session("s1", launch, engine: claude, model: "fable", level: "low")])
+        model.selectThoughtLevel("high")
+        model.selectModel("haiku")
+        model.selectedEngineID = codex
+        let queued = model.queuedSelection(on: live, engine: engine)
+        #expect(queued.modelID == "haiku", "the run engine's current pick, not the run's request")
+        #expect(queued.thoughtLevelID == nil, "haiku does not offer high")
+        model.selectedEngineID = claude
+        model.selectModel("fable")
+        model.selectedEngineID = codex
+        #expect(model.queuedSelection(on: live, engine: engine).thoughtLevelID == "high")
+    }
+
     @Test("Default on an engine that names no default model leaves the pick")
     func defaultWithoutIDKeepsPick() {
         let (model, _) = makeModel()
