@@ -13,7 +13,7 @@ use agent_client_protocol::schema::v1::{
     SetSessionConfigOptionRequest, StopReason,
 };
 use agent_client_protocol::ErrorCode;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::future::Future;
 use std::path::PathBuf;
 use std::pin::Pin;
@@ -810,8 +810,12 @@ struct ScriptedCommandConnection {
     hold_config: Arc<std::sync::atomic::AtomicBool>,
     config_started: Arc<Notify>,
     config_release: Arc<Notify>,
-    /// Answers `session/close` with an error.
-    fail_close: Arc<std::sync::atomic::AtomicBool>,
+    /// Sessions whose `session/close` answers with an error.
+    fail_close: Arc<Mutex<BTreeSet<String>>>,
+    /// Holds `session/close` until `close_release`.
+    hold_close: Arc<std::sync::atomic::AtomicBool>,
+    close_started: Arc<Notify>,
+    close_release: Arc<Notify>,
 }
 
 impl ScriptedCommandConnection {
@@ -931,7 +935,16 @@ impl AcpCommandConnection for ScriptedCommandConnection {
     ) -> Pin<Box<dyn Future<Output = Result<(), agent_client_protocol::Error>> + Send + '_>> {
         Box::pin(async move {
             self.record(format!("close:{session_id}"));
-            if self.fail_close.load(std::sync::atomic::Ordering::SeqCst) {
+            if self.hold_close.load(std::sync::atomic::Ordering::SeqCst) {
+                self.close_started.notify_one();
+                self.close_release.notified().await;
+            }
+            if self
+                .fail_close
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .contains(&session_id)
+            {
                 return Err(agent_client_protocol::Error::internal_error());
             }
             Ok(())
@@ -2100,9 +2113,7 @@ async fn stop_closes_the_root_when_its_child_already_ended() {
 #[tokio::test]
 async fn a_failed_stop_close_keeps_the_session_and_reports_the_error() {
     let connection = ScriptedCommandConnection::default();
-    connection
-        .fail_close
-        .store(true, std::sync::atomic::Ordering::SeqCst);
+    connection.fail_close.lock().unwrap().insert("root".into());
     let shared = background_children_shared();
     let root = HarnessSessionId::new("root");
     shared.insert_session(root.clone(), PathBuf::from("/tmp/project"));
@@ -2118,6 +2129,101 @@ async fn a_failed_stop_close_keeps_the_session_and_reports_the_error() {
     assert!(response.await.unwrap().is_err());
     assert_eq!(connection.recorded_calls(), vec!["close:root"]);
     assert_eq!(shared.sessions().len(), 1);
+    stop_command_loop(&command_tx, task).await;
+}
+
+/// A subagent whose close fails may still be running: the stopped prompt
+/// answers with that failure, though the root itself closed.
+#[tokio::test]
+async fn a_failed_child_close_fails_the_in_turn_stop() {
+    let connection = ScriptedCommandConnection::default();
+    connection.fail_close.lock().unwrap().insert("story".into());
+    let shared = background_children_shared();
+    let root = HarnessSessionId::new("root");
+    shared.insert_session(root.clone(), PathBuf::from("/tmp/project"));
+    child_started(&shared, "root", "story");
+    let (command_tx, task) = spawn_command_loop(connection.clone(), Arc::clone(&shared));
+    let (prompt_reply, prompt_response) = oneshot::channel();
+    command_tx
+        .send(AdapterCommand::Prompt {
+            session_id: root.clone(),
+            prompt: HarnessPrompt::text("story"),
+            reply: prompt_reply,
+        })
+        .await
+        .unwrap();
+    connection.prompt_started.notified().await;
+    let (cancel_reply, cancel_response) = oneshot::channel();
+    command_tx
+        .send(AdapterCommand::Cancel {
+            session_id: root.clone(),
+            reply: cancel_reply,
+        })
+        .await
+        .unwrap();
+    cancel_response.await.unwrap().expect("cancel sent");
+    connection.prompt_release.notify_one();
+    let error = prompt_response.await.unwrap().expect_err("the Stop failed");
+    assert!(error.message.contains("background work may still be running"), "{error:?}");
+    assert_eq!(
+        connection.recorded_calls(),
+        vec!["prompt:root", "cancel:root", "close:story", "close:root"]
+    );
+    assert!(shared.sessions().is_empty(), "the root itself closed");
+    stop_command_loop(&command_tx, task).await;
+}
+
+/// The close runs beside the command loop: other sessions are served, and
+/// the closing root takes no prompt, until it ends.
+#[tokio::test]
+async fn a_closing_root_holds_only_itself() {
+    let connection = ScriptedCommandConnection::default();
+    connection
+        .hold_close
+        .store(true, std::sync::atomic::Ordering::SeqCst);
+    let shared = background_children_shared();
+    let root = HarnessSessionId::new("root");
+    let other = HarnessSessionId::new("other");
+    shared.insert_session(root.clone(), PathBuf::from("/tmp/project"));
+    shared.insert_session(other.clone(), PathBuf::from("/tmp/project"));
+    let (command_tx, task) = spawn_command_loop(connection.clone(), Arc::clone(&shared));
+    let (stop_reply, mut stop_response) = oneshot::channel();
+    command_tx
+        .send(AdapterCommand::CancelOutOfTurn {
+            session_id: root.clone(),
+            reply: stop_reply,
+        })
+        .await
+        .unwrap();
+    connection.close_started.notified().await;
+
+    let (cancel_reply, cancel_response) = oneshot::channel();
+    command_tx
+        .send(AdapterCommand::Cancel {
+            session_id: other.clone(),
+            reply: cancel_reply,
+        })
+        .await
+        .unwrap();
+    cancel_response.await.unwrap().expect("another session is served");
+    let (prompt_reply, prompt_response) = oneshot::channel();
+    command_tx
+        .send(AdapterCommand::Prompt {
+            session_id: root.clone(),
+            prompt: HarnessPrompt::text("again"),
+            reply: prompt_reply,
+        })
+        .await
+        .unwrap();
+    assert_eq!(
+        prompt_response.await.unwrap().expect_err("still stopping").kind,
+        HarnessErrorKind::SessionBusy
+    );
+    assert!(stop_response.try_recv().is_err(), "the Stop waits for its close");
+
+    connection.close_release.notify_one();
+    stop_response.await.unwrap().expect("stops");
+    assert_eq!(shared.sessions().len(), 1, "only the root is forgotten");
     stop_command_loop(&command_tx, task).await;
 }
 

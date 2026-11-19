@@ -31,7 +31,7 @@ use agent_client_protocol::schema::v1::{
     SessionConfigOption, SetSessionConfigOptionRequest, StopReason,
 };
 use agent_client_protocol::{Agent, ConnectionTo, Dispatch, Handled, UntypedMessage};
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::future::Future;
 use std::path::PathBuf;
 use std::pin::Pin;
@@ -1501,22 +1501,35 @@ impl PromptTasks {
         shared: &SharedState,
     ) {
         if let Some(Ok(completion)) = completion {
-            if let Some(reply) = self.replies.remove(&completion.session_id) {
-                // The response's observations and the turn boundary are
-                // already published (see `PromptSettledHook`).
-                shared.finish_prompt(&completion.session_id, &completion.result);
-                match &completion.result {
-                    Ok(_) => shared.set_auth(HarnessAuthState::Ready, None),
-                    Err(error) if error.kind == HarnessErrorKind::AuthRequired => {
-                        shared.set_auth(HarnessAuthState::Missing, Some(error.message.clone()));
-                    }
-                    Err(error) => {
-                        shared.set_auth(HarnessAuthState::Unknown, Some(error.message.clone()));
-                    }
-                }
-                let _ = reply.send(completion.result);
+            self.answer(completion, shared, None);
+        }
+    }
+
+    /// Answers a finished prompt. `stop_failed` replaces the answer when the
+    /// Stop that ended it could not close the session; the prompt's own
+    /// result still decides the session's state and sign-in.
+    fn answer(
+        &mut self,
+        completion: PromptCompletion,
+        shared: &SharedState,
+        stop_failed: Option<HarnessError>,
+    ) {
+        let Some(reply) = self.replies.remove(&completion.session_id) else {
+            return;
+        };
+        // The response's observations and the turn boundary are already
+        // published (see `PromptSettledHook`).
+        shared.finish_prompt(&completion.session_id, &completion.result);
+        match &completion.result {
+            Ok(_) => shared.set_auth(HarnessAuthState::Ready, None),
+            Err(error) if error.kind == HarnessErrorKind::AuthRequired => {
+                shared.set_auth(HarnessAuthState::Missing, Some(error.message.clone()));
+            }
+            Err(error) => {
+                shared.set_auth(HarnessAuthState::Unknown, Some(error.message.clone()));
             }
         }
+        let _ = reply.send(stop_failed.map_or(completion.result, Err));
     }
 
     fn cancel_remote_for_shutdown(
@@ -1954,7 +1967,7 @@ async fn close_held_session(
     }
 }
 
-/// Bounds each `session/close` Stop sends, which the command loop awaits.
+/// Bounds each `session/close` Stop sends.
 const STOP_CLOSE_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// How long Stop waits between closing children and closing their root. A
@@ -1977,15 +1990,14 @@ const STOP_WAKE_SETTLE: Duration = Duration::from_millis(1);
 /// had one, for a turn the agent started on its own. Until the close, the
 /// woken turn's own output is dropped (`ChildSessions::mute`).
 ///
-/// `None` when Stop has nothing to close and falls back to `session/cancel`.
-/// A root whose close fails stays held, and the error is the Stop's.
-async fn close_background_tree(
-    connection: &impl AcpCommandConnection,
+/// It runs as a [`TreeCloses`] task, so a slow close holds only its own root;
+/// the Stop answers when it ends. `None` here means Stop has nothing to close
+/// and falls back to `session/cancel`; `Some` says whether `root` had a child.
+fn background_tree_to_close(
     shared: &SharedState,
-    session_selects: &mut BTreeMap<HarnessSessionId, SessionSelects>,
     root: &HarnessSessionId,
     always: bool,
-) -> Option<Result<(), HarnessError>> {
+) -> Option<bool> {
     let children = shared.child_sessions.as_ref()?;
     let can_close = shared
         .status()
@@ -1995,37 +2007,164 @@ async fn close_background_tree(
         .copied()
         .unwrap_or(false);
     let had_children = children.has_children(root);
-    if !can_close || !(had_children || always) {
-        return None;
+    (can_close && (had_children || always)).then_some(had_children)
+}
+
+/// What a Stop that closes a session tree answers once the close ends.
+enum StopAnswer {
+    /// An in-turn Stop: the stopped prompt's completion, held until then.
+    Prompt(PromptCompletion),
+    /// A Stop of a turn the agent started on its own.
+    OutOfTurn(oneshot::Sender<Result<(), HarnessError>>),
+}
+
+struct TreeClosed {
+    root: HarnessSessionId,
+    /// The root's own close succeeded: the agent no longer holds it.
+    root_closed: bool,
+    /// The first close that failed. A child that failed to close may still
+    /// be running, and its report may wake the root again.
+    result: Result<(), HarnessError>,
+}
+
+/// Stop's session-tree closes (`background_tree_to_close`), beside the
+/// command loop. A root stays busy until its close ends.
+struct TreeCloses {
+    tasks: JoinSet<TreeClosed>,
+    waiting: HashMap<tokio::task::Id, (HarnessSessionId, StopAnswer)>,
+}
+
+impl TreeCloses {
+    fn new() -> Self {
+        Self {
+            tasks: JoinSet::new(),
+            waiting: HashMap::new(),
+        }
     }
-    let close = |session_id: String| async move {
-        match tokio::time::timeout(STOP_CLOSE_TIMEOUT, connection.close_session(session_id)).await {
-            Ok(result) => result.map_err(|error| map_acp_error(&error)),
-            Err(_) => Err(HarnessError::new(
-                HarnessErrorKind::Protocol,
-                "session/close timed out".to_owned(),
-            )),
+
+    fn is_empty(&self) -> bool {
+        self.tasks.is_empty()
+    }
+
+    fn is_closing(&self, root: &HarnessSessionId) -> bool {
+        self.waiting.values().any(|(closing, _)| closing == root)
+    }
+
+    fn start(
+        &mut self,
+        connection: &impl AcpCommandConnection,
+        shared: &Arc<SharedState>,
+        root: HarnessSessionId,
+        had_children: bool,
+        answer: StopAnswer,
+    ) {
+        if let Some(children) = &shared.child_sessions {
+            children.mute(&root, true);
+        }
+        let task = self.tasks.spawn(close_background_tree(
+            connection.clone(),
+            Arc::clone(shared),
+            root.clone(),
+            had_children,
+        ));
+        self.waiting.insert(task.id(), (root, answer));
+    }
+
+    async fn join_next(
+        &mut self,
+    ) -> Option<Result<(tokio::task::Id, TreeClosed), tokio::task::JoinError>> {
+        self.tasks.join_next_with_id().await
+    }
+
+    /// Forgets a closed root and answers its Stop.
+    fn finish(
+        &mut self,
+        joined: Option<Result<(tokio::task::Id, TreeClosed), tokio::task::JoinError>>,
+        shared: &SharedState,
+        session_selects: &mut BTreeMap<HarnessSessionId, SessionSelects>,
+        prompts: &mut PromptTasks,
+    ) {
+        let (id, result) = match joined {
+            Some(Ok((id, closed))) => {
+                if closed.root_closed {
+                    session_selects.remove(&closed.root);
+                    shared.remove_session(&closed.root);
+                }
+                (id, closed.result)
+            }
+            Some(Err(error)) => (
+                error.id(),
+                Err(HarnessError::new(
+                    HarnessErrorKind::Internal,
+                    "closing the agent's sessions on Stop failed".to_owned(),
+                )),
+            ),
+            None => return,
+        };
+        let Some((root, answer)) = self.waiting.remove(&id) else {
+            return;
+        };
+        if let Some(children) = &shared.child_sessions {
+            children.mute(&root, false);
+        }
+        let failed = result.err().map(|error| {
+            tracing::warn!(kind = ?error.kind, "session/close on Stop failed");
+            HarnessError::new(
+                HarnessErrorKind::PromptExecution,
+                format!(
+                    "Stop could not close the agent's session ({}); its background work may still be running",
+                    error.message
+                ),
+            )
+        });
+        match answer {
+            StopAnswer::Prompt(completion) => prompts.answer(completion, shared, failed),
+            StopAnswer::OutOfTurn(reply) => {
+                let _ = reply.send(failed.map_or(Ok(()), Err));
+            }
+        }
+    }
+
+    fn abort_all(&mut self) {
+        self.tasks.abort_all();
+    }
+}
+
+async fn close_background_tree(
+    connection: impl AcpCommandConnection,
+    shared: Arc<SharedState>,
+    root: HarnessSessionId,
+    had_children: bool,
+) -> TreeClosed {
+    let close = |session_id: String| {
+        let connection = connection.clone();
+        async move {
+            match tokio::time::timeout(STOP_CLOSE_TIMEOUT, connection.close_session(session_id))
+                .await
+            {
+                Ok(result) => result.map_err(|error| map_acp_error(&error)),
+                Err(_) => Err(HarnessError::new(
+                    HarnessErrorKind::Protocol,
+                    "session/close timed out".to_owned(),
+                )),
+            }
         }
     };
-    children.mute(root, true);
-    if had_children {
-        for child in children.open_children(root) {
+    let mut result = Ok(());
+    if let Some(children) = shared.child_sessions.as_ref().filter(|_| had_children) {
+        for child in children.open_children(&root) {
             if let Err(error) = close(child).await {
-                tracing::warn!(kind = ?error.kind, "session/close of a subagent on Stop failed");
+                result = result.and(Err(error));
             }
         }
         tokio::time::sleep(STOP_WAKE_SETTLE).await;
     }
     let closed = close(root.0.clone()).await;
-    children.mute(root, false);
-    match &closed {
-        Ok(()) => {
-            session_selects.remove(root);
-            shared.remove_session(root);
-        }
-        Err(error) => tracing::warn!(kind = ?error.kind, "session/close on Stop failed"),
+    TreeClosed {
+        root,
+        root_closed: closed.is_ok(),
+        result: closed.and(result),
     }
-    Some(closed)
 }
 
 pub(super) async fn run_command_loop(
@@ -2046,8 +2185,9 @@ pub(super) async fn run_command_loop(
     // Each held session's mode selector, for switching a live session.
     let mut session_selects = BTreeMap::<HarnessSessionId, SessionSelects>::new();
     // Prompts the user stopped, whose background work closes once the agent
-    // answers (`close_background_tree`).
+    // answers (`background_tree_to_close`).
     let mut stopping = BTreeSet::<HarnessSessionId>::new();
+    let mut tree_closes = TreeCloses::new();
     'commands: loop {
         tokio::select! {
             command = commands.recv() => {
@@ -2055,6 +2195,7 @@ pub(super) async fn run_command_loop(
                     prompts.abort_all();
                     authentications.abort_all();
                     extensions.abort_all();
+                    tree_closes.abort_all();
                     return Ok(());
                 };
                 match command {
@@ -2181,6 +2322,13 @@ pub(super) async fn run_command_loop(
                         let result = apply_model(connection, shared, &mut session_selects, &session_id, &switch).await;
                         let _ = reply.send(result);
                     }
+                    // Stop is still closing this session for the agent.
+                    AdapterCommand::Prompt { session_id, reply, .. } if tree_closes.is_closing(&session_id) => {
+                        let _ = reply.send(Err(HarnessError::new(
+                            HarnessErrorKind::SessionBusy,
+                            format!("session {session_id} is still stopping"),
+                        )));
+                    }
                     AdapterCommand::Prompt { session_id, prompt, reply } => {
                         prompts.start(connection, shared, session_id, prompt, reply);
                     }
@@ -2189,6 +2337,8 @@ pub(super) async fn run_command_loop(
                     }
                     AdapterCommand::Cancel { session_id, reply } => {
                         let result = match shared.is_prompting(&session_id) {
+                            // Already stopping: its close answers the prompt.
+                            _ if tree_closes.is_closing(&session_id) => Ok(()),
                             Ok(false) => Ok(()),
                             Ok(true) => {
                                 let result = connection
@@ -2209,8 +2359,13 @@ pub(super) async fn run_command_loop(
                     }
                     AdapterCommand::CancelOutOfTurn { session_id, reply } => {
                         let result = match shared.is_prompting(&session_id) {
-                            Ok(false) => match close_background_tree(connection, shared, &mut session_selects, &session_id, true).await {
-                                Some(closed) => closed,
+                            _ if tree_closes.is_closing(&session_id) => Ok(()),
+                            Ok(false) => match background_tree_to_close(shared, &session_id, true) {
+                                Some(had_children) => {
+                                    // Answered when the close ends.
+                                    tree_closes.start(connection, shared, session_id, had_children, StopAnswer::OutOfTurn(reply));
+                                    continue 'commands;
+                                }
                                 None => connection
                                     .cancel(session_id.0.clone())
                                     .map_err(|error| map_acp_error(&error)),
@@ -2244,21 +2399,29 @@ pub(super) async fn run_command_loop(
                         // reads the adapter as having exited mid-request —
                         // which is exactly what happened.
                         extensions.abort_all();
+                        tree_closes.abort_all();
                         return Ok(());
                     }
                 }
             }
             completion = prompts.join_next(), if !prompts.is_empty() => {
-                // Before the answer goes out, so no run prompts the session
-                // the close is about to end.
-                // The prompt still answers as stopped if the close fails; its
-                // session then stays held (`close_background_tree`).
-                if let Some(Ok(done)) = &completion {
-                    if stopping.remove(&done.session_id) {
-                        let _ = close_background_tree(connection, shared, &mut session_selects, &done.session_id, false).await;
+                // A stopped prompt whose session tree closes answers once the
+                // close ends, so no run prompts the session meanwhile.
+                match completion {
+                    Some(Ok(done)) if stopping.remove(&done.session_id) => {
+                        match background_tree_to_close(shared, &done.session_id, false) {
+                            Some(had_children) => {
+                                let root = done.session_id.clone();
+                                tree_closes.start(connection, shared, root, had_children, StopAnswer::Prompt(done));
+                            }
+                            None => prompts.reconcile(Some(Ok(done)), shared),
+                        }
                     }
+                    completion => prompts.reconcile(completion, shared),
                 }
-                prompts.reconcile(completion, shared);
+            }
+            closed = tree_closes.join_next(), if !tree_closes.is_empty() => {
+                tree_closes.finish(closed, shared, &mut session_selects, &mut prompts);
             }
             completion = authentications.join_next(), if !authentications.is_empty() => {
                 authentications.reconcile(completion, shared);

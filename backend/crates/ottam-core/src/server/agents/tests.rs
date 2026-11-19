@@ -570,6 +570,8 @@ struct FakeConversationAdapter {
     scripted_turn: StdMutex<Vec<HarnessUpdateKind>>,
     /// Sessions core asked to stop working on their own.
     out_of_turn_cancels: StdMutex<Vec<String>>,
+    /// What such a Stop answers instead of success.
+    out_of_turn_cancel_error: StdMutex<Option<crate::agent::HarnessError>>,
     /// Each session's mode, as the actor would track it.
     session_modes: StdMutex<HashMap<String, String>>,
     /// Each session's announced commands, as the actor would track them.
@@ -625,6 +627,7 @@ impl FakeConversationAdapter {
             prompt_answers: StdMutex::new(HashMap::new()),
             scripted_turn: StdMutex::new(Vec::new()),
             out_of_turn_cancels: StdMutex::new(Vec::new()),
+            out_of_turn_cancel_error: StdMutex::new(None),
             session_modes: StdMutex::new(HashMap::new()),
             session_commands: StdMutex::new(HashMap::new()),
             applied_modes: StdMutex::new(Vec::new()),
@@ -1275,7 +1278,13 @@ impl HarnessAdapter for FakeConversationAdapter {
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
             .push(session_id.0.clone());
-        Box::pin(std::future::ready(Ok(())))
+        let answer = self
+            .out_of_turn_cancel_error
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .clone()
+            .map_or(Ok(()), Err);
+        Box::pin(std::future::ready(answer))
     }
 }
 
@@ -7322,6 +7331,53 @@ async fn autonomous_follow_up_cancel_stops_the_agent_and_disarms() {
         .await;
     tokio::time::sleep(Duration::from_millis(100)).await;
     assert_eq!(harness.run_count().await, 2);
+    harness.bridge.shutdown().await;
+}
+
+/// A Stop the agent could not carry out (its sessions would not close) ends
+/// the follow-up with that error, not as cleanly cancelled.
+#[tokio::test]
+async fn autonomous_follow_up_cancel_reports_a_stop_that_failed() {
+    let harness = continuity_harness("follow_up_cancel_failed", FakeFactory::new(true)).await;
+    let first = harness.run_with_background_task().await;
+    let session = first.agent_session_id.clone().expect("bound a session");
+    *harness.adapter().out_of_turn_cancel_error.lock().unwrap() = Some(
+        crate::agent::HarnessError::new(
+            crate::agent::HarnessErrorKind::PromptExecution,
+            "Stop could not close the agent's session",
+        ),
+    );
+    harness
+        .send_after_turn(
+            &session,
+            3,
+            [
+                task_completed("task_bg", "toolu_bg"),
+                HarnessUpdateKind::AgentMessageChunk("working".to_string(), None),
+            ],
+        )
+        .await;
+    let follow_up = tokio::time::timeout(Duration::from_secs(2), async {
+        loop {
+            if let Some(run) = harness.follow_ups().await.into_iter().next() {
+                return run;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("a follow-up opens");
+    let ended = harness
+        .bridge
+        .cancel_conversation_run(
+            &harness.env.chat,
+            &harness.conversation_id,
+            &follow_up.run_id,
+        )
+        .await
+        .expect("cancels")
+        .run;
+    assert_eq!(ended.status, ConversationRunStatus::Failed, "{ended:?}");
     harness.bridge.shutdown().await;
 }
 

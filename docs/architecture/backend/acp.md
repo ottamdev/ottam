@@ -162,10 +162,12 @@ agent shells, and first wherever npm or npx re-resolve it from their shebang
   root that has had a child sends `session/close` to the open children,
   waits a second for the wake their reports cause, then closes the root,
   which interrupts it (`actor.rs::close_background_tree`); a root closed
-  before the wake leaves the woken turn running. Until then the woken turn's
-  own output is dropped, so none of it reaches the stopped run. The next run
-  loads the root again; a failed close fails the Stop and leaves the root
-  held. A managed
+  before the wake leaves the woken turn running. The close runs beside the
+  actor's command loop, so other sessions keep being served while that root
+  refuses new prompts. Until then the woken turn's own output is dropped, so
+  none of it reaches the stopped run. The next run loads the root again; a
+  failed child or root close fails the Stop (the stopped run ends with the
+  error) and a failed root close leaves the root held. A managed
   profile disables the CLI's shared background service (`config/service.json`;
   fixed port 49374 would mix profiles' sign-ins). At 2.0.27: plan mode not
   enforced, write/patch emit no diffs, slash output doesn't stream.
