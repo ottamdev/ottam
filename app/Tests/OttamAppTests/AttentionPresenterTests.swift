@@ -128,11 +128,26 @@ struct AttentionPresenterTests {
         #expect(finished.threadIdentifier == "w")
         #expect(finished.identifier == "attention.unseen.a")
         #expect(presenter.banner(for: entry("a")).body == "Finished")
+        #expect(presenter.banner(for: entry("a", detail: "---")).body == "Finished")
         let asking = presenter.banner(for: entry("a", .needsInput, reason: .permission, detail: "Run tests"))
         #expect(asking.body == "Approval needed: Run tests")
         #expect(asking.identifier == "attention.needsInput.a")
         #expect(NotificationPresenter.body(for: entry("a", reason: .failed, detail: "Out of tokens"))
             == "Failed: Out of tokens")
+    }
+
+    @Test("a finished run's markdown reads as plain lines, one per block, links as their text")
+    func markdownBody() {
+        let markdown = """
+            ## Mars weather
+
+            - Mars is **cold** and *dry*
+            - See [the notes](file:///tmp/notes.md) for `__init__`
+
+            ---
+            """
+        #expect(NotificationPresenter.body(for: entry("a", detail: markdown))
+            == "Mars weather\nMars is cold and dry\nSee the notes for __init__")
     }
 
     @Test("withdrawing clears both states; reconciling drops banners whose state is gone")

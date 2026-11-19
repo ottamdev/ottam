@@ -269,7 +269,7 @@ fn an_unseen_completion_reads_as_its_last_message() {
 
     let unseen = session.wait_for_change(&conversation, "unseen", Duration::from_secs(10));
     assert_eq!(unseen["entry"]["reason"], "completed");
-    assert_eq!(unseen["entry"]["detail"], "Done All 12 tests pass.");
+    assert_eq!(unseen["entry"]["detail"], "## Done\n\nAll **12** tests pass.");
     session.core.shutdown();
 }
 

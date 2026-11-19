@@ -275,19 +275,20 @@ fn only_completed_and_failed_runs_can_be_unseen() {
 }
 
 #[test]
-fn a_completed_run_reads_as_its_last_message_on_one_plain_line() {
-    let message = "## Done\n\nAll **12** tests pass:\n\n- `cargo test`\n```sh\nexit 0\n```\n> ship it";
+fn a_completed_run_carries_the_start_of_its_last_message_as_markdown() {
+    let message = "\n## Done\n\nAll **12** tests pass.\n";
     let completed = ended("r", AttentionReason::Completed).with_message(message);
     assert_eq!(
         completed.detail.as_deref(),
-        Some("Done All 12 tests pass: cargo test exit 0 ship it")
+        Some("## Done\n\nAll **12** tests pass.")
     );
-    let long = ended("r", AttentionReason::Completed).with_message(&"word ".repeat(100));
+    let long = ended("r", AttentionReason::Completed).with_message(&"word ".repeat(200));
     let detail = long.detail.unwrap();
-    assert!(detail.chars().count() <= DETAIL_CHARS + 1);
+    assert!(detail.chars().count() <= MESSAGE_CHARS + 1);
+    assert!(detail.chars().count() > DETAIL_CHARS);
     assert!(detail.ends_with("word…"));
     assert_eq!(
-        ended("r", AttentionReason::Completed).with_message(" \n``` \n").detail,
+        ended("r", AttentionReason::Completed).with_message(" \n").detail,
         None
     );
     let failed = Ended {

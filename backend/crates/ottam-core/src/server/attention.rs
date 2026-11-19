@@ -33,6 +33,9 @@ const ASK_NOTIFY_DELAY: Duration = Duration::from_millis(400);
 const SETTLE_DELAY: Duration = Duration::from_secs(2);
 /// Longest detail sent, in characters.
 const DETAIL_CHARS: usize = 200;
+/// Longest message sent for a completed run, in characters: room for
+/// markdown that link targets and marks will drop once rendered.
+const MESSAGE_CHARS: usize = 400;
 
 pub(crate) type BoxFuture<T> = Pin<Box<dyn Future<Output = T> + Send>>;
 
@@ -85,11 +88,11 @@ impl Ended {
         })
     }
 
-    /// A completed run shows the start of its last message as one plain
-    /// line; the banner truncates what it can't fit.
+    /// A completed run shows the start of its last message, as markdown:
+    /// presenting it as text is the client's job.
     pub(crate) fn with_message(mut self, message: &str) -> Self {
         if self.reason == AttentionReason::Completed {
-            self.detail = clip(&plain_line(message));
+            self.detail = clip_to(message, MESSAGE_CHARS);
         }
         self
     }
@@ -698,38 +701,22 @@ impl Drop for AskGuard {
 
 /// `text` trimmed and cut to [`DETAIL_CHARS`]; `None` when blank.
 fn clip(text: &str) -> Option<String> {
+    clip_to(text, DETAIL_CHARS)
+}
+
+/// `text` trimmed and cut to `limit` characters; `None` when blank.
+fn clip_to(text: &str, limit: usize) -> Option<String> {
     let text = text.trim();
     if text.is_empty() {
         return None;
     }
     let mut chars = text.chars();
-    let clipped: String = chars.by_ref().take(DETAIL_CHARS).collect();
+    let clipped: String = chars.by_ref().take(limit).collect();
     Some(if chars.next().is_some() {
         format!("{}…", clipped.trim_end())
     } else {
         clipped
     })
-}
-
-/// Markdown read as one line of plain text: fence lines dropped, heading,
-/// list and quote markers and emphasis and code marks removed, whitespace
-/// collapsed. Banners show plain text.
-fn plain_line(markdown: &str) -> String {
-    let mut words = Vec::new();
-    for line in markdown.lines() {
-        let line = line.trim();
-        if line.starts_with("```") || line.starts_with("~~~") {
-            continue;
-        }
-        let line = line.trim_start_matches(['#', '>']).trim_start();
-        let line = ["- ", "* ", "+ "]
-            .iter()
-            .find_map(|marker| line.strip_prefix(marker))
-            .unwrap_or(line);
-        let line = line.replace("**", "").replace("__", "").replace('`', "");
-        words.extend(line.split_whitespace().map(str::to_owned));
-    }
-    words.join(" ")
 }
 
 #[cfg(test)]

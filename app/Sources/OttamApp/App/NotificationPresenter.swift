@@ -3,6 +3,7 @@ import Foundation
 import Observation
 import OSLog
 import OttamBackendClient
+import OttamMarkdownEngine
 @preconcurrency import UserNotifications
 
 private let notificationLogger = Logger(
@@ -240,12 +241,28 @@ final class NotificationPresenter {
     /// what doesn't fit.
     static func body(for entry: AttentionEntry) -> String {
         switch entry.reason {
-        case .completed: entry.detail ?? "Finished"
+        case .completed: entry.detail.map(plainText).flatMap { $0.isEmpty ? nil : $0 } ?? "Finished"
         case .failed: entry.detail.map { "Failed: \($0)" } ?? "Failed"
         case .permission: entry.detail.map { "Approval needed: \($0)" } ?? "Approval needed"
         case .plan: "Plan needs approval"
         case .question: entry.detail.map { "Question: \($0)" } ?? "Has a question"
         }
+    }
+
+    /// Markdown as banner text, which shows no styling: one line per block,
+    /// link text without its target. Tables and rules are left out.
+    static func plainText(_ markdown: String) -> String {
+        MarkdownBlockTreeParser.nodes(from: markdown)
+            .compactMap { node -> String? in
+                switch node.kind {
+                case .paragraph, .heading, .listItem: String(node.inline.characters)
+                case .codeBlock(_, let code): code
+                case .table, .thematicBreak: nil
+                }
+            }
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+            .joined(separator: "\n")
     }
 
     private static let prefix = "attention."
