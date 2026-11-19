@@ -195,6 +195,8 @@ pub const PLAIN_STRING_ID_FIELDS: &[&str] = &[
     "modeID",
     "defaultModeID",
     "currentModeID",
+    "currentModelID",
+    "currentThoughtLevelID",
     "thoughtLevelID",
     "defaultThoughtLevelID",
 ];
@@ -214,6 +216,8 @@ pub const TYPE_PLAIN_STRING_ID_FIELDS: &[(&str, &str)] = &[
     ("ConversationStopBackgroundTaskParams", "asyncTaskID"),
     ("ConversationSessionConfiguration", "id"),
     ("ConversationSessionMetadata", "currentModeId"),
+    ("ConversationSessionMetadata", "currentModelId"),
+    ("ConversationSessionMetadata", "currentThoughtLevelId"),
     ("TranscriptPermission", "requestID"),
     // Core-assigned subagent thread ids: opaque strings clients group by.
     ("ConversationTranscriptItem", "subagentThreadID"),

@@ -559,10 +559,16 @@ struct ChatTranscriptAssemblerTests {
         #expect(retry.modelID == "opus", "the stale model takes the composer's pick")
         #expect(retry.modeID == "plan", "a still-offered mode replays, whatever the composer says")
         #expect(retry.thoughtLevelID == nil)
+        engine.defaultModelID = "opus"
         let otherEngine = ChatWorkspaceModel.retrySelections(
             for: run, refused: true, engine: engine, picks: (nil, nil, nil)
         )
-        #expect(otherEngine.modelID == nil, "with the composer on another engine, the engine default")
+        #expect(otherEngine.modelID == "opus",
+                "with the composer on another engine, the engine default, named: nil would keep the refused model")
+        let stalePick = ChatWorkspaceModel.retrySelections(
+            for: run, refused: true, engine: engine, picks: ("opus[1m]", nil, nil)
+        )
+        #expect(stalePick.modelID == "opus", "a pick the catalog lacks is no replacement for itself")
         let unknown = ChatWorkspaceModel.retrySelections(for: run, refused: true, engine: nil, picks: picks)
         #expect(unknown.modelID == "opus[1m]", "an unlisted engine cannot prove a value stale")
     }

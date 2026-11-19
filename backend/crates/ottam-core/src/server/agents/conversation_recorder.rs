@@ -335,26 +335,7 @@ impl ConversationRecorderHandle {
             }
             {
                 let mut pending = self.latest.lock().expect("metadata mailbox");
-                if let Some((_, prior)) = pending
-                    .events
-                    .iter_mut()
-                    .find(|(kind, _)| kind == &event_kind)
-                {
-                    if let (Some(prior), Some(next)) = (prior.as_object_mut(), payload.as_object())
-                    {
-                        // Absent fields serialize as null; they must not erase
-                        // a coalesced value such as an announced mode.
-                        prior.extend(
-                            next.iter()
-                                .filter(|(_, value)| !value.is_null())
-                                .map(|(key, value)| (key.clone(), value.clone())),
-                        );
-                    } else {
-                        *prior = payload;
-                    }
-                } else {
-                    pending.events.push((event_kind, payload));
-                }
+                queue_coalesced(&mut pending.events, event_kind, payload);
             }
             return match self.sender.try_send(RecorderCommand::MetadataReady) {
                 Ok(()) | Err(mpsc::error::TrySendError::Full(_)) => Ok(()),
@@ -565,5 +546,158 @@ async fn recorder_loop(
                 break;
             }
         }
+    }
+}
+
+/// Fold a newer metadata payload into the one still waiting to be recorded.
+/// Absent fields serialize as null; they must not erase a coalesced value such
+/// as an announced mode. A level belongs to its model, so a different model
+/// announced without one drops the waiting level rather than inheriting it.
+fn coalesce_metadata(
+    prior: &mut serde_json::Map<String, Value>,
+    next: &serde_json::Map<String, Value>,
+) {
+    let present = |object: &serde_json::Map<String, Value>, key: &str| {
+        object.get(key).filter(|value| !value.is_null()).cloned()
+    };
+    let next_model = present(next, "currentModelId");
+    if next_model.is_some()
+        && next_model != present(prior, "currentModelId")
+        && present(next, "currentThoughtLevelId").is_none()
+    {
+        prior.remove("currentThoughtLevelId");
+    }
+    prior.extend(
+        next.iter()
+            .filter(|(_, value)| !value.is_null())
+            .map(|(key, value)| (key.clone(), value.clone())),
+    );
+}
+
+/// Queue a metadata or usage payload, folded into the one of its kind still
+/// waiting to be recorded.
+fn queue_coalesced(
+    events: &mut Vec<(ConversationEventKind, Value)>,
+    event_kind: ConversationEventKind,
+    payload: Value,
+) {
+    let slots: Vec<usize> = (0..events.len())
+        .filter(|&index| events[index].0 == event_kind)
+        .collect();
+    match slots[..] {
+        [] => events.push((event_kind, payload)),
+        [.., latest] if !resets_level(&events[latest].1, &payload) => {
+            fold_metadata(&mut events[latest].1, payload);
+        }
+        // A model change without a level must clear the stored level even
+        // when a later update names the stored model again, so it stays an
+        // event of its own. Two suffice: the earlier holds a model the newer
+        // does not.
+        [anchor, latest] => {
+            let (_, folded) = std::mem::replace(&mut events[latest], (event_kind, payload));
+            fold_metadata(&mut events[anchor].1, folded);
+        }
+        _ => events.push((event_kind, payload)),
+    }
+}
+
+/// Fold `next` into a waiting payload; a non-object replaces it.
+fn fold_metadata(prior: &mut Value, next: Value) {
+    match (prior.as_object_mut(), next.as_object()) {
+        (Some(prior), Some(next)) => coalesce_metadata(prior, next),
+        _ => *prior = next,
+    }
+}
+
+/// Whether `next` names a model without a level after a waiting payload that
+/// confirmed another model, or a level for the stored one. Folded together,
+/// storage would see one model and keep or drop the wrong level, so they stay
+/// separate events.
+fn resets_level(prior: &Value, next: &Value) -> bool {
+    let field = |payload: &Value, key: &str| payload.get(key).filter(|value| !value.is_null()).cloned();
+    let (prior_model, next_model) = (field(prior, "currentModelId"), field(next, "currentModelId"));
+    let prior_level = field(prior, "currentThoughtLevelId");
+    next_model.is_some()
+        && field(next, "currentThoughtLevelId").is_none()
+        && prior_model != next_model
+        && (prior_model.is_some() || prior_level.is_some())
+}
+
+#[cfg(test)]
+mod coalesce_tests {
+    use super::{coalesce_metadata, queue_coalesced};
+    use ottam_protocol::ConversationEventKind;
+    use serde_json::{json, Value};
+
+    #[test]
+    fn a_model_change_and_back_stays_a_level_reset() {
+        let kind = ConversationEventKind::SessionMetadata;
+        let mut events = Vec::new();
+        for payload in [
+            json!({"currentModelId": "b", "currentModeId": "plan"}),
+            json!({"currentModelId": "a"}),
+            json!({"currentModelId": "c"}),
+            json!({"currentModelId": "a", "title": "Later"}),
+        ] {
+            queue_coalesced(&mut events, kind, payload);
+        }
+        let payloads: Vec<_> = events.into_iter().map(|(_, payload)| payload).collect();
+        assert_eq!(
+            payloads,
+            [
+                json!({"currentModelId": "c", "currentModeId": "plan"}),
+                json!({"currentModelId": "a", "title": "Later"}),
+            ],
+            "the earlier event names a model the later does not, so persisting both clears the level"
+        );
+    }
+
+    #[test]
+    fn a_level_then_a_model_without_one_stay_in_order() {
+        let kind = ConversationEventKind::SessionMetadata;
+        let mut events = Vec::new();
+        queue_coalesced(&mut events, kind, json!({"currentThoughtLevelId": "low"}));
+        queue_coalesced(&mut events, kind, json!({"currentModelId": "a"}));
+        let payloads: Vec<_> = events.into_iter().map(|(_, payload)| payload).collect();
+        assert_eq!(
+            payloads,
+            [json!({"currentThoughtLevelId": "low"}), json!({"currentModelId": "a"})],
+            "the level is the stored model's: storage keeps it only if `a` is that model"
+        );
+    }
+
+    fn coalesced(prior: Value, next: Value) -> Value {
+        let mut prior = prior.as_object().unwrap().clone();
+        coalesce_metadata(&mut prior, next.as_object().unwrap());
+        Value::Object(prior)
+    }
+
+    #[test]
+    fn a_new_model_without_a_level_drops_the_waiting_level() {
+        assert_eq!(
+            coalesced(
+                json!({"currentModelId": "opus", "currentThoughtLevelId": "high", "currentModeId": "plan"}),
+                json!({"currentModelId": "haiku", "currentThoughtLevelId": null})
+            ),
+            json!({"currentModelId": "haiku", "currentModeId": "plan"})
+        );
+    }
+
+    #[test]
+    fn the_same_model_or_a_level_alone_keeps_the_pair() {
+        assert_eq!(
+            coalesced(
+                json!({"currentModelId": "opus", "currentThoughtLevelId": "high"}),
+                json!({"currentModelId": "opus"})
+            ),
+            json!({"currentModelId": "opus", "currentThoughtLevelId": "high"})
+        );
+        assert_eq!(
+            coalesced(
+                json!({"currentModelId": "opus", "currentThoughtLevelId": "high"}),
+                json!({"currentThoughtLevelId": "low", "title": null})
+            ),
+            json!({"currentModelId": "opus", "currentThoughtLevelId": "low"})
+        );
     }
 }

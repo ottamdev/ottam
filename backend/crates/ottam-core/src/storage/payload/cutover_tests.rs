@@ -7,11 +7,13 @@ fn stored_payload() -> (tempfile::TempDir, RevisionKey, Vec<u8>) {
     let mut main =
         SqliteConnection::establish(home.path().join("ottam.sqlite").to_str().unwrap())
             .unwrap();
-    main.batch_execute(include_str!(
-        "../../../migrations/00000000000000_initial/up.sql"
-    ))
+    // Main at its current schema, so only payload migrations are under test.
+    diesel_migrations::MigrationHarness::run_pending_migrations(
+        &mut main,
+        crate::storage::database::MIGRATIONS,
+    )
     .unwrap();
-    main.batch_execute("CREATE TABLE __diesel_schema_migrations (version VARCHAR(50) PRIMARY KEY NOT NULL, run_on TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP); INSERT INTO __diesel_schema_migrations (version) VALUES ('00000000000000'); INSERT INTO workspaces VALUES ('workspace', 'Workspace', 0, 0, 0, NULL); INSERT INTO conversations (id, workspace_id, working_root_kind, title, created_at, updated_at) VALUES ('conversation', 'workspace', 'workspaceFiles', 'Conversation', 0, 0); INSERT INTO transcript_items (id, conversation_id, position, revision, kind, completion, created_at, updated_at) VALUES ('item', 'conversation', 0, 1, 'tool', 'complete', 0, 0);").unwrap();
+    main.batch_execute("INSERT INTO workspaces VALUES ('workspace', 'Workspace', 0, 0, 0, NULL); INSERT INTO conversations (id, workspace_id, working_root_kind, title, created_at, updated_at) VALUES ('conversation', 'workspace', 'workspaceFiles', 'Conversation', 0, 0); INSERT INTO transcript_items (id, conversation_id, position, revision, kind, completion, created_at, updated_at) VALUES ('item', 'conversation', 0, 1, 'tool', 'complete', 0, 0);").unwrap();
     let key = RevisionKey {
         workspace_id: "workspace".into(),
         conversation_id: "conversation".into(),

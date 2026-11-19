@@ -166,9 +166,15 @@ naming another value fails the run `selectionUnavailable`, so a run never
 records a model that didn't answer. Switches apply in `session/new`'s order:
 model, then thought level (checked against the switch's answer, which can move
 it), then mode. An agent without the select ignores the pick; a restored
-session keeps a value its load doesn't list. Only the confirmed mode persists
-(`agent_sessions.current_mode_id`); a historical run's requested mode proves
-nothing about the live session. `EngineCapability.liveModeChange` (Claude)
+session keeps a value its load doesn't list. Only confirmed values persist
+(`agent_sessions.current_mode_id`, `current_model_id`,
+`current_thought_level_id`, from `SessionMetadata`: the acknowledgment at
+new/load/switch or the agent's own `config_option_update`); a historical run's
+request proves nothing about the live session. A run that requests none of
+them keeps the confirmed ones on restore or fresh fallback
+(`resolve_conversation_session`); a run that picks a model keeps no level
+from the old one, and a different model confirmed without a level clears the
+stored one (`RunRepository::set_session_model`). `EngineCapability.liveModeChange` (Claude)
 marks adapters whose change reaches the running turn; codex-acp reads its mode
 at turn start. A mode change never answers or clears a pending permission card.
 

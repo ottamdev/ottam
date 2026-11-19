@@ -51,6 +51,34 @@ pub(in crate::server) struct BeginRunRecord {
     pub images: Vec<HarnessPromptImage>,
 }
 
+/// What the agent last confirmed for a resumable session. A restore or fresh
+/// fallback reapplies each one the run does not request, so a follow-up that
+/// names none keeps the conversation's settings, never the agent's defaults.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub(in crate::server) struct ConfirmedSelection {
+    pub mode_id: Option<String>,
+    pub model_id: Option<String>,
+    pub thought_level_id: Option<String>,
+}
+
+impl ConfirmedSelection {
+    /// Fold in what the agent confirmed since, as `set_session_model` stores
+    /// it: an absent field keeps its value, and a different model confirmed
+    /// without a level drops the old model's.
+    pub(in crate::server) fn confirm(&mut self, newer: ConfirmedSelection) {
+        if newer.mode_id.is_some() {
+            self.mode_id = newer.mode_id;
+        }
+        if newer.model_id.is_some() && newer.model_id != self.model_id {
+            self.model_id = newer.model_id;
+            self.thought_level_id = None;
+        }
+        if newer.thought_level_id.is_some() {
+            self.thought_level_id = newer.thought_level_id;
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub(in crate::server) struct PreparedSteerRecord {
     pub run: ConversationRunSummary,
@@ -374,12 +402,12 @@ impl ChatService {
 
     /// The resumable external harness session for this conversation, engine,
     /// and current source scope, per the spec's fingerprint-matched rule, with
-    /// the mode the agent last confirmed for it.
+    /// what the agent last confirmed for it.
     pub(in crate::server) async fn resumable_session(
         &self,
         conversation_id: &ConversationID,
         engine_id: &EngineID,
-    ) -> Result<Option<(AgentSessionID, Option<String>)>, CoreError> {
+    ) -> Result<Option<(AgentSessionID, ConfirmedSelection)>, CoreError> {
         let workspace_id = self.workspace()?;
         let conversation_id = parse_conversation_id(conversation_id)?;
         let engine_id = engine_id.0.clone();
@@ -415,7 +443,11 @@ impl ChatService {
                 .and_then(|session| {
                     Some((
                         AgentSessionID(session.external_session_id?),
-                        session.current_mode_id,
+                        ConfirmedSelection {
+                            mode_id: session.current_mode_id,
+                            model_id: session.current_model_id,
+                            thought_level_id: session.current_thought_level_id,
+                        },
                     ))
                 }))
             })
@@ -686,6 +718,23 @@ impl ChatService {
                             (run.agent_session_id.as_ref(), announced_mode)
                         {
                             RunRepository::set_session_mode(connection, session_id, mode_id)?;
+                        }
+                        // Likewise the model and level it confirmed, in event
+                        // order: a later model without a level drops the
+                        // earlier model's level, and a later level sets it.
+                        if let Some(session_id) = run.agent_session_id.as_ref() {
+                            for (_, payload) in events
+                                .iter()
+                                .filter(|(kind, _)| *kind == ConversationEventKind::SessionMetadata)
+                            {
+                                let model = payload.get("currentModelId").and_then(|v| v.as_str());
+                                let level = payload
+                                    .get("currentThoughtLevelId")
+                                    .and_then(|v| v.as_str());
+                                RunRepository::set_session_model(
+                                    connection, session_id, model, level,
+                                )?;
+                            }
                         }
                         // Likewise the commands it announced, so `/` lists them
                         // after a relaunch. The recorder already drops oversized
@@ -1229,5 +1278,29 @@ impl ChatService {
             })
             .await
             .map_err(CoreError::from)
+    }
+}
+
+#[cfg(test)]
+mod confirmed_selection_tests {
+    use super::ConfirmedSelection;
+
+    fn selection(mode: Option<&str>, model: Option<&str>, level: Option<&str>) -> ConfirmedSelection {
+        ConfirmedSelection {
+            mode_id: mode.map(str::to_string),
+            model_id: model.map(str::to_string),
+            thought_level_id: level.map(str::to_string),
+        }
+    }
+
+    #[test]
+    fn a_newer_confirmation_keeps_levels_with_their_model() {
+        let mut stored = selection(Some("plan"), Some("a"), Some("high"));
+        stored.confirm(selection(None, Some("a"), None));
+        assert_eq!(stored, selection(Some("plan"), Some("a"), Some("high")));
+        stored.confirm(selection(None, Some("b"), None));
+        assert_eq!(stored, selection(Some("plan"), Some("b"), None));
+        stored.confirm(selection(Some("auto"), None, Some("low")));
+        assert_eq!(stored, selection(Some("auto"), Some("b"), Some("low")));
     }
 }

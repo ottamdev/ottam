@@ -20,7 +20,7 @@ use crate::agent::{
 use crate::core_error::CoreError;
 use crate::diagnostics::{record_unhandled, shape};
 use crate::mcp::{McpGrant, McpService, SessionGrant};
-use crate::server::chat::{BeginRunRecord, ChatService};
+use crate::server::chat::{BeginRunRecord, ChatService, ConfirmedSelection};
 use crate::server::deferred::DeferredLane;
 use crate::server::outbound::OutboundSink;
 use ottam_protocol::{
@@ -855,14 +855,21 @@ fn normalized_session_metadata(
                     .collect::<Option<Vec<_>>>()?,
             );
             // Agents that report modes as a config option (OpenCode, and Claude
-            // alongside current_mode_update) announce the mode here.
-            result.current_mode_id = result
-                .configuration
-                .iter()
-                .flatten()
-                .find(|option| option.category.as_deref() == Some("mode"))
-                .map(|option| option.current_value.clone())
-                .filter(|value| !value.is_empty());
+            // alongside current_mode_update) announce the mode here, and every
+            // config-option agent its model and thought level.
+            let current = |category: &str| {
+                result
+                    .configuration
+                    .iter()
+                    .flatten()
+                    .find(|option| option.category.as_deref() == Some(category))
+                    .map(|option| option.current_value.clone())
+                    .filter(|value| !value.is_empty())
+            };
+            let (mode, model, level) = (current("mode"), current("model"), current("thought_level"));
+            result.current_mode_id = mode;
+            result.current_model_id = model;
+            result.current_thought_level_id = level;
         }
         _ => return None,
     }
@@ -1075,10 +1082,14 @@ mod metadata_tests {
             "config_option_update",
             &json!({"configOptions":[
             {"id":"model", "name":"Model", "category":"model", "currentValue":"opus"},
+            {"id":"effort", "name":"Effort", "category":"thought_level", "currentValue":"high"},
             {"id":"mode", "name":"Mode", "category":"mode", "currentValue":"default"}]}),
         )
         .unwrap();
         assert_eq!(announced.current_mode_id.as_deref(), Some("default"));
+        assert_eq!(announced.current_model_id.as_deref(), Some("opus"));
+        assert_eq!(announced.current_thought_level_id.as_deref(), Some("high"));
+        assert_eq!(config.current_model_id, None, "no model option, no model");
         let usage = normalized_session_metadata(
             "usage_update",
             &json!({"used": 30, "size": 100,
@@ -1291,8 +1302,8 @@ struct ConversationRunWorker {
     working_root: PathBuf,
     inputs: ConversationPromptInputs,
     prior_session: Option<AgentSessionID>,
-    /// The mode the agent last confirmed for `prior_session`.
-    prior_mode_id: Option<String>,
+    /// What the agent last confirmed for `prior_session`.
+    prior_confirmed: ConfirmedSelection,
     cancel: CancellationToken,
     finished: CancellationToken,
 }
@@ -1463,12 +1474,12 @@ impl ConversationRunCoordinator {
         }
         // Continue the harness session for this conversation, engine, and source
         // scope; a different engine or scope always starts fresh.
-        let (prior_session, prior_mode_id) = match chat
+        let (prior_session, prior_confirmed) = match chat
             .resumable_session(&context.conversation_id, &engine_id)
             .await
         {
-            Ok(Some((session, mode_id))) => (Some(session), mode_id),
-            Ok(None) => (None, None),
+            Ok(Some((session, confirmed))) => (Some(session), confirmed),
+            Ok(None) => (None, ConfirmedSelection::default()),
             Err(error) => {
                 if matches!(kind, ConversationRunLaunchKind::Initial) {
                     tracing::warn!(
@@ -1477,7 +1488,7 @@ impl ConversationRunCoordinator {
                         "failed to resolve a resumable session; starting fresh"
                     );
                 }
-                (None, None)
+                (None, ConfirmedSelection::default())
             }
         };
         let inputs = ConversationPromptInputs {
@@ -1495,7 +1506,7 @@ impl ConversationRunCoordinator {
             working_root,
             inputs,
             prior_session,
-            prior_mode_id,
+            prior_confirmed,
             cancel,
             finished,
         })
@@ -1510,7 +1521,7 @@ impl ConversationRunCoordinator {
             working_root,
             inputs,
             prior_session,
-            prior_mode_id,
+            prior_confirmed,
             cancel,
             finished,
         } = worker;
@@ -1530,7 +1541,7 @@ impl ConversationRunCoordinator {
                     working_root,
                     inputs,
                     prior_session,
-                    prior_mode_id,
+                    prior_confirmed,
                     cancel,
                     finished,
                 )
@@ -1948,7 +1959,7 @@ impl ConversationRunCoordinator {
         project_root: PathBuf,
         inputs: ConversationPromptInputs,
         prior_session: Option<AgentSessionID>,
-        prior_mode_id: Option<String>,
+        prior_confirmed: ConfirmedSelection,
         cancel: CancellationToken,
         finished: CancellationToken,
     ) {
@@ -2032,7 +2043,7 @@ impl ConversationRunCoordinator {
                 ).await;
                 return;
             }
-            result = self.resolve_session(&adapter, &agent_id, prior_session.as_ref(), prior_mode_id.as_deref(), &project_root, &session_config, &mut resolution) => match result {
+            result = self.resolve_session(&adapter, &agent_id, prior_session.as_ref(), &prior_confirmed, &project_root, &session_config, &mut resolution) => match result {
                 Ok(resolved) => resolved,
                 Err(error) => {
                     self.complete_conversation_run(
@@ -2091,7 +2102,13 @@ impl ConversationRunCoordinator {
             return;
         }
         let seeded = record_history_seed(&context, seed).await;
-        record_confirmed_session(&adapter, &context, &session_id, &self.recorded_commands).await;
+        // A recovery below restores what the agent confirmed just now, not
+        // what was stored when the run launched.
+        let mut prior_confirmed = prior_confirmed;
+        prior_confirmed.confirm(
+            record_confirmed_session(&adapter, &context, &session_id, &self.recorded_commands)
+                .await,
+        );
         context
             .queue_event(
                 ConversationEventKind::RunStatus,
@@ -2125,6 +2142,7 @@ impl ConversationRunCoordinator {
                     &adapter,
                     &project_root,
                     &inputs,
+                    &prior_confirmed,
                     session_id,
                     session_key,
                     &cancel,
@@ -2314,7 +2332,7 @@ impl ConversationRunCoordinator {
         adapter: &Arc<dyn HarnessAdapter>,
         agent_id: &AgentId,
         prior_session: Option<&AgentSessionID>,
-        prior_mode_id: Option<&str>,
+        prior_confirmed: &ConfirmedSelection,
         project_root: &Path,
         config: &SessionConfigRequest,
         resolution: &mut ResolutionGuard,
@@ -2322,7 +2340,7 @@ impl ConversationRunCoordinator {
         let first = resolve_conversation_session(
             adapter,
             prior_session,
-            prior_mode_id,
+            prior_confirmed,
             project_root,
             config,
             Some(&mut *resolution),
@@ -2340,7 +2358,7 @@ impl ConversationRunCoordinator {
                 resolve_conversation_session(
                     adapter,
                     prior_session,
-                    prior_mode_id,
+                    prior_confirmed,
                     project_root,
                     config,
                     Some(resolution),
@@ -2421,6 +2439,7 @@ impl ConversationRunCoordinator {
         adapter: &Arc<dyn HarnessAdapter>,
         project_root: &Path,
         inputs: &ConversationPromptInputs,
+        prior_confirmed: &ConfirmedSelection,
         stale_session: HarnessSessionId,
         stale_key: (String, String),
         cancel: &CancellationToken,
@@ -2456,12 +2475,13 @@ impl ConversationRunCoordinator {
         };
         let mut resolution =
             ResolutionGuard::new(self.forwarders(), &self.attribution, agent_id, context);
+        // The adapter may have lost the stale session with its restart, so the
+        // restore falls back to what Core persisted for it.
         let resolved = tokio::select! {
             _ = cancel.cancelled() => {
                 return (Ok(HarnessStopReason::Cancelled), stale_session, stale_key);
             }
-            // The adapter still tracks the stale session's mode for the restore.
-            result = resolve_conversation_session(adapter, Some(&prior), None, project_root, &session_config, Some(&mut resolution)) => result,
+            result = resolve_conversation_session(adapter, Some(&prior), prior_confirmed, project_root, &session_config, Some(&mut resolution)) => result,
         };
         let (session_id, origin) = match resolved {
             Ok(resolved) => resolved,
@@ -3390,7 +3410,7 @@ impl Drop for SteerGuard {
 pub(super) async fn resolve_conversation_session(
     adapter: &Arc<dyn HarnessAdapter>,
     prior_session: Option<&AgentSessionID>,
-    prior_mode_id: Option<&str>,
+    prior_confirmed: &ConfirmedSelection,
     project_root: &Path,
     config: &SessionConfigRequest,
     mut resolution: Option<&mut ResolutionGuard>,
@@ -3415,15 +3435,36 @@ pub(super) async fn resolve_conversation_session(
         apply_changed_selection(adapter, &session_id, config, false).await?;
         return Ok((session_id, SessionOrigin::Continued));
     }
-    // A run that requests no mode (a steer or interrupt follow-up) keeps the
-    // one the agent last confirmed: tracked by the adapter across its own
-    // restart, persisted across Core's. Never the agent's startup default.
+    // A run that requests no mode, model or level (a steer or interrupt
+    // follow-up) keeps the one the agent last confirmed: tracked by the
+    // adapter across its own restart, persisted across Core's. Never the
+    // agent's startup default. Levels belong to a model, so the model and its
+    // level come from one source (the adapter's, else the persisted pair), and
+    // a run that picks another model keeps no level from the old one.
+    let (known_mode, confirmed_model, confirmed_level) = match known {
+        Some(session) if session.current_model_id.is_some() => (
+            session.current_mode_id,
+            session.current_model_id,
+            session.current_thought_level_id,
+        ),
+        known => (
+            known.and_then(|session| session.current_mode_id),
+            prior_confirmed.model_id.clone(),
+            prior_confirmed.thought_level_id.clone(),
+        ),
+    };
+    let keeps_model = config.model_id.is_none() || config.model_id == confirmed_model;
     let config = &SessionConfigRequest {
         mode_id: config
             .mode_id
             .clone()
-            .or_else(|| known.and_then(|session| session.current_mode_id))
-            .or_else(|| prior_mode_id.map(str::to_owned)),
+            .or(known_mode)
+            .or_else(|| prior_confirmed.mode_id.clone()),
+        model_id: config.model_id.clone().or(confirmed_model),
+        thought_level_id: config
+            .thought_level_id
+            .clone()
+            .or_else(|| keeps_model.then_some(confirmed_level).flatten()),
         ..config.clone()
     };
     if let Some(resolution) = resolution.as_deref() {
@@ -3516,8 +3557,9 @@ async fn apply_changed_selection(
     Ok(())
 }
 
-/// Publish the mode the agent confirmed while the run's session was resolved
-/// (its acknowledgment at new, load, or a live switch), and the commands it
+/// Publish the mode, model and thought level the agent confirmed while the
+/// run's session was resolved (its acknowledgment at new, load, or a live
+/// switch), and the commands it
 /// last announced — often while `session/new` was still in flight, before
 /// any run could record them. Recording them as session metadata also
 /// persists them on the bound AgentSession, so the app shows them and later
@@ -3525,18 +3567,24 @@ async fn apply_changed_selection(
 ///
 /// Separate events, so a command list too large to record never takes the
 /// mode with it. The list is recorded once per announcement, not every turn.
+/// Returns what it published, for a run that has to restore it later.
 async fn record_confirmed_session(
     adapter: &Arc<dyn HarnessAdapter>,
     context: &ConversationRunContext,
     session_id: &HarnessSessionId,
     recorded_commands: &RecordedCommands,
-) {
+) -> ConfirmedSelection {
     let Some(session) = adapter
         .sessions()
         .into_iter()
         .find(|session| &session.session_id == session_id)
     else {
-        return;
+        return ConfirmedSelection::default();
+    };
+    let published = ConfirmedSelection {
+        mode_id: session.current_mode_id.clone(),
+        model_id: session.current_model_id.clone(),
+        thought_level_id: session.current_thought_level_id.clone(),
     };
     if let Some(mode_id) = session.current_mode_id {
         context
@@ -3546,12 +3594,26 @@ async fn record_confirmed_session(
             )
             .await;
     }
+    // Only what the agent confirmed: an unknown model (an apply that timed
+    // out, an adapter with no model select) keeps the stored one.
+    if session.current_model_id.is_some() || session.current_thought_level_id.is_some() {
+        let mut confirmed = serde_json::Map::new();
+        if let Some(model_id) = session.current_model_id {
+            confirmed.insert("currentModelId".into(), model_id.into());
+        }
+        if let Some(level_id) = session.current_thought_level_id {
+            confirmed.insert("currentThoughtLevelId".into(), level_id.into());
+        }
+        context
+            .queue_event(ConversationEventKind::SessionMetadata, confirmed.into())
+            .await;
+    }
     let Some(commands) = session
         .announced_commands
         .and_then(|payload| normalized_session_metadata("available_commands_update", &payload))
         .and_then(|metadata| metadata.commands)
     else {
-        return;
+        return published;
     };
     let fingerprint = {
         use std::hash::{Hash, Hasher};
@@ -3571,7 +3633,7 @@ async fn record_confirmed_session(
         if recorded.insert((agent, generation, session_id.clone()), fingerprint)
             == Some(fingerprint)
         {
-            return;
+            return published;
         }
     }
     context
@@ -3580,6 +3642,7 @@ async fn record_confirmed_session(
             json!({"commands": commands}),
         )
         .await;
+    published
 }
 
 /// A session the run opened or restored keeps the token it was sent. One

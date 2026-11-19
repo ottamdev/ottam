@@ -2426,6 +2426,67 @@ async fn conversation_mode_follows_the_agent_and_switches_live_sessions() {
     harness.bridge.shutdown().await;
 }
 
+/// The session owns its model and thought level the way it owns its mode:
+/// what the agent confirmed at session/new, after a live switch, or in an
+/// announcement of its own is persisted on the AgentSession and listed with it.
+#[tokio::test]
+async fn conversation_model_follows_the_agent_and_persists_on_the_session() {
+    let harness = continuity_harness("conversation_model_follows", FakeFactory::new(true)).await;
+    let confirmed = || async {
+        harness
+            .env
+            .chat
+            .conversation_detail(&harness.conversation_id)
+            .await
+            .expect("detail")
+            .latest_agent_session_page
+            .sessions
+            .first()
+            .map(|session| {
+                (
+                    session.current_model_id.clone(),
+                    session.current_thought_level_id.clone(),
+                )
+            })
+            .unwrap_or_default()
+    };
+    let owned = |model: &str, level: Option<&str>| {
+        (Some(model.to_string()), level.map(str::to_string))
+    };
+    let first = harness
+        .run_to_terminal_with_model("codex", Some("model-a"))
+        .await;
+    assert_eq!(first.session_origin, Some(SessionOrigin::New));
+    assert_eq!(confirmed().await, owned("model-a", None));
+
+    let second = harness
+        .run_to_terminal_with_model("codex", Some("model-b"))
+        .await;
+    assert_eq!(second.session_origin, Some(SessionOrigin::Continued));
+    assert_eq!(confirmed().await, owned("model-b", None), "a live switch");
+
+    // The agent moves its own model and effort mid-turn (a fallback, say).
+    let adapter = harness.adapter();
+    adapter.script_next_turn([HarnessUpdateKind::Other {
+        kind: "config_option_update".into(),
+        payload: json!({"sessionUpdate": "config_option_update", "configOptions": [
+            {"id": "model", "name": "Model", "category": "model", "currentValue": "model-c"},
+            {"id": "effort", "name": "Effort", "category": "thought_level", "currentValue": "low"}
+        ]}),
+    }]);
+    let third = harness.run_to_terminal_with_model("codex", None).await;
+    assert_eq!(third.session_origin, Some(SessionOrigin::Continued));
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
+    while confirmed().await != owned("model-c", Some("low")) {
+        assert!(
+            tokio::time::Instant::now() < deadline,
+            "announced model was not persisted"
+        );
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+    harness.bridge.shutdown().await;
+}
+
 /// `conversation.setMode` switches a live session now and persists what the
 /// agent acknowledged, skips a switch the session already has, leaves a
 /// refused switch unrecorded, rejects a replaced session, and defers when
@@ -2546,10 +2607,15 @@ async fn conversation_restore_passes_mode_and_does_not_replace_session_on_config
         mode_id: Some("auto".into()),
         ..SessionConfigRequest::default()
     };
+    let persisted = crate::server::chat::ConfirmedSelection {
+        mode_id: Some("plan".into()),
+        model_id: Some("model-b".into()),
+        thought_level_id: Some("high".into()),
+    };
     let (restored, origin) = super::conversation_runner::resolve_conversation_session(
         &erased,
         Some(&prior),
-        Some("plan"),
+        &persisted,
         &harness.root,
         &config,
         None,
@@ -2563,13 +2629,19 @@ async fn conversation_restore_passes_mode_and_does_not_replace_session_on_config
         vec![Some("auto".into())],
         "a requested mode wins over the persisted one"
     );
-    // A follow-up requests no mode: the restore reapplies the session's
-    // persisted confirmed mode rather than the agent's startup default.
+    // A follow-up requests no mode, model or level: the restore reapplies the
+    // session's persisted confirmed ones rather than what the load reports.
     adapter.forget_sessions();
+    adapter.set_session_model(
+        &crate::agent::HarnessSessionId(prior.0.clone()),
+        Some("model-a".into()),
+        Some("low".into()),
+    );
+    let switches_before = adapter.recorded_applied_models().len();
     super::conversation_runner::resolve_conversation_session(
         &erased,
         Some(&prior),
-        Some("plan"),
+        &persisted,
         &harness.root,
         &SessionConfigRequest::default(),
         None,
@@ -2587,6 +2659,67 @@ async fn conversation_restore_passes_mode_and_does_not_replace_session_on_config
             .as_deref(),
         Some("plan")
     );
+    assert_eq!(
+        adapter.recorded_applied_models()[switches_before..],
+        [ModelSwitch {
+            model_id: Some("model-b".into()),
+            thought_level_id: Some("high".into()),
+            restored: true,
+        }],
+        "the persisted model and level are reapplied after the load"
+    );
+    // A run that picks a model keeps no level from the old one.
+    adapter.forget_sessions();
+    super::conversation_runner::resolve_conversation_session(
+        &erased,
+        Some(&prior),
+        &persisted,
+        &harness.root,
+        &SessionConfigRequest {
+            model_id: Some("model-c".into()),
+            ..SessionConfigRequest::default()
+        },
+        None,
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        adapter.recorded_applied_models().last(),
+        Some(&ModelSwitch {
+            model_id: Some("model-c".into()),
+            thought_level_id: None,
+            restored: true,
+        })
+    );
+    // Naming the confirmed model again keeps its confirmed level: the load
+    // reports that model at another level, so only the level is switched.
+    adapter.forget_sessions();
+    adapter.set_session_model(
+        &crate::agent::HarnessSessionId(prior.0.clone()),
+        Some("model-b".into()),
+        Some("low".into()),
+    );
+    super::conversation_runner::resolve_conversation_session(
+        &erased,
+        Some(&prior),
+        &persisted,
+        &harness.root,
+        &SessionConfigRequest {
+            model_id: Some("model-b".into()),
+            ..SessionConfigRequest::default()
+        },
+        None,
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        adapter.recorded_applied_models().last(),
+        Some(&ModelSwitch {
+            model_id: None,
+            thought_level_id: Some("high".into()),
+            restored: true,
+        })
+    );
     adapter.forget_sessions();
     let config = SessionConfigRequest {
         mode_id: Some("unavailable".into()),
@@ -2595,7 +2728,7 @@ async fn conversation_restore_passes_mode_and_does_not_replace_session_on_config
     let error = super::conversation_runner::resolve_conversation_session(
         &erased,
         Some(&prior),
-        None,
+        &Default::default(),
         &harness.root,
         &config,
         None,
@@ -2624,7 +2757,7 @@ async fn conversation_session_applies_a_changed_model_before_prompting() {
             super::conversation_runner::resolve_conversation_session(
                 &erased,
                 Some(&prior),
-                None,
+                &Default::default(),
                 &root,
                 &config,
                 None,

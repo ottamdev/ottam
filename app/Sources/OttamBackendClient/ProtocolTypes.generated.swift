@@ -1947,6 +1947,9 @@ public struct TranscriptBodyAppend: Codable, Equatable, Sendable {
 public struct ConversationSessionMetadata: Codable, Equatable, Sendable {
     public var title: String?
     public var currentModeId: String?
+    /// The model and thought level the agent confirmed; either may be absent.
+    public var currentModelId: String?
+    public var currentThoughtLevelId: String?
     public var commands: [ConversationSessionCommand]?
     public var configuration: [ConversationSessionConfiguration]?
     public var usage: ConversationSessionUsage?
@@ -1955,6 +1958,8 @@ public struct ConversationSessionMetadata: Codable, Equatable, Sendable {
     public init(
         title: String? = nil,
         currentModeId: String? = nil,
+        currentModelId: String? = nil,
+        currentThoughtLevelId: String? = nil,
         commands: [ConversationSessionCommand]? = nil,
         configuration: [ConversationSessionConfiguration]? = nil,
         usage: ConversationSessionUsage? = nil,
@@ -1962,6 +1967,8 @@ public struct ConversationSessionMetadata: Codable, Equatable, Sendable {
     ) {
         self.title = title
         self.currentModeId = currentModeId
+        self.currentModelId = currentModelId
+        self.currentThoughtLevelId = currentThoughtLevelId
         self.commands = commands
         self.configuration = configuration
         self.usage = usage
@@ -4096,6 +4103,10 @@ public struct AgentSessionSummary: Codable, Equatable, Sendable {
     public var endReason: String?
     /// The permission mode the agent last confirmed for this session.
     public var currentModeID: String?
+    /// The model the agent last confirmed for this session.
+    public var currentModelID: String?
+    /// The thought level the agent last confirmed for this session.
+    public var currentThoughtLevelID: String?
     /// The slash commands the agent last announced for this session.
     public var commands: [ConversationSessionCommand]?
     /// How full the session's context was when the agent last reported.
@@ -4112,6 +4123,8 @@ public struct AgentSessionSummary: Codable, Equatable, Sendable {
         endedAt: String? = nil,
         endReason: String? = nil,
         currentModeID: String? = nil,
+        currentModelID: String? = nil,
+        currentThoughtLevelID: String? = nil,
         commands: [ConversationSessionCommand]? = nil,
         contextUsage: ConversationContextUsage? = nil
     ) {
@@ -4125,6 +4138,8 @@ public struct AgentSessionSummary: Codable, Equatable, Sendable {
         self.endedAt = endedAt
         self.endReason = endReason
         self.currentModeID = currentModeID
+        self.currentModelID = currentModelID
+        self.currentThoughtLevelID = currentThoughtLevelID
         self.commands = commands
         self.contextUsage = contextUsage
     }

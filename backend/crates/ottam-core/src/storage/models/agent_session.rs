@@ -24,6 +24,8 @@ pub struct AgentSessionRow {
     pub available_commands: Option<String>,
     pub context_usage: Option<String>,
     pub history_seeded: bool,
+    pub current_model_id: Option<String>,
+    pub current_thought_level_id: Option<String>,
 }
 
 #[derive(Debug, Insertable)]
@@ -57,6 +59,10 @@ pub struct AgentSession {
     pub end_reason: Option<String>,
     /// The permission mode the agent last confirmed for this session.
     pub current_mode_id: Option<String>,
+    /// The model and thought level the agent last confirmed for this session,
+    /// on the same terms as the mode.
+    pub current_model_id: Option<String>,
+    pub current_thought_level_id: Option<String>,
     /// The commands the agent last announced, as a JSON array of
     /// `ConversationSessionCommand`.
     pub available_commands: Option<String>,
@@ -85,6 +91,8 @@ impl TryFrom<AgentSessionRow> for AgentSession {
             ended_at: optional_timestamp(row.ended_at, "AgentSession.ended_at")?,
             end_reason: row.end_reason,
             current_mode_id: row.current_mode_id,
+            current_model_id: row.current_model_id,
+            current_thought_level_id: row.current_thought_level_id,
             available_commands: row.available_commands,
             context_usage: row.context_usage,
             history_seeded: row.history_seeded,
