@@ -299,8 +299,12 @@ impl AgentServer {
         bridge
             .model_catalog()
             .restore_probed_auth(&bridge.registry());
-        // Before any request is read, so `attention.list` answers with them.
-        bridge.attention().install_store(self.database.clone());
+        // Before any request is read, so `attention.list` answers with the
+        // unseen conversations an earlier session left.
+        bridge
+            .attention()
+            .install_store(self.database.clone())
+            .await;
         // The runtime's state sink is an outbound clone; its shutdown lets
         // it go, so the router can exit.
         self.mcp = Some(crate::mcp::McpService::new(

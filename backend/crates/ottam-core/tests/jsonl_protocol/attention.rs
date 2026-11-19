@@ -396,3 +396,31 @@ fn quitting_mid_run_leaves_nothing_unseen() {
     assert!(restarted.list()["entries"].as_array().unwrap().is_empty());
     restarted.core.shutdown();
 }
+
+#[test]
+fn an_unseen_conversation_survives_a_restart_until_focused() {
+    let home = tempfile::TempDir::new().expect("home");
+    let mut session = Session::start_in(Some(home.path()), runtime(FakePromptBehavior::Complete));
+    let (conversation, input) = session.conversation("Restarted");
+    let run = session.start_run(&conversation, &input);
+    session.wait_for_change(&conversation, "unseen", Duration::from_secs(10));
+    session.core.shutdown();
+
+    let mut restarted = Session::start_in(Some(home.path()), FakeAcpRuntime::new());
+    let listed = restarted.list();
+    let entries = listed["entries"].as_array().unwrap();
+    assert_eq!(entries.len(), 1, "{entries:?}");
+    assert_eq!(entries[0]["conversationID"], conversation);
+    assert_eq!(entries[0]["state"], "unseen");
+    assert_eq!(entries[0]["reason"], "completed");
+    assert_eq!(entries[0]["runID"], run);
+    assert_eq!(entries[0]["title"], "Restarted");
+    restarted.focus(Some(&conversation));
+    let cleared = restarted.wait_for_change(&conversation, "none", Duration::from_secs(2));
+    assert_eq!(cleared["notify"], false);
+    restarted.core.shutdown();
+
+    let mut again = Session::start_in(Some(home.path()), FakeAcpRuntime::new());
+    assert!(again.list()["entries"].as_array().unwrap().is_empty());
+    again.core.shutdown();
+}

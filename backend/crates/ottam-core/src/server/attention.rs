@@ -10,6 +10,8 @@
 //! the same lock that sends it, so revisions reach clients in order.
 
 use super::outbound::{ConnectionId, OutboundSink};
+use crate::storage::models::{ConversationId, ConversationRunId, RunStatus, WorkspaceId};
+use crate::storage::repositories::ConversationRepository;
 use crate::storage::Database;
 use ottam_protocol::{
     AttentionChangedParams, AttentionEntry, AttentionListResult, AttentionReason,
@@ -567,26 +569,106 @@ impl Attention {
         }
     }
 
-    /// Gives the service the database its unseen markers live in.
-    pub(crate) fn install_store(&self, database: Database) {
+    /// Gives the service the database its unseen markers live in, and reads
+    /// back the ones an earlier session left. Runs before any request is
+    /// served, so nothing is sent: clients read them with `attention.list`.
+    pub(crate) async fn install_store(&self, database: Database) {
+        let records = database
+            .run("attention.unseenRuns", ConversationRepository::unseen_runs)
+            .await;
         let _ = self.store.set(database);
+        let records = match records {
+            Ok(records) => records,
+            Err(error) => {
+                tracing::warn!(kind = error.kind, "failed to read unseen conversations");
+                return;
+            }
+        };
+        let mut state = self.state();
+        for record in records {
+            let status = match record.status {
+                RunStatus::Completed => ConversationRunStatus::Completed,
+                RunStatus::Failed => ConversationRunStatus::Failed,
+                _ => continue,
+            };
+            let error = record
+                .error_json
+                .as_deref()
+                .and_then(|json| serde_json::from_str(json).ok())
+                .unwrap_or_default();
+            let ended = Ended::from_status(
+                WorkspaceID(record.workspace_id.to_string()),
+                ConversationRunID(record.run_id.to_string()),
+                &status,
+                &error,
+                record.title,
+            );
+            if let Some(ended) = ended {
+                state
+                    .unseen
+                    .insert(ConversationID(record.conversation_id.to_string()), ended);
+            }
+        }
+        tracing::info!(count = state.unseen.len(), "unseen conversations restored");
     }
 
     async fn persist(
         &self,
-        _workspace: &WorkspaceID,
-        _conversation: &ConversationID,
-        _run: Option<&ConversationRunID>,
+        workspace: &WorkspaceID,
+        conversation: &ConversationID,
+        run: Option<&ConversationRunID>,
     ) {
-        let Some(_database) = self.store.get() else {
+        let Some(database) = self.store.get() else {
             return;
         };
+        let ids = (
+            WorkspaceId::try_from(workspace.0.as_str()),
+            ConversationId::try_from(conversation.0.as_str()),
+            run.map(|run| ConversationRunId::try_from(run.0.as_str()))
+                .transpose(),
+        );
+        let (Ok(workspace_id), Ok(conversation_id), Ok(run_id)) = ids else {
+            tracing::warn!(conversation_id = %conversation.0, "unseen marker has an invalid id");
+            return;
+        };
+        let stored = database
+            .run("attention.setUnseen", move |connection| {
+                ConversationRepository::set_unseen_run(
+                    connection,
+                    &workspace_id,
+                    &conversation_id,
+                    run_id.as_ref(),
+                )
+            })
+            .await;
+        if let Err(error) = stored {
+            tracing::warn!(
+                conversation_id = %conversation.0,
+                kind = error.kind,
+                "failed to store the unseen marker"
+            );
+        }
     }
 
-    async fn persist_workspace_cleared(&self, _workspace: &WorkspaceID) {
-        let Some(_database) = self.store.get() else {
+    async fn persist_workspace_cleared(&self, workspace: &WorkspaceID) {
+        let Some(database) = self.store.get() else {
             return;
         };
+        let Ok(workspace_id) = WorkspaceId::try_from(workspace.0.as_str()) else {
+            return;
+        };
+        let cleared = database
+            .run("attention.clearUnseen", move |connection| {
+                ConversationRepository::clear_unseen_runs(connection, &workspace_id)
+            })
+            .await;
+        if let Err(error) = cleared {
+            tracing::warn!(
+                workspace_id = %workspace.0,
+                kind = error.kind,
+                "failed to clear unseen markers"
+            );
+        }
     }
 }
 
