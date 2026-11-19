@@ -62,3 +62,12 @@ Done when:
 - The `chat.tools-pane` Review capture fits the route policy untruncated, and
   its truncating policy is removed.
 - VoiceOver reads a file as one text area with line navigation.
+
+## Backlog
+
+- [ ] **Diff base.** Review diffs the working tree against `HEAD` only
+  (`run_tracked_diff` in `backend/crates/ottam-core/src/diff.rs`), so a
+  checkout whose agent commits its work shows an empty Review. Worktree
+  conversations need it: their work lands as commits on a branch. Plan it
+  with the rebuild, not as a patch to the SwiftUI rows. Done when a checkout
+  with a recorded base commit shows `base...HEAD` plus uncommitted changes.

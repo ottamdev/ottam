@@ -46,6 +46,7 @@ current.
 - [Plan Review](app/chat/plan-review.md) — active — M-c, Claude `planFile`
 - [Quote Reply](app/chat/quote-reply.md) — active — M2 in the Plan tab once its Try it is approved
 - [Markdown Renderer Improvements](app/chat/markdown-renderer-improvements.md) — active — keyboard and VoiceOver acceptance
+- [Worktree Conversations](app/worktree-conversations.md) — active — W1 Try it in the real window, then W2's setup command
 - [Review Rendering](app/review-rendering.md) — proposed — choose the TextKit host, then measure
 - [Markdown Composer And Editor](app/editor/markdown-editor.md) — proposed — inline styling in the composer
 - [Command Picker](app/chat/command-picker.md) — deferred — `@` and `$` mentions, no trigger set
