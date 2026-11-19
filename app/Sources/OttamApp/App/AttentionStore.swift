@@ -90,6 +90,7 @@ final class AttentionStore {
                 Task { await presenter.reconcile(states) }
             case .setBadge(let count):
                 setBadge(count)
+                attentionLogger.info("dock badge count=\(count, privacy: .public)")
             }
         }
     }
