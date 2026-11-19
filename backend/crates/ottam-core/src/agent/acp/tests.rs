@@ -808,6 +808,8 @@ struct ScriptedCommandConnection {
     hold_config: Arc<std::sync::atomic::AtomicBool>,
     config_started: Arc<Notify>,
     config_release: Arc<Notify>,
+    /// Answers `session/close` with an error.
+    fail_close: Arc<std::sync::atomic::AtomicBool>,
 }
 
 impl ScriptedCommandConnection {
@@ -927,6 +929,9 @@ impl AcpCommandConnection for ScriptedCommandConnection {
     ) -> Pin<Box<dyn Future<Output = Result<(), agent_client_protocol::Error>> + Send + '_>> {
         Box::pin(async move {
             self.record(format!("close:{session_id}"));
+            if self.fail_close.load(std::sync::atomic::Ordering::SeqCst) {
+                return Err(agent_client_protocol::Error::internal_error());
+            }
             Ok(())
         })
     }
@@ -2002,9 +2007,13 @@ fn background_children_shared() -> Arc<SharedState> {
 }
 
 fn child_started(shared: &SharedState, root: &str, child: &str) {
+    child_status(shared, root, child, "created");
+}
+
+fn child_status(shared: &SharedState, root: &str, child: &str, status: &str) {
     let notification = serde_json::from_value(serde_json::json!({
         "rootSessionId": root, "childSessionId": child, "parentSessionId": root,
-        "depth": 1, "title": "Story", "type": "status", "status": "created"}))
+        "depth": 1, "title": "Story", "type": "status", "status": status}))
     .expect("child update");
     shared
         .child_sessions
@@ -2060,6 +2069,53 @@ async fn stop_closes_open_background_children_then_the_root_before_answering() {
         shared.sessions().is_empty(),
         "the next run loads the closed root again"
     );
+    stop_command_loop(&command_tx, task).await;
+}
+
+/// A child that already ended may still have a report on its way, which
+/// would wake the root after the cancel.
+#[tokio::test]
+async fn stop_closes_the_root_when_its_child_already_ended() {
+    let connection = ScriptedCommandConnection::default();
+    let shared = background_children_shared();
+    let root = HarnessSessionId::new("root");
+    shared.insert_session(root.clone(), PathBuf::from("/tmp/project"));
+    child_started(&shared, "root", "story");
+    child_status(&shared, "root", "story", "completed");
+    let (command_tx, task) = spawn_command_loop(connection.clone(), Arc::clone(&shared));
+
+    stop_prompt(&connection, &command_tx, &root).await;
+    assert_eq!(
+        connection.recorded_calls(),
+        vec!["prompt:root", "cancel:root", "close:root"]
+    );
+    assert!(shared.sessions().is_empty());
+    stop_command_loop(&command_tx, task).await;
+}
+
+/// A close that fails stopped nothing: Stop says so, and the session stays
+/// held rather than loaded again while the agent still runs it.
+#[tokio::test]
+async fn a_failed_stop_close_keeps_the_session_and_reports_the_error() {
+    let connection = ScriptedCommandConnection::default();
+    connection
+        .fail_close
+        .store(true, std::sync::atomic::Ordering::SeqCst);
+    let shared = background_children_shared();
+    let root = HarnessSessionId::new("root");
+    shared.insert_session(root.clone(), PathBuf::from("/tmp/project"));
+    let (command_tx, task) = spawn_command_loop(connection.clone(), Arc::clone(&shared));
+    let (reply, response) = oneshot::channel();
+    command_tx
+        .send(AdapterCommand::CancelOutOfTurn {
+            session_id: root.clone(),
+            reply,
+        })
+        .await
+        .unwrap();
+    assert!(response.await.unwrap().is_err());
+    assert_eq!(connection.recorded_calls(), vec!["close:root"]);
+    assert_eq!(shared.sessions().len(), 1);
     stop_command_loop(&command_tx, task).await;
 }
 

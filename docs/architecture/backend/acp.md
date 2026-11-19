@@ -158,11 +158,14 @@ agent shells, and first wherever npm or npx re-resolve it from their shebang
   follow-up. The parent's turn woken by a child's report arrives with no
   prompt and lands in a follow-up run (the child's end arms it).
   `session/cancel` reaches neither a background child nor a woken turn, and
-  a child's report, even a cancelled one, wakes the parent. So Stop sends
-  `session/close` to the open children, waits a second for the wake their
-  reports cause, then closes the root, which interrupts it
-  (`actor.rs::close_background_tree`); a root closed before the wake leaves
-  the woken turn running. The next run loads the root again. A managed
+  a child's report, even a cancelled one, wakes the parent. So Stop on a
+  root that has had a child sends `session/close` to the open children,
+  waits a second for the wake their reports cause, then closes the root,
+  which interrupts it (`actor.rs::close_background_tree`); a root closed
+  before the wake leaves the woken turn running. Until then the woken turn's
+  own output is dropped, so none of it reaches the stopped run. The next run
+  loads the root again; a failed close fails the Stop and leaves the root
+  held. A managed
   profile disables the CLI's shared background service (`config/service.json`;
   fixed port 49374 would mix profiles' sign-ins). At 2.0.27: plan mode not
   enforced, write/patch emit no diffs, slash output doesn't stream.

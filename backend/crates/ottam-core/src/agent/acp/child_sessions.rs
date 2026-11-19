@@ -16,8 +16,9 @@
 //! - `running` after an end is a resumed run, announced as
 //!   `<child>:generation:<n>` in the same thread. Its prompt is the parent's
 //!   follow-up: a control call naming the child in its target field, held
-//!   like a launch. A follow-up to a running child joins that run, so it is
-//!   released as an ordinary call for the registry's follow-up stamp.
+//!   like a launch; one the agent refuses is released with its error. A
+//!   follow-up to a running child joins that run, so it is released as an
+//!   ordinary call for the registry's follow-up stamp.
 //! - A control call that ends naming no child, or that is still open when
 //!   the turn settles, is released as an ordinary call.
 //!
@@ -30,7 +31,7 @@ use super::super::types::{ChildSessionTags, HarnessSessionId, HarnessUpdateKind}
 use ottam_protocol::SubagentThreadState;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Mutex;
 
 pub(super) struct ChildSessions {
@@ -81,6 +82,8 @@ struct State {
     /// Each child seen this process, by session id. Never forgotten: a
     /// follow-up may resume a child at any later turn.
     children: HashMap<String, Child>,
+    /// Roots Stop is closing, whose own output is dropped (`mute`).
+    muted: HashSet<HarnessSessionId>,
 }
 
 struct Control {
@@ -173,6 +176,27 @@ impl ChildSessions {
         open.into_iter().rev().map(|(_, id)| id.clone()).collect()
     }
 
+    /// Whether `root` has had a child this process. A child's report wakes
+    /// `root` even once the child has ended, so Stop closes such a root.
+    pub(super) fn has_children(&self, root: &HarnessSessionId) -> bool {
+        self.lock()
+            .children
+            .values()
+            .any(|child| child.root == *root)
+    }
+
+    /// While Stop closes `root`, the turn a child's report wakes on it is
+    /// not the stopped run's: its own output is dropped. Its children's
+    /// frames and ends still pass.
+    pub(super) fn mute(&self, root: &HarnessSessionId, muted: bool) {
+        let mut state = self.lock();
+        if muted {
+            state.muted.insert(root.clone());
+        } else {
+            state.muted.remove(root);
+        }
+    }
+
     /// Rewrites one update that arrived on `session`. `params` is the raw
     /// `session/update`, whose tag a decoded chunk no longer carries. The
     /// updates come back in order, each with the session it now belongs to.
@@ -197,6 +221,7 @@ impl ChildSessions {
                     strip_title(update, tag.title.as_deref()),
                 )
             }
+            None if state.muted.contains(&session) => return out,
             None => (session, update),
         };
         match update {
@@ -480,13 +505,28 @@ impl ChildSessions {
             }
         }
         let control = &state.controls[index];
-        if !matches!(
-            control.payload.get("status").and_then(Value::as_str),
-            Some("completed" | "failed")
-        ) {
+        let status = control.payload.get("status").and_then(Value::as_str);
+        if !matches!(status, Some("completed" | "failed")) {
             return;
         }
+        let failed = status == Some("failed");
         let control = state.controls.remove(index);
+        // A follow-up the agent refused starts no run: it shows with its
+        // error, and its prompt is not the next run's.
+        if failed && self.input(&control, self.tags.target).is_some() {
+            if let Some(child) = control
+                .child
+                .as_deref()
+                .and_then(|child| state.children.get_mut(child))
+            {
+                child.next_prompt = None;
+            }
+            out.push((
+                control.session,
+                HarnessUpdateKind::ToolCall(control.payload),
+            ));
+            return;
+        }
         // The call's result names its child, for a launch whose child's
         // status found no call to match.
         let named = control
@@ -925,6 +965,77 @@ mod tests {
             Some((_, HarnessUpdateKind::ToolCall(payload)))
                 if payload["name"] == "subagent" && payload["rawInput"]["sessionID"] == "child"
         ));
+    }
+
+    /// A follow-up the agent refuses starts no run: it shows with its error,
+    /// and a later resume does not take its prompt.
+    #[test]
+    fn a_refused_follow_up_is_shown_and_its_prompt_dropped() {
+        let children = ChildSessions::new(TAGS);
+        let out = replay(
+            &children,
+            &[
+                update("root", pending("launch")),
+                update("root", control("launch", "in_progress", task("Alpha"))),
+                status("root", "child", "root", "Alpha", "created"),
+                update("root", launched("launch", "child")),
+                status("root", "child", "root", "Alpha", "completed"),
+                update("root", pending("again")),
+                update(
+                    "root",
+                    control(
+                        "again",
+                        "in_progress",
+                        json!({"description": "Alpha", "prompt": "Count them", "sessionID": "child"}),
+                    ),
+                ),
+                update(
+                    "root",
+                    json!({"sessionUpdate": "tool_call_update", "toolCallId": "again",
+                        "status": "failed", "rawOutput": {"error": "busy"}}),
+                ),
+                status("root", "child", "root", "Alpha", "running"),
+            ],
+        );
+        let refused = out.iter().find_map(|(_, update)| match update {
+            HarnessUpdateKind::ToolCall(payload) => Some(payload),
+            _ => None,
+        });
+        assert!(
+            refused.is_some_and(|payload| payload["toolCallId"] == "again"
+                && payload["status"] == "failed"
+                && payload["rawOutput"]["error"] == "busy"),
+            "{out:?}"
+        );
+        assert_eq!(
+            spawned(&out)[1],
+            ("root".to_owned(), "child:generation:2".to_owned(), None)
+        );
+    }
+
+    /// While Stop closes a root, the root's own output is dropped; its
+    /// children's frames and ends still pass.
+    #[test]
+    fn a_muted_root_drops_its_own_output_only() {
+        let children = ChildSessions::new(TAGS);
+        replay(&children, &[status("root", "child", "root", "Alpha", "created")]);
+        children.mute(&id("root"), true);
+        let muted = replay(
+            &children,
+            &[
+                update("root", text(json!("woken"))),
+                child_frame("root", "child", "Alpha", text(json!("late"))),
+                status("root", "child", "root", "Alpha", "interrupted"),
+            ],
+        );
+        assert_eq!(muted.len(), 2, "{muted:?}");
+        assert_eq!(muted[0].0, id("child"));
+        assert_eq!(
+            ended(&muted),
+            [("child".to_owned(), SubagentThreadState::Cancelled)]
+        );
+        children.mute(&id("root"), false);
+        assert_eq!(replay(&children, &[update("root", text(json!("next")))]).len(), 1);
     }
 
     #[test]

@@ -1972,18 +1972,21 @@ const STOP_WAKE_SETTLE: Duration = Duration::from_millis(1);
 /// that no cancel reaches. `session/close` interrupts whatever a session is
 /// running, so Stop closes `root`'s open children, waits for the wake their
 /// reports cause, and then closes `root`; the next run loads `root` again.
-/// `always` closes `root` with no open child, for a turn the agent started on
-/// its own. Returns whether `root` was closed.
+/// A root that has had a child closes even with none open, since an ended
+/// child's report may still be on its way. `always` closes a root that never
+/// had one, for a turn the agent started on its own. Until the close, the
+/// woken turn's own output is dropped (`ChildSessions::mute`).
+///
+/// `None` when Stop has nothing to close and falls back to `session/cancel`.
+/// A root whose close fails stays held, and the error is the Stop's.
 async fn close_background_tree(
     connection: &impl AcpCommandConnection,
     shared: &SharedState,
     session_selects: &mut BTreeMap<HarnessSessionId, SessionSelects>,
     root: &HarnessSessionId,
     always: bool,
-) -> bool {
-    let Some(children) = &shared.child_sessions else {
-        return false;
-    };
+) -> Option<Result<(), HarnessError>> {
+    let children = shared.child_sessions.as_ref()?;
     let can_close = shared
         .status()
         .capabilities
@@ -1991,28 +1994,38 @@ async fn close_background_tree(
         .get(&AcpFeature::SessionClose)
         .copied()
         .unwrap_or(false);
-    let open = children.open_children(root);
-    if !can_close || (open.is_empty() && !always) {
-        return false;
+    let had_children = children.has_children(root);
+    if !can_close || !(had_children || always) {
+        return None;
     }
     let close = |session_id: String| async move {
         match tokio::time::timeout(STOP_CLOSE_TIMEOUT, connection.close_session(session_id)).await {
-            Ok(Ok(())) => {}
-            Ok(Err(error)) => tracing::warn!(code = ?error.code, "session/close on Stop failed"),
-            Err(_) => tracing::warn!("session/close on Stop timed out"),
+            Ok(result) => result.map_err(|error| map_acp_error(&error)),
+            Err(_) => Err(HarnessError::new(
+                HarnessErrorKind::Protocol,
+                "session/close timed out".to_owned(),
+            )),
         }
     };
-    // Forgotten first: a run that looks now loads the session after the close.
-    session_selects.remove(root);
-    shared.remove_session(root);
-    if !open.is_empty() {
-        for child in open {
-            close(child).await;
+    children.mute(root, true);
+    if had_children {
+        for child in children.open_children(root) {
+            if let Err(error) = close(child).await {
+                tracing::warn!(kind = ?error.kind, "session/close of a subagent on Stop failed");
+            }
         }
         tokio::time::sleep(STOP_WAKE_SETTLE).await;
     }
-    close(root.0.clone()).await;
-    true
+    let closed = close(root.0.clone()).await;
+    children.mute(root, false);
+    match &closed {
+        Ok(()) => {
+            session_selects.remove(root);
+            shared.remove_session(root);
+        }
+        Err(error) => tracing::warn!(kind = ?error.kind, "session/close on Stop failed"),
+    }
+    Some(closed)
 }
 
 pub(super) async fn run_command_loop(
@@ -2196,10 +2209,12 @@ pub(super) async fn run_command_loop(
                     }
                     AdapterCommand::CancelOutOfTurn { session_id, reply } => {
                         let result = match shared.is_prompting(&session_id) {
-                            Ok(false) if close_background_tree(connection, shared, &mut session_selects, &session_id, true).await => Ok(()),
-                            Ok(false) => connection
-                                .cancel(session_id.0.clone())
-                                .map_err(|error| map_acp_error(&error)),
+                            Ok(false) => match close_background_tree(connection, shared, &mut session_selects, &session_id, true).await {
+                                Some(closed) => closed,
+                                None => connection
+                                    .cancel(session_id.0.clone())
+                                    .map_err(|error| map_acp_error(&error)),
+                            },
                             Ok(true) => Ok(()),
                             Err(error) => Err(error),
                         };
@@ -2236,9 +2251,11 @@ pub(super) async fn run_command_loop(
             completion = prompts.join_next(), if !prompts.is_empty() => {
                 // Before the answer goes out, so no run prompts the session
                 // the close is about to end.
+                // The prompt still answers as stopped if the close fails; its
+                // session then stays held (`close_background_tree`).
                 if let Some(Ok(done)) = &completion {
                     if stopping.remove(&done.session_id) {
-                        close_background_tree(connection, shared, &mut session_selects, &done.session_id, false).await;
+                        let _ = close_background_tree(connection, shared, &mut session_selects, &done.session_id, false).await;
                     }
                 }
                 prompts.reconcile(completion, shared);
