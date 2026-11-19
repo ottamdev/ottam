@@ -210,7 +210,7 @@ struct AttentionStoreTests {
         #expect(store.unseenConversationIDs(in: WorkspaceID("w")).isEmpty)
     }
 
-    @Test("a notifying change posts, and state none withdraws it after the post lands")
+    @Test("a notifying change posts; one seen while its post waits on authorization never shows")
     func postsAndWithdraws() async {
         let center = FakeNotificationCenter(status: .authorized)
         let suite = "attention-store-\(UUID().uuidString)"
@@ -218,16 +218,29 @@ struct AttentionStoreTests {
         defaults.removePersistentDomain(forName: suite)
         let presenter = NotificationPresenter(center: center, settings: NotificationSettings(defaults: defaults))
         let store = AttentionStore(client: client(), presenter: presenter) { _ in }
-        // The post awaits authorization; the withdraw right behind it must
-        // still run after it.
-        store.receive(change(1, "a", .unseen, notify: true))
-        store.receive(change(2, "a", .none, notify: false))
         let deadline = ContinuousClock.now + .seconds(2)
-        while center.added.isEmpty || center.removed.isEmpty, ContinuousClock.now < deadline {
+        store.receive(change(1, "b", .unseen, notify: true))
+        while center.added.isEmpty, ContinuousClock.now < deadline {
             await Task.yield()
         }
-        #expect(center.added.map(\.identifier) == ["attention.unseen.a"])
+        #expect(center.added.map(\.identifier) == ["attention.unseen.b"])
+
+        // The post awaits authorization; the change right behind it ends the
+        // state, so the banner is never added, not added and then removed.
+        store.receive(change(2, "a", .unseen, notify: true))
+        store.receive(change(3, "a", .none, notify: false))
+        while !center.removed.contains("attention.unseen.a"), ContinuousClock.now < deadline {
+            await Task.yield()
+        }
         #expect(center.removed.contains("attention.unseen.a"))
-        #expect(center.delivered.isEmpty)
+        #expect(center.added.map(\.identifier) == ["attention.unseen.b"])
+
+        // Focus withdraws an ask's banner that core still holds.
+        store.receive(change(4, "c", .needsInput, notify: true))
+        store.withdrawBanners(for: ConversationID("c"))
+        while !center.removed.contains("attention.needsInput.c"), ContinuousClock.now < deadline {
+            await Task.yield()
+        }
+        #expect(center.added.map(\.identifier) == ["attention.unseen.b"])
     }
 }

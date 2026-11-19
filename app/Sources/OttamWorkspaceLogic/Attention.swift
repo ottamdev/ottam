@@ -108,7 +108,7 @@ public struct AttentionReducer: Sendable {
             effects.append(.withdraw(id))
         } else {
             entries[id] = change.entry
-            if let previous, previous.state != change.entry.state {
+            if let previous, Self.outdates(change.entry, previous) {
                 effects.append(.withdraw(id))
             }
             if change.notify {
@@ -134,12 +134,18 @@ public struct AttentionReducer: Sendable {
             stamps[id] = snapshot.revision
             let previous = entries[id]
             entries[id] = listed[id]
-            if let previous, previous.state != listed[id]?.state {
+            if let previous, Self.outdates(listed[id], previous) {
                 effects.append(.withdraw(id))
             }
         }
         effects.append(.reconcile(entries.mapValues(\.state)))
         effects.append(.setBadge(entries.count))
         return effects
+    }
+
+    /// Whether `previous`'s banner misstates what replaced it: another
+    /// state, or a newer unseen run, which core does not alert for again.
+    private static func outdates(_ next: AttentionEntry?, _ previous: AttentionEntry) -> Bool {
+        previous.state != next?.state || (previous.state == .unseen && previous.runID != next?.runID)
     }
 }

@@ -146,14 +146,28 @@ async fn a_glance_during_the_settle_delay_counts_as_seen() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn a_second_end_while_unseen_alerts_again() {
+async fn seeing_clears_only_the_run_focus_saw() {
+    let (sink, mut rx) = test_sink();
+    let attention = Attention::new(sink);
+    attention.run_ended(&conversation("a"), Some(ended("r2", AttentionReason::Completed)));
+    settle_idle(&attention, "a").await;
+    drain(&mut rx);
+    let run = |id: &str| ConversationRunID(id.to_owned());
+    attention.mark_seen(&conversation("a"), &run("r1")).await;
+    assert!(drain(&mut rx).is_empty(), "a newer unseen run stays");
+    attention.mark_seen(&conversation("a"), &run("r2")).await;
+    assert_eq!(states(&drain(&mut rx)), [("none", false)]);
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_second_end_while_unseen_updates_silently() {
     let (sink, mut rx) = test_sink();
     let attention = Attention::new(sink);
     attention.run_ended(&conversation("a"), Some(ended("r1", AttentionReason::Completed)));
     settle_idle(&attention, "a").await;
     attention.run_ended(&conversation("a"), Some(ended("r2", AttentionReason::Failed)));
     settle_idle(&attention, "a").await;
-    assert_eq!(states(&drain(&mut rx)), [("unseen", true), ("unseen", true)]);
+    assert_eq!(states(&drain(&mut rx)), [("unseen", true), ("unseen", false)]);
     let entry = &attention.list().entries[0];
     assert_eq!(entry.run_id.as_ref().unwrap().0, "r2");
     assert_eq!(entry.reason, AttentionReason::Failed);
@@ -280,8 +294,7 @@ fn a_completed_run_carries_the_start_of_its_last_message_as_markdown() {
     );
     let long = ended("r", AttentionReason::Completed).with_message(&"word ".repeat(1000));
     let detail = long.detail.unwrap();
-    assert!(detail.chars().count() <= MESSAGE_CHARS + 1);
-    assert!(detail.chars().count() > DETAIL_CHARS);
+    assert_eq!(detail.chars().count(), DETAIL_CHARS + 1);
     assert!(detail.ends_with('…'));
     assert_eq!(
         ended("r", AttentionReason::Completed).with_message(" \n").detail,

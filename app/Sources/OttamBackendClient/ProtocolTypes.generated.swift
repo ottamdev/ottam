@@ -3546,7 +3546,7 @@ public struct AttentionEntry: Codable, Equatable, Sendable {
     public var runID: ConversationRunID?
     /// The conversation's title when the entry was made.
     public var title: String
-    /// The asking tool's title for an ask; the failure message for a failed run; for a completed run, the start of its last message, as markdown. A completed run restored after a restart has none: it never alerts again.
+    /// Markdown: the asking tool's title for an ask, the failure message for a failed run, the start of its last message for a completed run. Bounded, not cut to fit: a client renders it, then cuts it. A completed run restored after a restart has none: it never alerts again.
     public var detail: String?
 
     public init(

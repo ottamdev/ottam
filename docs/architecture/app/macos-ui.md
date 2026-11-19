@@ -97,16 +97,19 @@ remote client cannot hold a connection, so the decision cannot live in one.
 - Focus is the seen signal: focusing a conversation clears it, a run end
   still settling included. There is no mark-seen call.
 - Banners only open their conversation, reopening a closed window: one per
-  conversation and state, replacing the last, threaded by workspace; each
-  run that ends unseen alerts. Authorization is asked on the first banner,
-  never at launch. The Settings toggles gate banners only; the sidebar and
-  Dock badge show regardless.
+  conversation and state, replacing the last, threaded by workspace. A
+  newer run ending while the conversation is still unseen alerts nothing
+  and withdraws the older run's banner (decided 2026-11-18: repeat alerts
+  from a parent its children keep waking are noise, and a stale banner
+  misleads). Authorization is asked on the first banner, never at launch.
+  The Settings toggles gate banners only; the sidebar and Dock badge show
+  regardless.
 - A banner is the conversation's title over what it wants: a finished run's
   last message, or the ask or failure. No subtitle; the workspace name added
-  noise (decided 2026-11-18). Every detail arrives as markdown, a finished
-  run's as its stored preview; the app renders it to plain text, one line
-  per block, with Foundation's parser, then cuts it, so a cut never leaves
-  syntax open.
+  noise (decided 2026-11-18). Every detail arrives as markdown, bounded but
+  not cut to fit; the app renders it to plain text, one line per block,
+  with Foundation's parser, then cuts it, so the cut a user sees falls on
+  rendered text.
 - Sidebar marks in priority order: approval (derived in the app from pending
   asks), running (the system's small spinner), unseen (the accent dot, as
   Mail's unread). The Dock badge counts conversations with any attention.

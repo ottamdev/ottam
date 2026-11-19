@@ -32,12 +32,10 @@ const ASK_NOTIFY_DELAY: Duration = Duration::from_millis(400);
 /// How long an ended run waits before it counts as unseen, so a follow-up
 /// that starts right away, or the user glancing over, cancels it.
 const SETTLE_DELAY: Duration = Duration::from_secs(2);
-/// Longest detail sent, in characters.
-const DETAIL_CHARS: usize = 200;
-/// Longest message sent for a completed run, in characters: the stored
-/// preview's size, so the cut a user sees is the client's, made after
-/// rendering, never one inside markdown syntax.
-const MESSAGE_CHARS: usize = 4096;
+/// Longest detail sent, in characters, the stored message preview's size.
+/// It bounds the payload only: the cut a user sees is the client's, made
+/// after it renders the markdown.
+const DETAIL_CHARS: usize = 4096;
 
 pub(crate) type BoxFuture<T> = Pin<Box<dyn Future<Output = T> + Send>>;
 
@@ -93,7 +91,7 @@ impl Ended {
     /// For a completed run: it shows the start of its last message, as
     /// markdown, since presenting it as text is the client's job.
     pub(crate) fn with_message(mut self, message: &str) -> Self {
-        self.detail = clip_to(message, MESSAGE_CHARS);
+        self.detail = clip(message);
         self
     }
 }
@@ -284,7 +282,7 @@ impl Attention {
     /// end still settling drops, and an unseen one clears in the background,
     /// so a focus change never waits on the database.
     pub(crate) fn set_focus(&self, origin: ConnectionId, conversation: Option<ConversationID>) {
-        let clears = {
+        let seen = {
             let mut state = self.state();
             if matches!(origin, ConnectionId::Attached(_)) && !state.open.contains(&origin) {
                 return;
@@ -293,11 +291,11 @@ impl Attention {
                 Some(conversation) => {
                     state.focus.insert(origin, conversation.clone());
                     state.candidates.remove(conversation);
-                    state.unseen.contains_key(conversation)
+                    state.unseen.get(conversation).map(|ended| ended.run_id.clone())
                 }
                 None => {
                     state.focus.remove(&origin);
-                    false
+                    None
                 }
             }
         };
@@ -305,11 +303,11 @@ impl Attention {
             focused = conversation.is_some(),
             "attention focus changed"
         );
-        if let (true, Some(conversation)) = (clears, conversation) {
+        if let (Some(run), Some(conversation)) = (seen, conversation) {
             let this = self.this.clone();
             self.spawn(async move {
                 if let Some(attention) = this.upgrade() {
-                    attention.mark_seen(&conversation).await;
+                    attention.mark_seen(&conversation, &run).await;
                 }
             });
         }
@@ -327,13 +325,15 @@ impl Attention {
         state.open.remove(&origin);
     }
 
-    async fn mark_seen(&self, conversation: &ConversationID) {
+    /// Clears `run`, the unseen run focus saw, unless a newer one replaced it
+    /// while this waited on the lock.
+    async fn mark_seen(&self, conversation: &ConversationID, run: &ConversationRunID) {
         let _write = self.writes.lock().await;
         let workspace = {
             let state = self.state();
             match state.unseen.get(conversation) {
-                Some(ended) => ended.workspace_id.clone(),
-                None => return,
+                Some(ended) if &ended.run_id == run => ended.workspace_id.clone(),
+                _ => return,
             }
         };
         self.persist(&workspace, conversation, None).await;
@@ -525,11 +525,12 @@ impl Attention {
             if current && !state.focused(conversation) {
                 state.candidates.remove(conversation);
                 let before = state.entry(conversation);
+                // A newer run of a conversation already unseen does not
+                // alert again; a client drops the banner the older one left.
+                let notify = !state.unseen.contains_key(conversation);
                 state.unseen.insert(conversation.clone(), ended);
-                tracing::info!(conversation_id = %conversation.0, "conversation unseen");
-                // Every run that becomes unseen alerts once, so a client's
-                // banner for an earlier one is replaced, never left stale.
-                self.emit(&mut state, conversation, before, true);
+                tracing::info!(conversation_id = %conversation.0, notify, "conversation unseen");
+                self.emit(&mut state, conversation, before, notify);
                 return;
             }
             // Looked at, or replaced by a newer run, while the marker was
@@ -716,14 +717,9 @@ impl Drop for AskGuard {
     }
 }
 
-/// `text` trimmed and cut to [`DETAIL_CHARS`]; `None` when blank.
+/// `text` as an [`excerpt`] of [`DETAIL_CHARS`]; `None` when blank.
 fn clip(text: &str) -> Option<String> {
-    clip_to(text, DETAIL_CHARS)
-}
-
-/// `text` as an [`excerpt`] of `limit`; `None` when blank.
-fn clip_to(text: &str, limit: usize) -> Option<String> {
-    Some(excerpt(text, limit)).filter(|text| !text.is_empty())
+    Some(excerpt(text, DETAIL_CHARS)).filter(|text| !text.is_empty())
 }
 
 #[cfg(test)]

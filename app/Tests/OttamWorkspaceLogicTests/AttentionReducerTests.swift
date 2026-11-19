@@ -103,6 +103,20 @@ struct AttentionReducerTests {
         #expect(effects == [.withdraw(ConversationID("a")), .post(entry("a", .unseen))])
     }
 
+    @Test("a newer unseen run withdraws the older run's banner without posting")
+    func newerUnseenRun() {
+        var reducer = connected()
+        func unseen(_ revision: UInt64, run: String, notify: Bool) -> AttentionChangedParams {
+            var params = change(revision, "a", .unseen, notify: notify)
+            params.entry.runID = ConversationRunID(run)
+            return params
+        }
+        _ = reducer.apply(unseen(1, run: "r1", notify: true))
+        let effects = reducer.apply(unseen(2, run: "r2", notify: false))
+        #expect(effects == [.withdraw(ConversationID("a"))])
+        #expect(reducer.entries[ConversationID("a")]?.runID == ConversationRunID("r2"))
+    }
+
     @Test("a change at or below the conversation's stamp is stale")
     func staleChange() {
         var reducer = connected()

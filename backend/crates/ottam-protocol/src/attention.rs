@@ -76,16 +76,17 @@ pub struct AttentionEntry {
     pub run_id: Option<ConversationRunID>,
     /// The conversation's title when the entry was made.
     pub title: String,
-    /// The asking tool's title for an ask; the failure message for a failed
-    /// run; for a completed run, the start of its last message, as
-    /// markdown. A completed run restored after a restart has none: it never
-    /// alerts again.
+    /// Markdown: the asking tool's title for an ask, the failure message for
+    /// a failed run, the start of its last message for a completed run.
+    /// Bounded, not cut to fit: a client renders it, then cuts it. A
+    /// completed run restored after a restart has none: it never alerts
+    /// again.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub detail: Option<String>,
 }
 
-/// One conversation's attention changed. `notify` is true once per ask and
-/// once per run that becomes unseen, when a client should alert its user.
+/// One conversation's attention changed. `notify` is true at most once per
+/// state a conversation enters, when a client should alert its user.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct AttentionChangedParams {

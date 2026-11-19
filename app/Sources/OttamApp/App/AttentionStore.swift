@@ -22,6 +22,9 @@ final class AttentionStore {
     @ObservationIgnored private var subscription: AgentEventSubscriptionToken?
     @ObservationIgnored private var seeding: Task<Void, Never>?
     @ObservationIgnored private var presenting: Task<Void, Never>?
+    /// Withdrawals asked for per conversation, so a post queued before one
+    /// knows it was overtaken.
+    @ObservationIgnored private var withdrawals: [ConversationID: Int] = [:]
 
     init(
         client: OttamCoreProcessClient,
@@ -81,7 +84,21 @@ final class AttentionStore {
     /// Removes a conversation's banners after any banner work asked for
     /// before.
     func withdrawBanners(for conversationID: ConversationID) {
+        withdrawals[conversationID, default: 0] += 1
         present { $0.withdraw(conversationID) }
+    }
+
+    /// Posts `entry` unless, by the time it can be added, the conversation's
+    /// banners were withdrawn or its entry changed.
+    private func post(_ entry: AttentionEntry) {
+        let id = entry.conversationID
+        let withdrawn = withdrawals[id, default: 0]
+        present { [weak self] presenter in
+            await presenter.post(entry) {
+                guard let self else { return false }
+                return self.withdrawals[id, default: 0] == withdrawn && self.reducer.entries[id] == entry
+            }
+        }
     }
 
     /// Banner work runs one piece at a time, in the order it was asked for:
@@ -100,9 +117,9 @@ final class AttentionStore {
         for effect in effects {
             switch effect {
             case .post(let entry):
-                present { await $0.post(entry) }
+                post(entry)
             case .withdraw(let conversationID):
-                present { $0.withdraw(conversationID) }
+                withdrawBanners(for: conversationID)
             case .reconcile(let states):
                 present { await $0.reconcile(states) }
             case .setBadge(let count):
