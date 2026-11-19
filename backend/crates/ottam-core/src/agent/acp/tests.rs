@@ -758,6 +758,8 @@ fn unhandled_nothing_in_the_recorded_sessions() {
                         serde_json::json!({"sessionId": typed.root_session_id, "update": update});
                     let decoded =
                         to_json(&serde_json::from_value::<SessionNotification>(inner.clone()).unwrap());
+                    // The frame's own kind decides which defaults may be omitted.
+                    let tag = inner["update"]["sessionUpdate"].as_str().unwrap_or("none");
                     let dropped = dropped_paths(&inner, &decoded, &|path, value| {
                         is_omitted_default(tag, path, value)
                     });

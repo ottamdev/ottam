@@ -101,6 +101,10 @@ struct Control {
 
 struct Child {
     root: HarnessSessionId,
+    /// The agent's id of the parent: the root, or a parent child.
+    parent_id: String,
+    /// The session the current run was announced on, which its end goes to:
+    /// the parent's run at that time.
     parent: HarnessSessionId,
     /// The tag's title, which prefixes the child's call titles and forms.
     title: Option<String>,
@@ -161,7 +165,11 @@ impl ChildSessions {
             let mut depth = 0;
             while let Some(child) = children.get(id) {
                 depth += 1;
-                id = &child.parent.0;
+                // A malformed tree (a child its own ancestor) ends the walk.
+                if depth > children.len() {
+                    break;
+                }
+                id = &child.parent_id;
             }
             depth
         }
@@ -301,6 +309,7 @@ impl ChildSessions {
                 if !child.open {
                     child.open = true;
                     child.runs += 1;
+                    child.parent = parent.clone();
                     out.push((
                         parent,
                         HarnessUpdateKind::SubagentSpawned {
@@ -422,12 +431,13 @@ impl ChildSessions {
         if state.children.contains_key(&tag.id) {
             return;
         }
-        let parent = HarnessSessionId::new(tag.parent.clone());
+        // The parent's current run, where its launch calls are held.
+        let announced_on = parent_key(state, &tag.parent);
         // A launch, not a follow-up naming some other child.
         let unmatched = |control: &Control| {
             control.child.is_none()
                 && &control.root == root
-                && control.session == parent
+                && control.session == announced_on
                 && self.input(control, self.tags.target).is_none()
         };
         let title = tag.title.as_deref();
@@ -452,11 +462,11 @@ impl ChildSessions {
             }
             None => (tag.title.clone(), None),
         };
-        let announced_on = parent_key(state, &tag.parent);
         state.children.insert(
             tag.id.clone(),
             Child {
                 root: root.clone(),
+                parent_id: tag.parent.clone(),
                 parent: announced_on.clone(),
                 title: tag.title.clone(),
                 name: name.clone(),
@@ -1215,6 +1225,65 @@ mod tests {
         );
         assert!(
             matches!(out.last(), Some((session, HarnessUpdateKind::AgentMessageChunk(..))) if session == &id("inner"))
+        );
+    }
+
+    /// A parent child resumed as a later run: its nested launch matches the
+    /// call held on that run, the nested child still sorts deeper, and a
+    /// nested run's end goes where that run was announced.
+    #[test]
+    fn a_nested_child_follows_its_parents_current_run() {
+        let children = ChildSessions::new(TAGS);
+        let nested = |status: &str, input: Value| {
+            let mut call = control("z-outer:call", status, input);
+            call["_meta"] = tag("z-outer", "root", "Outer");
+            update("root", call)
+        };
+        let mut launch = pending("z-outer:call");
+        launch["_meta"] = tag("z-outer", "root", "Outer");
+        let inner = |status: &str| {
+            json!({"method": TAGS.updates, "params": {
+                "rootSessionId": "root", "childSessionId": "a-inner", "parentSessionId": "z-outer",
+                "depth": 2, "title": "Inner", "type": "status", "status": status}})
+        };
+        let out = replay(
+            &children,
+            &[
+                status("root", "z-outer", "root", "Outer", "created"),
+                status("root", "z-outer", "root", "Outer", "completed"),
+                status("root", "z-outer", "root", "Outer", "running"),
+                update("root", launch),
+                nested("in_progress", task("Inner")),
+                inner("created"),
+            ],
+        );
+        assert_eq!(
+            spawned(&out)[2],
+            (
+                "z-outer:generation:2".to_owned(),
+                "a-inner".to_owned(),
+                Some("Do Inner".to_owned())
+            )
+        );
+        assert_eq!(children.open_children(&id("root")), ["a-inner", "z-outer"]);
+
+        let out = replay(
+            &children,
+            &[
+                inner("completed"),
+                status("root", "z-outer", "root", "Outer", "completed"),
+                status("root", "z-outer", "root", "Outer", "running"),
+                inner("running"),
+                inner("completed"),
+            ],
+        );
+        let last_end = out.iter().rev().find_map(|(session, update)| match update {
+            HarnessUpdateKind::SubagentStateUpdate { child, .. } => Some((session, child)),
+            _ => None,
+        });
+        assert_eq!(
+            last_end,
+            Some((&id("z-outer:generation:3"), &"a-inner:generation:2".to_owned()))
         );
     }
 
