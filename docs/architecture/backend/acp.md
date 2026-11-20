@@ -146,8 +146,34 @@ agent shells, and first wherever npm or npx re-resolve it from their shebang
 - OpenCode is outside `ACP_ADAPTERS` (no terminal output, `_auth/status_update`
   or steering); sign-in is validated by session creation. Every launch loads
   `agent/plugins/opencode-foreground.js`, which strips `background` from
-  `shell` and `subagent` (OpenCode doesn't forward the resumed turn) and
-  restores core's environment from `OTTAM_SHELL_ENVIRONMENT`. A managed
+  `shell` (OpenCode resumes the session for its result with no task
+  lifecycle, so nothing arms a follow-up) and restores core's environment
+  from `OTTAM_SHELL_ENVIRONMENT`. Subagents always run in the background:
+  core advertises `opencode/child-session-updates`, and
+  `agent/acp/child_sessions.rs` threads each child from the run statuses in
+  `opencode/session/child_update`, not from its control call, which
+  completes as the child starts. A `subagent` call naming a finished child's
+  `sessionID` is a resumed run (`<child>:generation:<n>`) whose prompt it
+  carries; one naming a running child joins that run and shows as a
+  follow-up. The parent's turn woken by a child's report arrives with no
+  prompt and lands in a follow-up run (the child's end arms it).
+  `session/cancel` reaches neither a background child nor a woken turn, and
+  a child's report, even a cancelled one, wakes the parent. So Stop on a
+  root that has had a child sends `session/close` to the open children,
+  waits a second for the wake their reports cause, then closes the root,
+  which interrupts it (`actor.rs::close_background_tree`); a root closed
+  before the wake leaves the woken turn running. The close runs beside the
+  actor's command loop, so other sessions keep being served while that root
+  refuses new prompts. Until then the woken turn's own output is dropped, so
+  none of it reaches the stopped run. The next run loads the root again. A
+  failed or timed-out close fails the Stop; a child it missed stays open
+  for the next Stop, and a root it missed stays held. A stopped follow-up
+  run ends with that error. An in-turn Stop's run still ends cancelled, as
+  Stop never waits on the cancelled prompt
+  ([Stop And Steer](persistence.md#stop-and-steer)); the actor logs the
+  failure. The whole close gets one budget (`OUT_OF_TURN_STOP_BUDGET`)
+  below the runner's out-of-turn wait, itself below the cancel grace that
+  aborts the run's worker, so the result reaches the run. A managed
   profile disables the CLI's shared background service (`config/service.json`;
   fixed port 49374 would mix profiles' sign-ins). At 2.0.27: plan mode not
   enforced, write/patch emit no diffs, slash output doesn't stream.
@@ -166,9 +192,15 @@ naming another value fails the run `selectionUnavailable`, so a run never
 records a model that didn't answer. Switches apply in `session/new`'s order:
 model, then thought level (checked against the switch's answer, which can move
 it), then mode. An agent without the select ignores the pick; a restored
-session keeps a value its load doesn't list. Only the confirmed mode persists
-(`agent_sessions.current_mode_id`); a historical run's requested mode proves
-nothing about the live session. `EngineCapability.liveModeChange` (Claude)
+session keeps a value its load doesn't list. Only confirmed values persist
+(`agent_sessions.current_mode_id`, `current_model_id`,
+`current_thought_level_id`, from `SessionMetadata`: the acknowledgment at
+new/load/switch or the agent's own `config_option_update`); a historical run's
+request proves nothing about the live session. A run that requests none of
+them keeps the confirmed ones on restore or fresh fallback
+(`resolve_conversation_session`); a run that picks a model keeps no level
+from the old one, and a different model confirmed without a level clears the
+stored one (`RunRepository::set_session_model`). `EngineCapability.liveModeChange` (Claude)
 marks adapters whose change reaches the running turn; codex-acp reads its mode
 at turn start. A mode change never answers or clears a pending permission card.
 
@@ -195,7 +227,10 @@ and `session/load` observations beat probe data for the TTL while the pin
 matches; after expiry or a pin change a probe replaces, never unions. Thought
 levels belong to the model: kept per model as observed live (`session/new` and
 a model switch's answer), newest wins, dropped when the pin changes or the
-model leaves; `session/load` records nothing. `engine.changed` is a hint;
+model leaves. A loaded session's level is a past pick, not a default:
+`session/load` records no per-model levels, and engine-wide selects only after
+a `session/new` in the same adapter generation, keeping that one's thought
+defaults. `engine.changed` is a hint;
 clients re-read `engine.list`. Core never emits it for a refreshed but
 unchanged entry: every `engine.list` folds the live answer into the cache, so
 each poll would trigger another.

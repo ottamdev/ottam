@@ -17,7 +17,7 @@ Adapter claims come from the installed bundles under
 `$OTTAM_HOME/agents/<agent>/adapter/<pin>/`. Re-check them at each pin bump
 against the recordings in `agent/fixtures/`
 (`claude-native-subagents-0.85.1.json`, `codex-native-subagents-2.1.1.json`,
-`omp-subagent-sessions-pr15043.json`).
+`omp-subagent-sessions-pr15043.json`, and OpenCode's pinned recording).
 
 ## Adapter Contract
 
@@ -44,16 +44,6 @@ Adapter behavior the architecture doc does not record:
 
 ## Next
 
-- Bump OpenCode to 2.3.0, held at 2.2.5 until then. 2.3.0 runs subagents in
-  the background: the control call completes with the child's session id
-  before the child's first frame, and the child later reports to the parent
-  through a new control call. `agent/acp/child_sessions.rs` matches children
-  to open control calls, so at 2.3.0 the controls leak as ordinary calls and
-  the threads never end. Undecided: likely match a late child by its
-  control's `rawOutput.metadata.sessionID` and let the thread's state follow
-  the child, not the control (as for legacy asynchronous Claude threads), and
-  decide how the report-back call shows. Then re-record
-  `opencode-2.3.0.json` with `scripts/record-acp-fixture.py`.
 - Codex 2.7.0 reports delegated tasks as session messages with child
   references; the pinned recording never triggered one. Record it and check
   it threads.

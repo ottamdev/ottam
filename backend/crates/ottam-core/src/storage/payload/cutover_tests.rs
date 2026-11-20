@@ -7,7 +7,7 @@ fn stored_payload() -> (tempfile::TempDir, RevisionKey, Vec<u8>) {
     let mut main =
         SqliteConnection::establish(home.path().join("ottam.sqlite").to_str().unwrap())
             .unwrap();
-    // Main is current, so only the payload side can have anything pending.
+    // Main at its current schema, so only payload migrations are under test.
     diesel_migrations::MigrationHarness::run_pending_migrations(
         &mut main,
         crate::storage::database::MIGRATIONS,

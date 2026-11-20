@@ -75,8 +75,9 @@ PRIVATE_UPDATES = ("available_commands_update",)
 
 # Each scenario feeds what the Rust tests assert. Claude and Codex: the
 # listing bytes and an edit that arrives as a diff (`payload_tests.rs`), and
-# Claude's edit behind a permission prompt. OpenCode: two subagents whose ids
-# `child_sessions.rs` names, a question form, and a cancelled turn. Oh-My-Pi:
+# Claude's edit behind a permission prompt. OpenCode: two background
+# subagents whose ids `child_sessions.rs` names, a follow-up that resumes one,
+# a question form, and a turn cancelled while a subagent runs. Oh-My-Pi:
 # permission prompts, an async shell job, and a cancelled turn.
 SCENARIOS = {
     "claude": {
@@ -140,13 +141,27 @@ SCENARIOS = {
                                       "DELETE FROM account_state"]},
         },
         "sessions": [
-            {"prompts": ["List the files here. Then start two subagents in parallel: one "
-                         "described exactly `Read a.txt` that reports the exact contents "
-                         "of a.txt, and one described exactly `Read b.txt` for b.txt. Do "
-                         "not modify any files. Summarize in two sentences."]},
+            # Subagents run in the background: each child outlives the prompt
+            # that started it and reports later, so the recording waits.
+            {"prompts": [
+                {"text": "List the files here. Then, in one message, start two subagents "
+                         "in parallel: one described exactly `Read a.txt` that reports the "
+                         "exact contents of a.txt, and one described exactly `Read b.txt` "
+                         "for b.txt. Do not modify any files. Once both have reported, "
+                         "summarize in two sentences.",
+                 "drain": 90.0},
+                {"text": "Send the `Read b.txt` subagent a follow-up (call subagent again "
+                         "with its sessionID) asking it to count the characters in b.txt. "
+                         "Once it reports, tell me the count.",
+                 "drain": 60.0},
+            ]},
             {"prompts": ["Use your question tool to ask me whether to read a.txt or "
                          "b.txt next. If I don't answer, stop without reading either."]},
-            {"prompts": [{"text": STORY, "cancel_after": 8}]},
+            {"prompts": [{"text": "Start a subagent described exactly `Story` that writes a "
+                                  "600-word short story about a lighthouse keeper. While it "
+                                  "runs, write your own 600-word short story about a "
+                                  "lighthouse keeper.",
+                          "cancel_after": 15, "drain": 10.0}]},
         ],
     },
 }
@@ -528,6 +543,8 @@ def play(adapter: Adapter, scenario: dict, initialize: dict, workspace: Path, ti
                 "sessionId": session["sessionId"],
                 "prompt": [{"type": "text", "text": prompt["text"]}],
             }, timeout, cancel=cancel)
+            # Background work reports after the prompt answers.
+            adapter.drain(prompt.get("drain", 0.0))
     adapter.drain(1.0)
 
 

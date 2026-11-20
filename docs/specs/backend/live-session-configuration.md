@@ -7,15 +7,18 @@ status: active
 
 ## Current Status
 
-Shipped: a conversation's mode follows the agent's confirmed mode
-(`agent_sessions.current_mode_id`), and `conversation.setMode` applies a pick
-to a live session at once or defers it to the next message. The contract is
-[ACP › Permission Configuration Limits](../../architecture/backend/acp.md#permission-configuration-limits).
+Shipped: a conversation's mode, model and effort follow what its session
+confirmed (`agent_sessions.current_*`); `conversation.setMode` applies a mode
+pick at once or defers it, and model and effort picks ride the next message.
+The contracts are
+[ACP › Permission Configuration Limits](../../architecture/backend/acp.md#permission-configuration-limits)
+and [Chat › Composer Controls](../../architecture/app/chat/README.md#composer-controls).
 
-Known limits: mode changes the agent makes with no Run active are not
-captured; other windows see a change only on reopen; no revision orders two
-clients' writes; model and effort have no immediate apply. Next: two-client
-ordering and idle adapter-originated updates.
+Known limits: changes the agent makes with no Run active are not captured;
+other windows see a change only on reopen; no revision orders two clients'
+writes; model and effort have no immediate apply; an unsent model or effort
+pick is dropped on relaunch. Next: two-client ordering and idle
+adapter-originated updates.
 
 ## Active
 
@@ -49,10 +52,11 @@ current pins before relying on this table.
 - [ ] **Own settings per conversation and session; order changes with turn
   admission.**
   - Remaining: updates from the adapter with no active Run, two-client
-    ordering, and model/effort. A saved Run's mode stays historical start state.
-  - Scope: desired, acknowledged and pending/error state keyed by conversation,
-    engine and session. Per-engine preferences stay new-chat defaults only.
-    Reuse `ConversationSessionMetadata` storage and publication; no second owner.
+    ordering, and immediate model/effort apply. A saved Run's settings stay
+    historical start state.
+  - Scope: error state and revisions on top of the per-conversation confirmed
+    and pending state that shipped. Reuse `ConversationSessionMetadata`
+    storage and publication; no second owner.
   - Done when: the contract below holds.
   - Verify with: focused core integration and storage tests for continuation,
     restoration, fresh-session recovery, queued input, retries and two clients;

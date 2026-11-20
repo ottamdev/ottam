@@ -233,8 +233,10 @@ number, so keep the headings and numbering stable. Paths are under
 ## Deliberate Absences
 
 - OpenCode and oh-my-pi send no `async_task_*`. Ottam's OpenCode plugin
-  strips `background`, and omp holds late results for the next prompt.
-  Revisit when an upstream starts forwarding its resumed turns.
+  strips `background` from shell commands, and omp holds late results for
+  the next prompt. OpenCode does forward the turn a subagent's report
+  resumes; a live or just-ended child arms it (rules 5 and 9). Revisit
+  background shells when OpenCode reports them as tasks.
 
 ## Decisions
 

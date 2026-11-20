@@ -15,12 +15,14 @@
 
 use super::{
     wait_for_conversation_worker, ActiveConversationRun, ConversationRunCompletionGuard,
-    ConversationRunContext, ConversationRunCoordinator,
+    ConversationRunContext, ConversationRunCoordinator, CONVERSATION_CANCEL_GRACE_PERIOD,
 };
 use crate::agent::{
     AdapterLifecycleState, AdapterStatus, AgentId, HarnessAdapter, HarnessError, HarnessErrorKind,
     HarnessSessionId,
 };
+#[cfg(not(test))]
+use crate::agent::OUT_OF_TURN_STOP_BUDGET;
 use crate::core_error::CoreError;
 use crate::server::agents::attribution::{
     AttributionOp, DropReason, FollowUpJoin, OpenRequest, RunEnd, SessionKey,
@@ -71,8 +73,18 @@ const PERMISSION_OPEN_WAIT: Duration = Duration::from_secs(2);
 /// The open waits for another run of the conversation to leave.
 const FOLLOW_UP_BLOCKED: &str = "followUpBlocked";
 
-/// How long a cancel waits to tell the agent to stop its cycle.
-const OUT_OF_TURN_CANCEL_WAIT: Duration = Duration::from_secs(1);
+/// How long a cancel waits to tell the agent to stop its cycle. A plain
+/// cancel answers at once; one that closes the agent's sessions answers
+/// within [`crate::agent::OUT_OF_TURN_STOP_BUDGET`]. The wait ends before the
+/// cancel grace aborts the worker, so a failed close still ends the run.
+#[cfg(not(test))]
+const OUT_OF_TURN_CANCEL_WAIT: Duration = Duration::from_secs(4);
+#[cfg(test)]
+const OUT_OF_TURN_CANCEL_WAIT: Duration = Duration::from_millis(70);
+#[cfg(not(test))]
+const _: () = assert!(OUT_OF_TURN_STOP_BUDGET.as_millis() < OUT_OF_TURN_CANCEL_WAIT.as_millis());
+const _: () =
+    assert!(OUT_OF_TURN_CANCEL_WAIT.as_millis() < CONVERSATION_CANCEL_GRACE_PERIOD.as_millis());
 
 /// What an autonomous run's close rules watch, fed by the forwarder and the
 /// permission broker.
@@ -521,20 +533,34 @@ impl ConversationRunCoordinator {
             }
         };
         let agent_id = AgentId(session_key.0.clone());
+        // A Stop that could not stop the agent, which the run reports.
+        let mut stop_failed = None;
         if matches!(end, AutonomousRunEnd::Cancelled) {
             self.cancel_permissions(&agent_id, &session_key.1);
             // Best effort: the agent may stop its cycle. Never on shutdown,
             // which cancels every run.
             if !self.closing.load(Ordering::Acquire) {
                 let session_id = HarnessSessionId(session_key.1.clone());
-                if tokio::time::timeout(
+                match tokio::time::timeout(
                     OUT_OF_TURN_CANCEL_WAIT,
                     adapter.cancel_out_of_turn(&session_id),
                 )
                 .await
-                .is_err()
                 {
-                    tracing::debug!(agent_id = %agent_id, "out-of-turn cancel timed out");
+                    Ok(Ok(())) => {}
+                    // Nothing left to stop.
+                    Ok(Err(error))
+                        if matches!(
+                            error.kind,
+                            HarnessErrorKind::SessionNotFound
+                                | HarnessErrorKind::AdapterDead
+                                | HarnessErrorKind::AdapterExited
+                                | HarnessErrorKind::NotRunning
+                        ) => {}
+                    Ok(Err(error)) => stop_failed = Some(error),
+                    Err(_) => {
+                        tracing::debug!(agent_id = %agent_id, "out-of-turn cancel timed out");
+                    }
                 }
             }
         }
@@ -555,6 +581,11 @@ impl ConversationRunCoordinator {
                     json!({}),
                 )
                 .await;
+            }
+            AutonomousRunEnd::Cancelled if stop_failed.is_some() => {
+                if let Some(error) = &stop_failed {
+                    self.finalize_conversation_error(&context, error).await;
+                }
             }
             AutonomousRunEnd::Cancelled => {
                 self.finalize_conversation_run(

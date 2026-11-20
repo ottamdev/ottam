@@ -168,6 +168,8 @@ pub(super) fn session_to_wire(session: AgentSession) -> AgentSessionSummary {
         ended_at: session.ended_at.map(iso),
         end_reason: session.end_reason,
         current_mode_id: session.current_mode_id,
+        current_model_id: session.current_model_id,
+        current_thought_level_id: session.current_thought_level_id,
         commands: session
             .available_commands
             .and_then(|commands| serde_json::from_str(&commands).ok()),
@@ -457,6 +459,8 @@ mod tests {
                 ended_at: None,
                 end_reason: None,
                 current_mode_id: None,
+                current_model_id: None,
+                current_thought_level_id: None,
                 available_commands: None,
                 context_usage: None,
                 history_seeded: true,

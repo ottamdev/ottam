@@ -89,10 +89,22 @@ there is no separate clear verb.
 
 ## Composer Controls
 
-- Modes are confirmed and pending per conversation; sends use pending, then
-  confirmed, then the new-chat default. A pick in an existing conversation is
-  pending until the next message and never changes the per-engine default.
-  Without `liveModeChange`, a pick during a turn applies to the next turn.
+- Engine, model, effort and mode belong to each conversation; the saved
+  per-engine picks are new-chat defaults only, changed only from a draft.
+  Opening a chat never writes them. Sends use the chat's pending pick over
+  what its session on that engine confirmed (a pre-migration session falls
+  back to its latest run's request, never one Core refused), else over that
+  engine's new-chat default. Model and level are one pair: a model pick
+  keeps no level from the old model. An existing chat's "Default" row sends
+  the engine's default id, since nil means "keep what the session
+  confirmed" to Core.
+- Modes apply to a live session at once or defer; model and effort picks
+  ride the next message. The run that carries them settles the picks it
+  carried when it confirms or ends, so a cancelled switch shows what the agent
+  runs; a pick made after that send stays for the next one. The agent's word
+  is filed under the run's engine, never a pending or new-chat engine.
+  Pending picks are not persisted. Without `liveModeChange`, a mode pick during a
+  turn applies to the next turn.
 - "Always allow tool actions" appears only for agents that support it; in a
   draft it edits the default, in a chat that chat's value.
 - `ChatContextGauge` is a drawn ring because a circular `ProgressView`

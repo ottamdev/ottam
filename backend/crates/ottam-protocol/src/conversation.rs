@@ -73,6 +73,11 @@ pub enum ConversationEventKind {
 pub struct ConversationSessionMetadata {
     pub title: Option<String>,
     pub current_mode_id: Option<String>,
+    /// The model and thought level the agent confirmed; either may be absent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub current_model_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub current_thought_level_id: Option<String>,
     pub commands: Option<Vec<ConversationSessionCommand>>,
     pub configuration: Option<Vec<ConversationSessionConfiguration>>,
     pub usage: Option<ConversationSessionUsage>,
@@ -546,6 +551,16 @@ pub struct AgentSessionSummary {
     /// The permission mode the agent last confirmed for this session.
     #[serde(rename = "currentModeID", skip_serializing_if = "Option::is_none")]
     pub current_mode_id: Option<String>,
+    /// The model the agent last confirmed for this session.
+    #[serde(rename = "currentModelID", default, skip_serializing_if = "Option::is_none")]
+    pub current_model_id: Option<String>,
+    /// The thought level the agent last confirmed for this session.
+    #[serde(
+        rename = "currentThoughtLevelID",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub current_thought_level_id: Option<String>,
     /// The slash commands the agent last announced for this session.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub commands: Option<Vec<ConversationSessionCommand>>,

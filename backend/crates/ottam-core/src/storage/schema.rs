@@ -29,6 +29,8 @@ diesel::table! {
         available_commands -> Nullable<Text>,
         context_usage -> Nullable<Text>,
         history_seeded -> Bool,
+        current_model_id -> Nullable<Text>,
+        current_thought_level_id -> Nullable<Text>,
     }
 }
 

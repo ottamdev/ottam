@@ -2399,11 +2399,12 @@ private extension MacAgentTranscriptViewController {
         }
     }
 
-    func selectedCopyText() -> String? {
+    func selectedCopyText(fencesLoneCodeBlock: Bool = false) -> String? {
         selectionController.copiedText(
             blocks: completedPresentation.blocks,
             sourcePlan: completedPresentation.sourcePlan,
-            indexByID: completedPresentation.indexByID
+            indexByID: completedPresentation.indexByID,
+            fencesLoneCodeBlock: fencesLoneCodeBlock
         )
     }
 
@@ -2571,7 +2572,8 @@ private extension MacAgentTranscriptViewController {
     func updateQuoteReply() {
         guard let presenter = quoteReplyPresenter else { return }
         guard !selectionController.isDragging, selectionController.hasSelection,
-              let text = selectedCopyText(),
+              // The quote is sent as Markdown, so code keeps its fence.
+              let text = selectedCopyText(fencesLoneCodeBlock: true),
               !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         else { return presenter.hide() }
         presenter.show(quote: text)

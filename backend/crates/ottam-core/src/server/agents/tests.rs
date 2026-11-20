@@ -204,10 +204,11 @@ fn compatibility_agent_column_falls_back_to_the_catalog_when_stopped() {
         .collect();
     assert_eq!(
         features.len(),
-        AcpFeature::ALL.len() - 4,
-        "every row but the four codex-only _meta rows is present for claude"
+        AcpFeature::ALL.len() - 5,
+        "every row but the four codex-only rows and OpenCode's is present for claude"
     );
     assert!(!features.iter().any(|name| name.starts_with("_meta.codex.")));
+    assert!(!features.contains(&"opencode/child-session-updates"));
     assert!(features.contains(&"_meta._claude/rateLimit"));
     assert!(features.contains(&"jetbrains.air.asyncTasks"));
     let steering = row(&stopped, "_session/steering");
@@ -569,6 +570,9 @@ struct FakeConversationAdapter {
     scripted_turn: StdMutex<Vec<HarnessUpdateKind>>,
     /// Sessions core asked to stop working on their own.
     out_of_turn_cancels: StdMutex<Vec<String>>,
+    /// What such a Stop answers instead of success, and how long it takes.
+    out_of_turn_cancel_error: StdMutex<Option<crate::agent::HarnessError>>,
+    out_of_turn_cancel_delay: StdMutex<Duration>,
     /// Each session's mode, as the actor would track it.
     session_modes: StdMutex<HashMap<String, String>>,
     /// Each session's announced commands, as the actor would track them.
@@ -624,6 +628,8 @@ impl FakeConversationAdapter {
             prompt_answers: StdMutex::new(HashMap::new()),
             scripted_turn: StdMutex::new(Vec::new()),
             out_of_turn_cancels: StdMutex::new(Vec::new()),
+            out_of_turn_cancel_error: StdMutex::new(None),
+            out_of_turn_cancel_delay: StdMutex::new(Duration::ZERO),
             session_modes: StdMutex::new(HashMap::new()),
             session_commands: StdMutex::new(HashMap::new()),
             applied_modes: StdMutex::new(Vec::new()),
@@ -1274,7 +1280,20 @@ impl HarnessAdapter for FakeConversationAdapter {
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
             .push(session_id.0.clone());
-        Box::pin(std::future::ready(Ok(())))
+        let answer = self
+            .out_of_turn_cancel_error
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .clone()
+            .map_or(Ok(()), Err);
+        let delay = *self
+            .out_of_turn_cancel_delay
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        Box::pin(async move {
+            tokio::time::sleep(delay).await;
+            answer
+        })
     }
 }
 
@@ -2426,6 +2445,67 @@ async fn conversation_mode_follows_the_agent_and_switches_live_sessions() {
     harness.bridge.shutdown().await;
 }
 
+/// The session owns its model and thought level the way it owns its mode:
+/// what the agent confirmed at session/new, after a live switch, or in an
+/// announcement of its own is persisted on the AgentSession and listed with it.
+#[tokio::test]
+async fn conversation_model_follows_the_agent_and_persists_on_the_session() {
+    let harness = continuity_harness("conversation_model_follows", FakeFactory::new(true)).await;
+    let confirmed = || async {
+        harness
+            .env
+            .chat
+            .conversation_detail(&harness.conversation_id)
+            .await
+            .expect("detail")
+            .latest_agent_session_page
+            .sessions
+            .first()
+            .map(|session| {
+                (
+                    session.current_model_id.clone(),
+                    session.current_thought_level_id.clone(),
+                )
+            })
+            .unwrap_or_default()
+    };
+    let owned = |model: &str, level: Option<&str>| {
+        (Some(model.to_string()), level.map(str::to_string))
+    };
+    let first = harness
+        .run_to_terminal_with_model("codex", Some("model-a"))
+        .await;
+    assert_eq!(first.session_origin, Some(SessionOrigin::New));
+    assert_eq!(confirmed().await, owned("model-a", None));
+
+    let second = harness
+        .run_to_terminal_with_model("codex", Some("model-b"))
+        .await;
+    assert_eq!(second.session_origin, Some(SessionOrigin::Continued));
+    assert_eq!(confirmed().await, owned("model-b", None), "a live switch");
+
+    // The agent moves its own model and effort mid-turn (a fallback, say).
+    let adapter = harness.adapter();
+    adapter.script_next_turn([HarnessUpdateKind::Other {
+        kind: "config_option_update".into(),
+        payload: json!({"sessionUpdate": "config_option_update", "configOptions": [
+            {"id": "model", "name": "Model", "category": "model", "currentValue": "model-c"},
+            {"id": "effort", "name": "Effort", "category": "thought_level", "currentValue": "low"}
+        ]}),
+    }]);
+    let third = harness.run_to_terminal_with_model("codex", None).await;
+    assert_eq!(third.session_origin, Some(SessionOrigin::Continued));
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
+    while confirmed().await != owned("model-c", Some("low")) {
+        assert!(
+            tokio::time::Instant::now() < deadline,
+            "announced model was not persisted"
+        );
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+    harness.bridge.shutdown().await;
+}
+
 /// `conversation.setMode` switches a live session now and persists what the
 /// agent acknowledged, skips a switch the session already has, leaves a
 /// refused switch unrecorded, rejects a replaced session, and defers when
@@ -2546,10 +2626,15 @@ async fn conversation_restore_passes_mode_and_does_not_replace_session_on_config
         mode_id: Some("auto".into()),
         ..SessionConfigRequest::default()
     };
+    let persisted = crate::server::chat::ConfirmedSelection {
+        mode_id: Some("plan".into()),
+        model_id: Some("model-b".into()),
+        thought_level_id: Some("high".into()),
+    };
     let (restored, origin) = super::conversation_runner::resolve_conversation_session(
         &erased,
         Some(&prior),
-        Some("plan"),
+        &persisted,
         &harness.root,
         &config,
         None,
@@ -2563,13 +2648,19 @@ async fn conversation_restore_passes_mode_and_does_not_replace_session_on_config
         vec![Some("auto".into())],
         "a requested mode wins over the persisted one"
     );
-    // A follow-up requests no mode: the restore reapplies the session's
-    // persisted confirmed mode rather than the agent's startup default.
+    // A follow-up requests no mode, model or level: the restore reapplies the
+    // session's persisted confirmed ones rather than what the load reports.
     adapter.forget_sessions();
+    adapter.set_session_model(
+        &crate::agent::HarnessSessionId(prior.0.clone()),
+        Some("model-a".into()),
+        Some("low".into()),
+    );
+    let switches_before = adapter.recorded_applied_models().len();
     super::conversation_runner::resolve_conversation_session(
         &erased,
         Some(&prior),
-        Some("plan"),
+        &persisted,
         &harness.root,
         &SessionConfigRequest::default(),
         None,
@@ -2587,6 +2678,67 @@ async fn conversation_restore_passes_mode_and_does_not_replace_session_on_config
             .as_deref(),
         Some("plan")
     );
+    assert_eq!(
+        adapter.recorded_applied_models()[switches_before..],
+        [ModelSwitch {
+            model_id: Some("model-b".into()),
+            thought_level_id: Some("high".into()),
+            restored: true,
+        }],
+        "the persisted model and level are reapplied after the load"
+    );
+    // A run that picks a model keeps no level from the old one.
+    adapter.forget_sessions();
+    super::conversation_runner::resolve_conversation_session(
+        &erased,
+        Some(&prior),
+        &persisted,
+        &harness.root,
+        &SessionConfigRequest {
+            model_id: Some("model-c".into()),
+            ..SessionConfigRequest::default()
+        },
+        None,
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        adapter.recorded_applied_models().last(),
+        Some(&ModelSwitch {
+            model_id: Some("model-c".into()),
+            thought_level_id: None,
+            restored: true,
+        })
+    );
+    // Naming the confirmed model again keeps its confirmed level: the load
+    // reports that model at another level, so only the level is switched.
+    adapter.forget_sessions();
+    adapter.set_session_model(
+        &crate::agent::HarnessSessionId(prior.0.clone()),
+        Some("model-b".into()),
+        Some("low".into()),
+    );
+    super::conversation_runner::resolve_conversation_session(
+        &erased,
+        Some(&prior),
+        &persisted,
+        &harness.root,
+        &SessionConfigRequest {
+            model_id: Some("model-b".into()),
+            ..SessionConfigRequest::default()
+        },
+        None,
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        adapter.recorded_applied_models().last(),
+        Some(&ModelSwitch {
+            model_id: None,
+            thought_level_id: Some("high".into()),
+            restored: true,
+        })
+    );
     adapter.forget_sessions();
     let config = SessionConfigRequest {
         mode_id: Some("unavailable".into()),
@@ -2595,7 +2747,7 @@ async fn conversation_restore_passes_mode_and_does_not_replace_session_on_config
     let error = super::conversation_runner::resolve_conversation_session(
         &erased,
         Some(&prior),
-        None,
+        &Default::default(),
         &harness.root,
         &config,
         None,
@@ -2624,7 +2776,7 @@ async fn conversation_session_applies_a_changed_model_before_prompting() {
             super::conversation_runner::resolve_conversation_session(
                 &erased,
                 Some(&prior),
-                None,
+                &Default::default(),
                 &root,
                 &config,
                 None,
@@ -7321,6 +7473,56 @@ async fn autonomous_follow_up_cancel_stops_the_agent_and_disarms() {
         .await;
     tokio::time::sleep(Duration::from_millis(100)).await;
     assert_eq!(harness.run_count().await, 2);
+    harness.bridge.shutdown().await;
+}
+
+/// A Stop the agent could not carry out (its sessions would not close) ends
+/// the follow-up with that error, not as cleanly cancelled, even when the
+/// agent is slow to say so.
+#[tokio::test]
+async fn autonomous_follow_up_cancel_reports_a_stop_that_failed() {
+    let harness = continuity_harness("follow_up_cancel_failed", FakeFactory::new(true)).await;
+    let first = harness.run_with_background_task().await;
+    let session = first.agent_session_id.clone().expect("bound a session");
+    *harness.adapter().out_of_turn_cancel_error.lock().unwrap() = Some(
+        crate::agent::HarnessError::new(
+            crate::agent::HarnessErrorKind::PromptExecution,
+            "Stop could not close the agent's session",
+        ),
+    );
+    // A slow close still answers before the cancel grace aborts the worker.
+    *harness.adapter().out_of_turn_cancel_delay.lock().unwrap() = Duration::from_millis(40);
+    harness
+        .send_after_turn(
+            &session,
+            3,
+            [
+                task_completed("task_bg", "toolu_bg"),
+                HarnessUpdateKind::AgentMessageChunk("working".to_string(), None),
+            ],
+        )
+        .await;
+    let follow_up = tokio::time::timeout(Duration::from_secs(2), async {
+        loop {
+            if let Some(run) = harness.follow_ups().await.into_iter().next() {
+                return run;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("a follow-up opens");
+    let ended = harness
+        .bridge
+        .cancel_conversation_run(
+            &harness.env.chat,
+            &harness.conversation_id,
+            &follow_up.run_id,
+        )
+        .await
+        .expect("cancels")
+        .run;
+    assert_eq!(ended.status, ConversationRunStatus::Failed, "{ended:?}");
     harness.bridge.shutdown().await;
 }
 

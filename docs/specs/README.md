@@ -21,7 +21,7 @@ current.
 - [Agent Instances](backend/acp/agent-instances.md) — deferred — ask OpenCode upstream about `OPENCODE_DB`; packaged agents unscheduled
 - [Agent Roster And Client Compatibility](backend/acp/agent-roster-compatibility.md) — active — go/no-go on Grok Build (`roster:7`)
 - [Context Compaction](backend/acp/context-compaction.md) — active — `cmp:1`–`cmp:4` once the Try it is approved
-- [Subagent Sessions](backend/acp/subagent-sessions.md) — active — thread OpenCode 2.3.0's background subagents, then bump its pin
+- [Subagent Sessions](backend/acp/subagent-sessions.md) — active — record Codex 2.7.0's delegated tasks and check they thread
 - [Usage And Cost](backend/acp/usage-and-cost.md) — active — approve and run the plan-usage Try it (`usage:5`), then per-run cost (`usage:3`)
 
 ## MCP
