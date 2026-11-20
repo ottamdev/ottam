@@ -179,14 +179,15 @@ public enum SidebarSectionBuilder {
 
         guard shape == .multiple else {
             // Collapsed: one list, recency order preserved, every row that does
-            // not live at the implied root marked.
+            // not live at the implied root marked. A worktree of the implied
+            // project lives there too; the subtitle names it.
             guard !conversations.isEmpty else { return [] }
             return [
                 SidebarSection(
                     kind: .all,
                     title: "History",
                     allItems: conversations.map {
-                        item($0, mismatched: !$0.workingRoot.matches(implied))
+                        item($0, mismatched: !$0.workingRoot.matches(implied) && !isWorktree($0.workingRoot, of: implied))
                     }
                 )
             ]
@@ -236,6 +237,11 @@ public enum SidebarSectionBuilder {
 /// the collapsed shape the only member project *is* the implied root, and in the
 /// multi-project shape only non-member roots reach the loose bucket. So there is
 /// no "some other member project" case to distinguish.
+private func isWorktree(_ root: WorkingRootSummary, of selection: WorkingRootSelection) -> Bool {
+    guard root.worktree != nil, case .project(let projectID, _) = selection else { return false }
+    return root.projectID == projectID
+}
+
 private func mark(for root: WorkingRootSummary) -> SidebarRootMark {
     switch root.kind {
     case .workspaceFiles:

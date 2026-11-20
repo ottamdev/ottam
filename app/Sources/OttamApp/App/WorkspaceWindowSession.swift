@@ -22,6 +22,9 @@ private let navigationLogger = Logger(
 struct WorkspaceRestorationState: Codable, Equatable {
     var projectID = ""
     var chatRoot = ""
+    /// The composer's Worktree checkbox. Optional so a window saved before
+    /// it existed still decodes.
+    var chatWorktree: Bool?
     var conversationID = ""
     /// Comma-separated `SidebarSectionKind.persistenceKey`s.
     var collapsedSections = ""
@@ -168,14 +171,14 @@ final class WorkspaceWindowSession {
     /// a terminal in.
     var canOpenTerminal: Bool {
         guard canToggleTools, let conversation = selectedConversation else { return false }
-        return terminalWorkspace.canCreateTerminal(at: conversation.workingRoot.selection)
+        return terminalWorkspace.canCreateTerminal(in: conversation.workingRoot)
     }
 
     /// Opens a terminal tab in the selected conversation, focused.
     func openTerminal() {
         guard canOpenTerminal,
               let conversation = selectedConversation,
-              let record = terminalWorkspace.createTerminal(at: conversation.workingRoot.selection, backend: diffModel)
+              let record = terminalWorkspace.createTerminal(in: conversation.workingRoot, backend: diffModel)
         else { return }
         tools.show(.terminal(record.id), in: conversation.conversationID, focus: true)
     }
@@ -216,6 +219,17 @@ final class WorkspaceWindowSession {
         }
     }
 
+    /// The sources a Review can show: each member's, and each listed
+    /// conversation's worktree while it is there.
+    var reviewableSourceIDs: Set<ProjectSourceID> {
+        Set(workspace.projects.map(\.source.projectSourceID)).union(
+            chatWorkspace.conversations.compactMap { conversation in
+                let root = conversation.workingRoot
+                return root.worktree != nil && root.availability == .available ? root.sourceID : nil
+            }
+        )
+    }
+
     /// A replaced Core holds none of the window's terminals, so their tabs go.
     func resetTerminals() {
         terminalWorkspace.closeAll(backend: diffModel)
@@ -224,16 +238,18 @@ final class WorkspaceWindowSession {
 
     /// `project · branch` for the selected conversation's root, or the draft's.
     var contextSubtitle: String {
-        let root: (name: String, sourceID: ProjectSourceID?)?
+        let root: (name: String, sourceID: ProjectSourceID?, worktreeBranch: String?)?
         if chatWorkspace.selectedConversationID != nil {
-            root = selectedConversation.map { ($0.workingRoot.displayName, $0.workingRoot.sourceID) }
+            root = selectedConversation.map {
+                ($0.workingRoot.displayName, $0.workingRoot.sourceID, $0.workingRoot.worktree?.branch)
+            }
         } else {
             let sourceID: ProjectSourceID? = if case .project(_, let sourceID) = chatWorkspace.draftWorkingRoot {
                 sourceID
             } else {
                 nil
             }
-            root = (chatWorkspace.draftWorkingRootName, sourceID)
+            root = (chatWorkspace.draftWorkingRootName, sourceID, nil)
         }
 
         var loadedBranches: [ProjectSourceID: String] = [:]
@@ -244,7 +260,8 @@ final class WorkspaceWindowSession {
             rootName: root?.name,
             sourceID: root?.sourceID,
             projects: workspace.projects,
-            loadedBranches: loadedBranches
+            loadedBranches: loadedBranches,
+            worktreeBranch: root?.worktreeBranch
         )
     }
 
@@ -582,6 +599,7 @@ final class WorkspaceWindowSession {
                     )
                 )
             }
+            chatWorkspace.draftCreatesWorktree = restored.chatWorktree ?? false
             didRestoreWorkingRoots = true
         }
     }

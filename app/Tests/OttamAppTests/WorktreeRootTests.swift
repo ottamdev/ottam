@@ -1,0 +1,81 @@
+import OttamBackendClient
+import Foundation
+import Testing
+@testable import OttamApp
+
+/// A worktree is a project source no Workspace member carries, so a
+/// conversation's root there must not read as detached just for that.
+@MainActor
+@Suite("Worktree roots")
+struct WorktreeRootTests {
+    private let member = WorkspaceProjectSummary(
+        project: ProjectSummary(
+            projectID: ProjectID("project-alpha"),
+            displayName: "alpha",
+            createdAt: 0,
+            updatedAt: 0,
+            lastOpenedAt: 0
+        ),
+        source: ProjectSourceSummary(
+            projectSourceID: ProjectSourceID("source-alpha"),
+            projectID: ProjectID("project-alpha"),
+            kind: .localGit,
+            displayName: "alpha",
+            canonicalPath: "/tmp/alpha",
+            createdAt: 0,
+            updatedAt: 0
+        ),
+        sortOrder: 0,
+        addedAt: 0
+    )
+
+    private func worktreeRoot(_ availability: WorkingRootAvailability = .available) -> WorkingRootSummary {
+        WorkingRootSummary(
+            kind: .project,
+            displayName: "alpha",
+            canonicalPath: "/tmp/worktrees/alpha/fix-3f2a",
+            projectID: ProjectID("project-alpha"),
+            sourceID: ProjectSourceID("source-worktree"),
+            availability: availability,
+            worktree: WorktreeSummary(branch: "ottam/fix-3f2a", baseCommit: "abc123")
+        )
+    }
+
+    @Test("a worktree keeps Core's availability while its project is a member, and detaches when it leaves")
+    func availability() {
+        #expect(worktreeRoot().updatingAvailability(for: [member]).availability == .available)
+        #expect(worktreeRoot(.detached).updatingAvailability(for: [member]).availability == .detached)
+        #expect(worktreeRoot().updatingAvailability(for: []).availability == .detached)
+    }
+
+    @Test("Review shows the worktree's own source under its project, and nothing once it is gone")
+    func reviewProject() throws {
+        let project = try #require(worktreeRoot().reviewProject(in: [member]))
+        #expect(project.projectSourceID == ProjectSourceID("source-worktree"))
+        #expect(project.canonicalRoot == "/tmp/worktrees/alpha/fix-3f2a")
+        #expect(project.displayName == "alpha")
+        #expect(project.currentBranch == "ottam/fix-3f2a")
+        #expect(worktreeRoot(.detached).reviewProject(in: [member]) == nil)
+        #expect(worktreeRoot().reviewProject(in: []) == nil)
+    }
+
+    @Test("a terminal opens in the worktree, not the project's checkout")
+    func terminalRoot() {
+        let backend = DiffReviewModel(client: OttamCoreProcessClient(
+            executableURL: URL(fileURLWithPath: "/nonexistent/ottam-core")
+        ))
+        let terminals = TerminalWorkspaceModel()
+        terminals.configure(
+            workspaceID: WorkspaceID("worktrees"),
+            workspaceFiles: nil,
+            projects: [member],
+            backend: backend
+        )
+        #expect(terminals.canCreateTerminal(in: worktreeRoot()))
+        #expect(!terminals.canCreateTerminal(in: worktreeRoot(.detached)))
+        let record = terminals.createTerminal(in: worktreeRoot(), backend: backend)
+        #expect(record?.cwd == "/tmp/worktrees/alpha/fix-3f2a")
+        #expect(record?.workingRoot.sourceID == ProjectSourceID("source-worktree"))
+        terminals.closeAll(backend: backend)
+    }
+}

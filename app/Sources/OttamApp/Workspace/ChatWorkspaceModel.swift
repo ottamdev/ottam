@@ -422,6 +422,9 @@ final class ChatWorkspaceModel {
     private(set) var workspaceFiles: WorkingRootSummary?
     private(set) var projects: [WorkspaceProjectSummary] = []
     var draftWorkingRoot: WorkingRootSelection = .workspaceFiles
+    /// The composer's Worktree checkbox. Kept across drafts with the draft
+    /// root, and read only where `canDraftWorktree` offers it.
+    var draftCreatesWorktree = false
     /// Advances whenever the composer-first landing starts a logically new
     /// draft without necessarily leaving the Chat route.
     private(set) var draftGeneration = 0
@@ -2283,6 +2286,12 @@ final class ChatWorkspaceModel {
         }
     }
 
+    /// Every project is a git checkout, so a project root can work in a
+    /// worktree; Workspace files cannot.
+    var canDraftWorktree: Bool {
+        if case .project = draftWorkingRoot { true } else { false }
+    }
+
     /// Applies a root the user picked from the composer's chooser.
     ///
     /// Normalized as well as validity-checked: the chooser only exists in the
@@ -2658,7 +2667,11 @@ final class ChatWorkspaceModel {
             for index in conversations.indices where conversations[index].parentConversationID == conversation.conversationID {
                 conversations[index].parentConversationID = nil
             }
-            noticeText = Self.harnessCleanupNotice(result.harnessSessionCleanup)
+            let notices = [
+                Self.harnessCleanupNotice(result.harnessSessionCleanup),
+                result.worktree.flatMap(WorktreeText.removalNotice),
+            ].compactMap { $0 }
+            noticeText = notices.isEmpty ? nil : notices.joined(separator: " ")
             isMutating = false
             Self.logger.info(
                 "deleted conversation conversationID=\(conversation.conversationID.rawValue, privacy: .public)"
@@ -2671,6 +2684,49 @@ final class ChatWorkspaceModel {
                 "failed to delete conversation: \(error.localizedDescription, privacy: .private)"
             )
             return false
+        }
+    }
+
+    /// What removing `root`'s worktree would take with it, for the alerts.
+    /// Nil, with the error shown, when Core cannot say.
+    func worktreeStatus(of root: WorkingRootSummary, backend: DiffReviewModel) async -> WorktreeStatusResult? {
+        guard let workspaceID, root.worktree != nil, let sourceID = root.sourceID else { return nil }
+        do {
+            return try await backend.worktreeStatus(workspaceID: workspaceID, projectSourceID: sourceID)
+        } catch {
+            errorText = error.localizedDescription
+            return nil
+        }
+    }
+
+    /// Removes a worktree while its conversations stay: Core stops their
+    /// runs and they read as detached from then on.
+    func removeWorktree(_ status: WorktreeStatusResult, backend: DiffReviewModel) async {
+        guard let workspaceID else {
+            markUnavailable()
+            return
+        }
+        isMutating = true
+        errorText = nil
+        noticeText = nil
+        defer { isMutating = false }
+        do {
+            let result = try await backend.removeWorktree(
+                workspaceID: workspaceID,
+                projectSourceID: status.projectSourceID
+            )
+            noticeText = WorktreeText.removalNotice(result.removal)
+            Self.logger.info(
+                "removed worktree projectSourceID=\(status.projectSourceID.rawValue, privacy: .public) removed=\(result.removal.removed, privacy: .public)"
+            )
+        } catch {
+            errorText = error.localizedDescription
+            Self.logger.error("failed to remove worktree: \(error.localizedDescription, privacy: .private)")
+        }
+        let list = try? await backend.listConversations(workspaceID: workspaceID)
+        if let list { apply(conversations: list.conversations) }
+        if let selectedConversationID {
+            await loadDetail(selectedConversationID, backend: backend)
         }
     }
 
@@ -2891,6 +2947,7 @@ final class ChatWorkspaceModel {
             // Pinned before the wait below, which a new selection can outlast.
             let targetConversationID = selectedConversationID
             let workingRoot = draftWorkingRoot
+            let createWorktree = canDraftWorktree && draftCreatesWorktree
             // A new chat copies the switch's default, and a run reads its value.
             await settleAlwaysAllowToolActions()
             let conversationID: ConversationID
@@ -2917,7 +2974,8 @@ final class ChatWorkspaceModel {
                         body: message,
                         idempotencyKey: UUID().uuidString,
                         attachmentIDs: attachmentIDs
-                    )
+                    ),
+                    createWorktree: createWorktree
                 )
                 conversationID = created.conversation.summary.conversationID
                 guard let initialInput = created.initialInput else {

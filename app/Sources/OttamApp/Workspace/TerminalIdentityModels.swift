@@ -31,13 +31,45 @@ extension WorkingRootSummary {
         case .workspaceFiles:
             updated.availability = .available
         case .project:
-            let exactSourceIsAttached = projects.contains { member in
-                member.project.projectID == projectID
-                    && member.source.projectSourceID == sourceID
+            let projectIsMember = projects.contains { $0.project.projectID == projectID }
+            if worktree != nil {
+                // A worktree is never a member's source. Core's answer stands
+                // while its project stays: it knows whether the checkout is gone.
+                if !projectIsMember { updated.availability = .detached }
+            } else {
+                let exactSourceIsAttached = projects.contains { member in
+                    member.project.projectID == projectID
+                        && member.source.projectSourceID == sourceID
+                }
+                updated.availability = exactSourceIsAttached ? .available : .detached
             }
-            updated.availability = exactSourceIsAttached ? .available : .detached
         }
         return updated
+    }
+
+    /// The project source Review shows for this root: the member's own, or
+    /// the conversation's worktree under its member project.
+    func reviewProject(in projects: [WorkspaceProjectSummary]) -> ResolvedProject? {
+        guard let sourceID else { return nil }
+        guard let worktree else {
+            return projects.first { $0.source.projectSourceID == sourceID }?.resolvedProject
+        }
+        guard updatingAvailability(for: projects).availability == .available,
+              let member = projects.first(where: { $0.project.projectID == projectID })
+        else { return nil }
+        return ResolvedProject(
+            project: member.project,
+            source: ProjectSourceSummary(
+                projectSourceID: sourceID,
+                projectID: member.project.projectID,
+                kind: .localGit,
+                displayName: worktree.branch,
+                canonicalPath: canonicalPath,
+                createdAt: 0,
+                updatedAt: 0,
+                currentBranch: worktree.branch
+            )
+        )
     }
 }
 
@@ -116,11 +148,23 @@ final class TerminalWorkspaceModel {
         workspaceID != nil && rootSummary(for: selection) != nil
     }
 
+    /// Whether a conversation's own root is still there to start a terminal in.
+    func canCreateTerminal(in root: WorkingRootSummary) -> Bool {
+        workspaceID != nil && attachedRoot(root) != nil
+    }
+
     /// A terminal at `selection`. Core opens it when its tab first shows.
     func createTerminal(at selection: WorkingRootSelection, backend: DiffReviewModel) -> TerminalRecord? {
-        guard let workspaceID, let workingRoot = rootSummary(for: selection) else {
-            return nil
-        }
+        rootSummary(for: selection).flatMap { createTerminal(with: $0, backend: backend) }
+    }
+
+    /// A terminal in a conversation's own root, which may be its worktree.
+    func createTerminal(in root: WorkingRootSummary, backend: DiffReviewModel) -> TerminalRecord? {
+        attachedRoot(root).flatMap { createTerminal(with: $0, backend: backend) }
+    }
+
+    private func createTerminal(with workingRoot: WorkingRootSummary, backend: DiffReviewModel) -> TerminalRecord? {
+        guard let workspaceID else { return nil }
         let record = TerminalRecord(
             workspaceID: workspaceID,
             workingRoot: workingRoot,
@@ -272,6 +316,14 @@ final class TerminalWorkspaceModel {
                 )
             }
         }
+    }
+
+    /// A worktree is no member's source, so it stands on its project and on
+    /// Core's availability; any other root resolves through the members.
+    private func attachedRoot(_ root: WorkingRootSummary) -> WorkingRootSummary? {
+        guard root.worktree != nil else { return rootSummary(for: root.selection) }
+        let attached = root.updatingAvailability(for: projects)
+        return attached.availability == .available ? attached : nil
     }
 
     private func rootSummary(for selection: WorkingRootSelection) -> WorkingRootSummary? {

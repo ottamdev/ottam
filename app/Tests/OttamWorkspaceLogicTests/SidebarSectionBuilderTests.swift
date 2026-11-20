@@ -241,6 +241,40 @@ struct RootMismatchMarkTests {
         )
     }
 
+    // A worktree is never the implied root's source, yet it is that project's
+    // work: the subtitle names it, so the row carries no mark, even once the
+    // worktree is gone.
+    @Test("a worktree of the project sits unmarked with it, in either shape")
+    func worktreeRowsLiveWithTheirProject() {
+        let alpha = Fixture.project("alpha")
+        let beta = Fixture.project("beta")
+        let single = SidebarSectionBuilder.sections(
+            projects: [alpha],
+            selectedProject: Fixture.resolved(alpha),
+            conversations: [
+                Fixture.worktreeConversation("fix", in: alpha),
+                Fixture.worktreeConversation("gone", in: alpha, availability: .detached),
+            ],
+            attentionConversationIDs: [],
+            runningConversationIDs: []
+        )
+        #expect(single.map(\.kind) == [.all])
+        #expect(single[0].allItems.map(\.rootMark) == [nil, nil])
+
+        let multiple = SidebarSectionBuilder.sections(
+            projects: [alpha, beta],
+            selectedProject: Fixture.resolved(beta),
+            conversations: [
+                Fixture.worktreeConversation("fix", in: alpha),
+                Fixture.conversation("beta-work", in: beta),
+            ],
+            attentionConversationIDs: [],
+            runningConversationIDs: []
+        )
+        #expect(multiple.map(\.kind) == [.project(alpha.project.projectID), .project(beta.project.projectID)])
+        #expect(multiple[0].allItems.map(\.rootMark) == [nil])
+    }
+
     // Per-project headers already say where their rows live, so those rows stay
     // unmarked no matter which project is selected; only the loose bucket, which
     // names nothing, carries roots.
