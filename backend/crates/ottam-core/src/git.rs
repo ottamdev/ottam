@@ -301,30 +301,73 @@ pub fn worktree_prune(primary_path: &str) -> Result<(), CoreError> {
     run_git(primary_path, ["worktree", "prune"]).map(|_| ())
 }
 
+/// What becomes of a worktree's branch when the worktree goes. Status and
+/// removal both decide by this, so the confirmation names the branch's fate.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum BranchFate {
+    Missing,
+    /// Still at the commit it started from: removal deletes it.
+    Unchanged,
+    /// Moved off that commit: removal keeps it.
+    Moved { tip: String },
+}
+
+pub fn branch_fate(repo_path: &str, branch: &str, base_commit: &str) -> Result<BranchFate, CoreError> {
+    Ok(match branch_commit(repo_path, branch)? {
+        None => BranchFate::Missing,
+        Some(tip) if tip == base_commit => BranchFate::Unchanged,
+        Some(tip) => BranchFate::Moved { tip },
+    })
+}
+
 /// What a worktree holds that its removal would discard.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct WorktreeChanges {
     /// Changed, staged and untracked paths.
     pub uncommitted: u32,
-    /// Commits on `HEAD` since `base_commit`.
-    pub commits: u32,
+    /// Commits on the worktree's branch since `base_commit`.
+    pub branch_commits: u32,
+    /// Whether removal keeps the branch ([`BranchFate::Moved`]).
+    pub branch_kept: bool,
+    /// Commits at the worktree's `HEAD` that no branch, tag or remote holds,
+    /// as after the agent detached `HEAD`: removal loses them.
+    pub unbranched_commits: u32,
 }
 
-pub fn worktree_changes(worktree_path: &str, base_commit: &str) -> Result<WorktreeChanges, CoreError> {
+pub fn worktree_changes(
+    worktree_path: &str,
+    branch: &str,
+    base_commit: &str,
+) -> Result<WorktreeChanges, CoreError> {
     let status = run_git(
         worktree_path,
         ["status", "--porcelain=v1", "-z", "--untracked-files=all"],
     )?;
-    let range = format!("{base_commit}..HEAD");
-    let commits = run_git_with_allowed_exit_codes(worktree_path, &["rev-list", "--count", &range], &[0])?
+    let fate = branch_fate(worktree_path, branch, base_commit)?;
+    let branch_commits = match &fate {
+        BranchFate::Moved { tip } => commit_count(worktree_path, &[&format!("{base_commit}..{tip}")])?,
+        BranchFate::Missing | BranchFate::Unchanged => 0,
+    };
+    let unbranched_commits = commit_count(
+        worktree_path,
+        &["HEAD", "--not", "--branches", "--tags", "--remotes"],
+    )?;
+    Ok(WorktreeChanges {
+        uncommitted: porcelain_entry_count(&status),
+        branch_commits,
+        branch_kept: matches!(fate, BranchFate::Moved { .. }),
+        unbranched_commits,
+    })
+}
+
+fn commit_count(repo_path: &str, revisions: &[&str]) -> Result<u32, CoreError> {
+    let mut args = vec!["rev-list", "--count"];
+    args.extend_from_slice(revisions);
+    Ok(run_git_with_allowed_exit_codes(repo_path, &args, &[0])?
         .stdout
         .trim()
         .parse::<u32>()
-        .unwrap_or(0);
-    Ok(WorktreeChanges {
-        uncommitted: porcelain_entry_count(&status),
-        commits,
-    })
+        .unwrap_or(0))
 }
 
 /// Entries in `status --porcelain=v1 -z` output. A rename or copy carries its
@@ -349,13 +392,13 @@ pub fn delete_branch_if_unchanged(
     branch: &str,
     base_commit: &str,
 ) -> Result<bool, CoreError> {
-    match branch_commit(repo_path, branch)? {
-        None => Ok(false),
-        Some(commit) if commit == base_commit => {
+    match branch_fate(repo_path, branch, base_commit)? {
+        BranchFate::Missing => Ok(false),
+        BranchFate::Unchanged => {
             run_git_with_allowed_exit_codes(repo_path, &["branch", "-D", branch], &[0])?;
             Ok(false)
         }
-        Some(_) => Ok(true),
+        BranchFate::Moved { .. } => Ok(true),
     }
 }
 

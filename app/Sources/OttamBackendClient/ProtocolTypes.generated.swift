@@ -4245,9 +4245,9 @@ public struct WorktreeRemoval: Codable, Equatable, Sendable {
     public var projectSourceID: ProjectSourceID
     public var branch: String
     public var path: String
-    /// Whether the directory is gone. When false, Core retries on its next launch.
+    /// Whether the directory is gone. When false, `message` says why and whether Core tries again.
     public var removed: Bool
-    /// Whether the branch is still there: it has commits since the worktree was made, or Core could not tell.
+    /// Whether the branch is still there: it has moved off the commit it started from, or Core could not tell.
     public var branchKept: Bool
     public var message: String?
 
@@ -5325,8 +5325,12 @@ public struct WorktreeStatusResult: Codable, Equatable, Sendable {
     public var path: String
     /// Changed, staged and untracked paths in the worktree.
     public var uncommittedChanges: Int
-    /// Commits on the branch since the worktree was made. The branch is kept on removal when this is above zero.
+    /// Commits on the branch since the worktree was made.
     public var commits: Int
+    /// Whether removal keeps the branch: it has moved off the commit it started from. Removal decides by the same rule.
+    public var branchKept: Bool
+    /// Commits at the worktree's HEAD that no branch, tag or remote holds; removal loses them.
+    public var unbranchedCommits: Int
     /// Conversations working in this worktree.
     public var conversationCount: Int
 
@@ -5336,6 +5340,8 @@ public struct WorktreeStatusResult: Codable, Equatable, Sendable {
         path: String,
         uncommittedChanges: Int,
         commits: Int,
+        branchKept: Bool,
+        unbranchedCommits: Int,
         conversationCount: Int
     ) {
         self.projectSourceID = projectSourceID
@@ -5343,6 +5349,8 @@ public struct WorktreeStatusResult: Codable, Equatable, Sendable {
         self.path = path
         self.uncommittedChanges = uncommittedChanges
         self.commits = commits
+        self.branchKept = branchKept
+        self.unbranchedCommits = unbranchedCommits
         self.conversationCount = conversationCount
     }
 }

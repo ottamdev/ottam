@@ -166,9 +166,9 @@ pub(super) fn remove_checkout(home: &Path, released: &ReleasedWorktree) -> Workt
         if !removed_by_git {
             if let Err(error) = std::fs::remove_dir_all(&path) {
                 tracing::warn!(%error, "a worktree folder was not removed");
-                removal.message = Some(format!(
-                    "The folder could not be removed ({error}). Ottam tries again on its next launch."
-                ));
+                // The app quotes this after the path; the retry promise is
+                // Core's to make, since only Core knows the row owes it.
+                removal.message = Some(format!("{error}. Ottam tries again on its next launch."));
                 return removal;
             }
         }
@@ -467,10 +467,10 @@ impl AgentServer {
         let id = request.id.clone();
         let path = source.canonical_path.clone();
         let spawned = deferred.spawn(origin, async move {
-            let base = worktree.base_commit.clone();
             let status_path = path.clone();
+            let status_worktree = worktree.clone();
             match git::run_blocking("worktreeStatus", move || {
-                git::worktree_changes(&status_path, &base)
+                git::worktree_changes(&status_path, &status_worktree.branch, &status_worktree.base_commit)
             })
             .await
             {
@@ -481,7 +481,9 @@ impl AgentServer {
                         branch: worktree.branch,
                         path,
                         uncommitted_changes: changes.uncommitted,
-                        commits: changes.commits,
+                        commits: changes.branch_commits,
+                        branch_kept: changes.branch_kept,
+                        unbranched_commits: changes.unbranched_commits,
                         conversation_count: u32::try_from(conversation_count).unwrap_or(u32::MAX),
                     },
                 ),
@@ -576,7 +578,7 @@ fn owed_removal(released: &ReleasedWorktree) -> WorktreeRemoval {
         path: released.source.canonical_path.clone(),
         removed: false,
         branch_kept: true,
-        message: Some("Ottam removes the folder on its next launch.".into()),
+        message: Some("Ottam was busy with other worktrees and removes this one on its next launch.".into()),
     }
 }
 

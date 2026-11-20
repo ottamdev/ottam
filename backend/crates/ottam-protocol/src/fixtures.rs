@@ -1767,6 +1767,8 @@ pub fn worktree_status_response_fixture() -> WorktreeStatusResponse {
             path: "/Users/example/.ottam/worktrees/ottam/fix-login-a1b2".to_string(),
             uncommitted_changes: 3,
             commits: 1,
+            branch_kept: true,
+            unbranched_commits: 0,
             conversation_count: 2,
         },
     )

@@ -39,9 +39,11 @@ starts once W1 ships; its Try it is below.
 5. A delegated child runs in the same worktree.
 6. Quit and relaunch: same subtitle, and the next message runs in the
    worktree.
-7. Right-click › Delete Worktree…: the alert counts uncommitted changes.
-   Confirm: the directory is gone, the transcript stays readable, the
-   composer reads "This conversation's folder is unavailable".
+7. Right-click › Delete Worktree…: the alert counts uncommitted changes and
+   the branch's commits, and warns about commits no branch holds (commit on
+   a detached HEAD to see it). Confirm: the directory is gone, the
+   transcript stays readable, the composer reads "This conversation's folder
+   is unavailable".
 8. Delete Conversation… on another one: the alert names the worktree.
    Afterwards the branch survives only if it has commits.
 9. On a repo with no commits, ticking Worktree and sending shows an error
@@ -102,10 +104,13 @@ starts once W1 ships; its Try it is below.
 4. **The first message waits for setup (2026-11-18).** On failure the app
    shows the error with Retry, Fix Here and Fix in New Chat, so the agent
    never starts in a half-built checkout unless the user chooses it.
-5. **Last conversation removes the worktree (2026-11-18).** Deleting a
+5. **Last conversation removes the worktree (2026-11-18, revised
+   2026-11-20).** Deleting a
    conversation removes its worktree only when no other conversation uses
-   it, and the confirmation says so; the branch is kept unless it has no new
-   commits, so committed work is never lost.
+   it, and the confirmation says so, with the counts left unknown when Core
+   cannot read them. The branch is kept once it moves off the commit it
+   started from; commits no branch holds go with the folder, and the
+   confirmation counts them, so committed work is never lost unannounced.
 6. **No sidebar indicator (2026-11-18).** The window subtitle reads
    `<project> · <branch> · Worktree`, which keeps the sidebar uncluttered.
 7. **Out of scope (2026-11-18).** Copy-on-write cloning of ignored files,

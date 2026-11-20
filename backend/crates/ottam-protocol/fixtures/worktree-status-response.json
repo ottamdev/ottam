@@ -6,6 +6,8 @@
     "path": "/Users/example/.ottam/worktrees/ottam/fix-login-a1b2",
     "uncommittedChanges": 3,
     "commits": 1,
+    "branchKept": true,
+    "unbranchedCommits": 0,
     "conversationCount": 2
   }
 }

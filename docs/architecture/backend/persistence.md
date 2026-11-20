@@ -209,7 +209,11 @@ as a project. Create runs git first and compensates on a failed insert;
 removal archives the row first, so an archived row with its directory still
 present owes the removal and startup retries it. Removal only touches paths
 under `$OTTAM_HOME/worktrees`, and deletes the branch only when its tip is
-still the base commit. The last conversation's deletion archives the source
+still the base commit; `worktree.status` reports the branch's fate by that
+same rule (`git::branch_fate`), and counts the commits at the worktree's HEAD
+that no branch, tag or remote holds, which removal loses. A failed removal's message is the
+only place a retry is promised; the app adds none. The last conversation's
+deletion archives the source
 in its own transaction; `worktree.remove` leaves the conversations, which
 read as detached. Owner: `backend/crates/ottam-core/src/server/worktrees.rs`.
 

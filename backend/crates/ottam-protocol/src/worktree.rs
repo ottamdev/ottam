@@ -36,9 +36,14 @@ pub struct WorktreeStatusResult {
     pub path: String,
     /// Changed, staged and untracked paths in the worktree.
     pub uncommitted_changes: u32,
-    /// Commits on the branch since the worktree was made. The branch is
-    /// kept on removal when this is above zero.
+    /// Commits on the branch since the worktree was made.
     pub commits: u32,
+    /// Whether removal keeps the branch: it has moved off the commit it
+    /// started from. Removal decides by the same rule.
+    pub branch_kept: bool,
+    /// Commits at the worktree's HEAD that no branch, tag or remote holds;
+    /// removal loses them.
+    pub unbranched_commits: u32,
     /// Conversations working in this worktree.
     pub conversation_count: u32,
 }
@@ -51,11 +56,11 @@ pub struct WorktreeRemoval {
     pub project_source_id: ProjectSourceID,
     pub branch: String,
     pub path: String,
-    /// Whether the directory is gone. When false, Core retries on its next
-    /// launch.
+    /// Whether the directory is gone. When false, `message` says why and
+    /// whether Core tries again.
     pub removed: bool,
-    /// Whether the branch is still there: it has commits since the worktree
-    /// was made, or Core could not tell.
+    /// Whether the branch is still there: it has moved off the commit it
+    /// started from, or Core could not tell.
     pub branch_kept: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub message: Option<String>,

@@ -2688,20 +2688,30 @@ final class ChatWorkspaceModel {
     }
 
     /// What removing `root`'s worktree would take with it, for the alerts.
-    /// Nil, with the error shown, when Core cannot say.
-    func worktreeStatus(of root: WorkingRootSummary, backend: DiffReviewModel) async -> WorktreeStatusResult? {
+    /// When Core cannot count, the alerts still say the folder goes, with
+    /// the counts unknown. Nil when there is no worktree left to remove.
+    func worktreeConfirmation(of root: WorkingRootSummary, backend: DiffReviewModel) async -> WorktreeConfirmation? {
         guard let workspaceID, root.worktree != nil, let sourceID = root.sourceID else { return nil }
         do {
-            return try await backend.worktreeStatus(workspaceID: workspaceID, projectSourceID: sourceID)
-        } catch {
-            errorText = error.localizedDescription
+            return WorktreeConfirmation(
+                try await backend.worktreeStatus(workspaceID: workspaceID, projectSourceID: sourceID)
+            )
+        } catch AgentConnectionError.rpcError(_, _, let data?) where data.objectString("kind") == "worktreeUnavailable" {
+            // Removed since the list loaded: its rows read as detached now.
+            noticeText = WorktreeText.alreadyRemoved(root)
+            if let list = try? await backend.listConversations(workspaceID: workspaceID) {
+                apply(conversations: list.conversations)
+            }
             return nil
+        } catch {
+            Self.logger.error("worktree status failed: \(error.localizedDescription, privacy: .private)")
+            return WorktreeConfirmation(uncounted: root, conversations: conversations)
         }
     }
 
     /// Removes a worktree while its conversations stay: Core stops their
     /// runs and they read as detached from then on.
-    func removeWorktree(_ status: WorktreeStatusResult, backend: DiffReviewModel) async {
+    func removeWorktree(_ worktree: WorktreeConfirmation, backend: DiffReviewModel) async {
         guard let workspaceID else {
             markUnavailable()
             return
@@ -2713,11 +2723,11 @@ final class ChatWorkspaceModel {
         do {
             let result = try await backend.removeWorktree(
                 workspaceID: workspaceID,
-                projectSourceID: status.projectSourceID
+                projectSourceID: worktree.projectSourceID
             )
             noticeText = WorktreeText.removalNotice(result.removal)
             Self.logger.info(
-                "removed worktree projectSourceID=\(status.projectSourceID.rawValue, privacy: .public) removed=\(result.removal.removed, privacy: .public)"
+                "removed worktree projectSourceID=\(worktree.projectSourceID.rawValue, privacy: .public) removed=\(result.removal.removed, privacy: .public)"
             )
         } catch {
             errorText = error.localizedDescription

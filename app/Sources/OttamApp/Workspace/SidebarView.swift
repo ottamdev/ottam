@@ -32,8 +32,8 @@ struct SidebarView: View {
     @State private var uncappedSections: Set<SidebarSectionKind> = []
     @State private var deletionTarget: ConversationSummary?
     /// The deletion target's worktree, read before its alert shows.
-    @State private var deletionWorktree: WorktreeStatusResult?
-    @State private var worktreeRemovalTarget: WorktreeStatusResult?
+    @State private var deletionWorktree: WorktreeConfirmation?
+    @State private var worktreeRemovalTarget: WorktreeConfirmation?
     /// Parents whose delegated children are folded away. Not persisted: a
     /// fresh window shows every child.
     @State private var foldedParents: Set<ConversationID> = []
@@ -157,13 +157,13 @@ struct SidebarView: View {
             worktreeRemovalTarget.map(WorktreeText.removalTitle) ?? "",
             isPresented: worktreeRemovalPresented,
             presenting: worktreeRemovalTarget
-        ) { status in
+        ) { worktree in
             Button("Delete Worktree", role: .destructive) {
-                Task { await chatWorkspace.removeWorktree(status, backend: backend) }
+                Task { await chatWorkspace.removeWorktree(worktree, backend: backend) }
             }
             Button("Cancel", role: .cancel) {}
-        } message: { status in
-            Text(WorktreeText.removalMessage(status))
+        } message: { worktree in
+            Text(WorktreeText.removalMessage(worktree))
         }
     }
 
@@ -268,14 +268,14 @@ struct SidebarView: View {
             return
         }
         Task {
-            deletionWorktree = await chatWorkspace.worktreeStatus(of: conversation.workingRoot, backend: backend)
+            deletionWorktree = await chatWorkspace.worktreeConfirmation(of: conversation.workingRoot, backend: backend)
             deletionTarget = conversation
         }
     }
 
     private func requestWorktreeRemoval(of root: WorkingRootSummary) {
         Task {
-            worktreeRemovalTarget = await chatWorkspace.worktreeStatus(of: root, backend: backend)
+            worktreeRemovalTarget = await chatWorkspace.worktreeConfirmation(of: root, backend: backend)
         }
     }
 
@@ -446,10 +446,10 @@ struct SidebarView: View {
         let removes = "This removes the conversation and its local history. "
             + "Associated harness sessions will also be removed where supported."
         let children = delegatedChildren(of: conversation)
-        let worktree = deletionWorktree.map { status in
+        let worktree = deletionWorktree.map { worktree in
             WorktreeText.conversationDeletion(
-                status,
-                deletedChildren: children.filter { $0.workingRoot.sourceID == status.projectSourceID }.count
+                worktree,
+                deletedChildren: children.filter { $0.workingRoot.sourceID == worktree.projectSourceID }.count
             )
         }
         guard !children.isEmpty else {

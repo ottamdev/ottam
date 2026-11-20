@@ -226,6 +226,8 @@ fn a_worktree_conversation_and_its_child_work_in_their_own_checkout() {
     assert_eq!(status["branch"].as_str(), Some(branch.as_str()));
     assert_eq!(status["uncommittedChanges"], 2);
     assert_eq!(status["commits"], 0);
+    assert_eq!(status["branchKept"], false);
+    assert_eq!(status["unbranchedCommits"], 0);
     assert_eq!(status["conversationCount"], 2);
 
     // Deleting the parent alone keeps the worktree for the child.
@@ -282,6 +284,8 @@ fn a_worktree_branch_with_commits_survives_its_conversation_and_a_relaunch() {
     run_git(&path, ["commit", "-m", "feature"]);
     let status = worktree_status(&mut core, &workspace_id, &worktree_source(&created));
     assert_eq!(status["commits"], 1);
+    assert_eq!(status["branchKept"], true);
+    assert_eq!(status["unbranchedCommits"], 0);
     assert_eq!(status["uncommittedChanges"], 0);
 
     let deleted = delete_conversation(&mut core, &workspace_id, &conversation_id, "keep");
@@ -289,6 +293,51 @@ fn a_worktree_branch_with_commits_survives_its_conversation_and_a_relaunch() {
     assert_eq!(deleted["worktree"]["branchKept"], true);
     assert!(!path.exists());
     assert!(branch_exists(repo.path(), &branch));
+    core.shutdown();
+}
+
+/// Status and removal read the same ref: commits on a detached HEAD leave the
+/// recorded branch where it started, so removal deletes it, and status says
+/// those commits are on no branch.
+#[test]
+fn commits_on_a_detached_head_are_reported_as_unbranched() {
+    let repo = GitRepoFixture::init();
+    repo.commit_empty("initial");
+    let home = TempDir::new().expect("OTTAM_HOME");
+    let mut core = CoreProcess::new_in_home(home.path());
+    core.initialize();
+    let opened = core.open_path(repo.path());
+    let project_id = opened["project"]["projectID"].as_str().unwrap().to_string();
+    let workspace_id = core.workspace_id(&project_id);
+    let created = create_worktree_conversation(&mut core, &project_id, "Detach and commit");
+    let source_id = worktree_source(&created);
+    let path = worktree_path(&created);
+    let branch = created["conversation"]["workingRoot"]["worktree"]["branch"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    run_git(&path, ["checkout", "--detach"]);
+    std::fs::write(path.join("loose.txt"), "loose\n").unwrap();
+    run_git(&path, ["add", "-A"]);
+    run_git(&path, ["commit", "-m", "loose"]);
+
+    let status = worktree_status(&mut core, &workspace_id, &source_id);
+    assert_eq!(status["commits"], 0, "{status}");
+    assert_eq!(status["branchKept"], false);
+    assert_eq!(status["unbranchedCommits"], 1);
+
+    let (removed, _) = core.send_for_id(
+        json!({
+            "id": 70,
+            "method": "worktree.remove",
+            "params": {"workspaceID": workspace_id, "projectSourceID": source_id}
+        }),
+        json!(70),
+    );
+    assert_success_response(&removed, &json!(70));
+    assert_eq!(removed["result"]["removal"]["removed"], true, "{removed}");
+    assert_eq!(removed["result"]["removal"]["branchKept"], false);
+    assert!(!branch_exists(repo.path(), &branch));
     core.shutdown();
 }
 
@@ -440,6 +489,13 @@ fn a_refused_removal_is_retried_on_the_next_launch() {
 
     let deleted = delete_conversation(&mut core, &workspace_id, &conversation_id, "keep");
     assert_eq!(deleted["worktree"]["removed"], false, "{deleted}");
+    // Core's message owns the promise to retry.
+    assert!(
+        deleted["worktree"]["message"]
+            .as_str()
+            .is_some_and(|message| message.ends_with("Ottam tries again on its next launch.")),
+        "{deleted}"
+    );
     assert!(path.exists());
     core.shutdown();
 
