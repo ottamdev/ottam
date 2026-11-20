@@ -192,9 +192,10 @@ final class NotificationPresenter {
     }
 
     /// Asks for permission the first time there is something to show, never
-    /// at launch, and only while the user has not decided. `isWanted` is
-    /// asked once authorization is settled, which can take as long as the
-    /// user does: a banner seen or replaced meanwhile is never added.
+    /// at launch, and only while the user has not decided. Authorization can
+    /// take as long as the user does, so the toggle and `isWanted` are asked
+    /// again once it is settled: a banner seen, replaced or turned off
+    /// meanwhile is never added.
     func post(_ entry: AttentionEntry, isWanted: () -> Bool = { true }) async {
         guard settings.allowsBanner(for: entry.reason) else { return }
         var status = await center.authorizationStatus()
@@ -203,7 +204,9 @@ final class NotificationPresenter {
             status = await center.authorizationStatus()
         }
         authorization = status
-        guard status == .authorized || status == .provisional, isWanted() else { return }
+        guard status == .authorized || status == .provisional,
+              settings.allowsBanner(for: entry.reason), isWanted()
+        else { return }
         await center.add(banner(for: entry))
         notificationLogger.info(
             "posted a banner conversationID=\(entry.conversationID.rawValue, privacy: .public)"

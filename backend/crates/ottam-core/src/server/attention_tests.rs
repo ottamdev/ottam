@@ -105,6 +105,27 @@ async fn an_ask_dropped_before_its_title_is_read_sends_nothing() {
 }
 
 #[tokio::test(start_paused = true)]
+async fn an_older_ask_alerts_when_the_newer_one_it_deferred_to_ends_first() {
+    let (sink, mut rx) = test_sink();
+    let attention = Attention::new(sink);
+    let _older = attention.begin_ask(ask("a", AttentionReason::Permission));
+    tokio::time::sleep(ASK_NOTIFY_DELAY / 2).await;
+    let newer = attention.begin_ask(ask("a", AttentionReason::Question));
+    // The older ask's deadline passes while the newer one is the latest.
+    tokio::time::sleep(ASK_NOTIFY_DELAY / 2 + Duration::from_millis(10)).await;
+    assert_eq!(
+        states(&drain(&mut rx)),
+        [("needsInput", false), ("needsInput", false)]
+    );
+
+    drop(newer);
+    assert_eq!(states(&drain(&mut rx)), [("needsInput", true)]);
+    // The newer ask's deadline, now past, sends nothing more.
+    tokio::time::sleep(ASK_NOTIFY_DELAY).await;
+    assert!(drain(&mut rx).is_empty());
+}
+
+#[tokio::test(start_paused = true)]
 async fn an_unfocused_end_becomes_unseen_and_focus_clears_it() {
     let (sink, mut rx) = test_sink();
     let attention = Attention::new(sink);

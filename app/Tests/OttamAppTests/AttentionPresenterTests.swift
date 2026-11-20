@@ -15,6 +15,11 @@ final class FakeNotificationCenter: NotificationCenterCapability {
     private(set) var added: [NotificationBanner] = []
     private(set) var removed: [String] = []
     var delivered: [String] = []
+    /// Holds the permission prompt open until `answerPrompt()`, as a user
+    /// still reading it does.
+    var holdsPrompt = false
+    private(set) var isPrompting = false
+    private var promptAnswer: CheckedContinuation<Void, Never>?
 
     init(status: UNAuthorizationStatus, grants: Bool = true) {
         self.status = status
@@ -25,8 +30,26 @@ final class FakeNotificationCenter: NotificationCenterCapability {
 
     func requestAuthorization() async -> Bool {
         requests += 1
+        if holdsPrompt {
+            isPrompting = true
+            await withCheckedContinuation { promptAnswer = $0 }
+            isPrompting = false
+        }
         status = grants ? .authorized : .denied
         return grants
+    }
+
+    func answerPrompt() {
+        promptAnswer?.resume()
+        promptAnswer = nil
+    }
+
+    /// Yields until the prompt is up, within a bound.
+    func waitForPrompt() async {
+        let deadline = ContinuousClock.now + .seconds(2)
+        while !isPrompting, ContinuousClock.now < deadline {
+            await Task.yield()
+        }
     }
 
     func add(_ banner: NotificationBanner) async {
@@ -117,6 +140,22 @@ struct AttentionPresenterTests {
         await presenter.post(entry("question", .needsInput, reason: .question))
         await presenter.post(entry("done", reason: .completed))
         #expect(center.added.map(\.conversationID) == [ConversationID("ask"), ConversationID("done")])
+    }
+
+    @Test("a banner turned off while the permission prompt is up never shows")
+    func toggleDuringPrompt() async {
+        let center = FakeNotificationCenter(status: .notDetermined)
+        center.holdsPrompt = true
+        let settings = settings()
+        let presenter = presenter(center, settings: settings)
+        let posting = Task { await presenter.post(entry("a")) }
+        await center.waitForPrompt()
+        #expect(center.isPrompting)
+        settings.agentFinished = false
+        center.answerPrompt()
+        await posting.value
+        #expect(presenter.authorization == .authorized)
+        #expect(center.added.isEmpty)
     }
 
     @Test("a banner names the conversation, reads as its last message, threads by workspace, and keys by state")
@@ -242,5 +281,27 @@ struct AttentionStoreTests {
             await Task.yield()
         }
         #expect(center.added.map(\.identifier) == ["attention.unseen.b"])
+    }
+
+    @Test("a conversation seen while the permission prompt is up never shows its banner")
+    func seenDuringPrompt() async {
+        let center = FakeNotificationCenter(status: .notDetermined)
+        center.holdsPrompt = true
+        let suite = "attention-store-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defaults.removePersistentDomain(forName: suite)
+        let presenter = NotificationPresenter(center: center, settings: NotificationSettings(defaults: defaults))
+        let store = AttentionStore(client: client(), presenter: presenter) { _ in }
+        store.receive(change(1, "a", .unseen, notify: true))
+        await center.waitForPrompt()
+        #expect(center.isPrompting)
+        store.receive(change(2, "a", .none, notify: false))
+        center.answerPrompt()
+        let deadline = ContinuousClock.now + .seconds(2)
+        while !center.removed.contains("attention.unseen.a"), ContinuousClock.now < deadline {
+            await Task.yield()
+        }
+        #expect(center.removed.contains("attention.unseen.a"))
+        #expect(center.added.isEmpty)
     }
 }

@@ -115,6 +115,8 @@ struct Ask {
     detail: Option<String>,
     /// Set once the title is read and the ask was sent.
     title: Option<String>,
+    /// Its alert went to a newer ask; if that one ends first, this alerts.
+    deferred: bool,
 }
 
 struct Candidate {
@@ -360,6 +362,7 @@ impl Attention {
                 reason: info.reason,
                 detail: info.detail.as_deref().and_then(clip),
                 title: None,
+                deferred: false,
             });
             id
         };
@@ -385,12 +388,17 @@ impl Attention {
             tokio::time::sleep(ASK_NOTIFY_DELAY).await;
             let Some(attention) = this.upgrade() else { return };
             let mut state = attention.state();
-            let latest = state
-                .asks
-                .get(&task_conversation)
-                .and_then(|asks| asks.last())
-                .is_some_and(|ask| ask.id == id);
-            if latest && !state.focused(&task_conversation) {
+            let Some(asks) = state.asks.get_mut(&task_conversation) else {
+                return;
+            };
+            let latest = asks.last().is_some_and(|ask| ask.id == id);
+            if !latest {
+                if let Some(ask) = asks.iter_mut().find(|ask| ask.id == id) {
+                    ask.deferred = true;
+                }
+                return;
+            }
+            if !state.focused(&task_conversation) {
                 let before = state.entry(&task_conversation);
                 attention.emit(&mut state, &task_conversation, before, true);
             }
@@ -411,12 +419,20 @@ impl Attention {
         let Some(index) = asks.iter().position(|ask| ask.id == id) else {
             return;
         };
+        let latest = index + 1 == asks.len();
         let shown = asks.remove(index).title.is_some();
+        // The newer ask an older one deferred to ended: the older one, still
+        // unanswered, alerts in its place.
+        let deferred = latest
+            && asks
+                .last_mut()
+                .is_some_and(|ask| std::mem::take(&mut ask.deferred));
         if asks.is_empty() {
             state.asks.remove(conversation);
         }
-        if shown {
-            self.emit(&mut state, conversation, before, false);
+        let notify = deferred && !state.focused(conversation);
+        if shown || notify {
+            self.emit(&mut state, conversation, before, notify);
         }
     }
 

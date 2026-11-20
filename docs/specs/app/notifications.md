@@ -23,9 +23,10 @@ Dock badge.
 
 Try it (approved). Run `./scripts/run-app.sh` with a real agent.
 
-1. In conversation A send a task that takes about 30 s. macOS asks to allow
-   notifications; allow. A's row shows a spinner.
-2. Select conversation B. About 2 s after A finishes, a banner appears:
+1. In conversation A send a task that takes about 30 s. A's row shows a
+   spinner.
+2. Select conversation B. About 2 s after A finishes, macOS asks to allow
+   notifications, since this is the first banner; allow. The banner shows
    A's title over the start of its last message ("Finished" when it wrote
    none). A's row shows the accent dot. The Dock badge shows 1.
 3. Click the banner. The window comes forward with A selected; the dot, the
@@ -48,7 +49,7 @@ Try it (approved). Run `./scripts/run-app.sh` with a real agent.
 Failed runs are covered by the protocol test, not by hand.
 
 - [ ] 3. Banners checked by hand.
-  - Done when: step 1's prompt appears on a bundle that has never asked;
+  - Done when: step 2's prompt appears on a bundle that has never asked;
     the banners in steps 5 and 8 read as written and clicking them brings
     Ottam forward on the conversation (step 8 reopens the window); the Dock
     badge shows the count; with banners denied, Settings' "Open System
