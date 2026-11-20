@@ -23,8 +23,8 @@ starts once W1 ships; its Try it is below.
   - Done when: every Try it step below works in the real window.
   - Verify with: `./scripts/test-rust-core.sh --filter worktree`,
     `--test jsonl_protocol --filter worktree`, focused Swift tests, the
-    `worktree-conversation` UI scenario, and the Try it with screenshots plus
-    AX.
+    `chat.worktree-conversation` UI scenario, and the Try it with
+    screenshots plus AX.
 
 #### Try it
 
