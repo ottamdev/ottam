@@ -200,6 +200,19 @@ submissions; restart finishes an interrupted deletion. Process cleanup and
 filesystem deletion cannot join a transaction, so they are idempotent and
 leave recoverable orphan state, never half-valid relational state.
 
+### Worktree Sources
+
+A conversation's worktree is a non-primary `localGit` ProjectSource with
+`worktree_branch` and `worktree_base_commit` set; Core makes it under
+`$OTTAM_HOME/worktrees` and never adopts one it did not make, nor opens one
+as a project. Create runs git first and compensates on a failed insert;
+removal archives the row first, so an archived row with its directory still
+present owes the removal and startup retries it. Removal only touches paths
+under `$OTTAM_HOME/worktrees`, and deletes the branch only when its tip is
+still the base commit. The last conversation's deletion archives the source
+in its own transaction; `worktree.remove` leaves the conversations, which
+read as detached. Owner: `backend/crates/ottam-core/src/server/worktrees.rs`.
+
 ## Enforcement
 
 Never log SQL bind values, message bodies, agent output, authentication data,

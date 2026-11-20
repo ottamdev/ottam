@@ -84,6 +84,19 @@ fn worktree_status(core: &mut CoreProcess, workspace_id: &str, source_id: &str) 
     response["result"].clone()
 }
 
+fn diff_snapshot(core: &mut CoreProcess, source_id: &str, id: u64) -> Value {
+    let (response, _) = core.send_for_id(
+        json!({
+            "id": id,
+            "method": "git.diffSnapshot",
+            "params": {"projectSourceID": source_id}
+        }),
+        json!(id),
+    );
+    assert_success_response(&response, &json!(id));
+    response["result"].clone()
+}
+
 fn delete_conversation(
     core: &mut CoreProcess,
     workspace_id: &str,
@@ -193,11 +206,25 @@ fn a_worktree_conversation_and_its_child_work_in_their_own_checkout() {
         .expect("the delegated child");
     assert_eq!(child["workingRoot"]["sourceID"].as_str(), Some(source_id.as_str()));
 
+    // Review reads the worktree, and the project's checkout stays clean.
+    std::fs::write(path.join("README.md"), "worktrees, edited\n").unwrap();
+    let review = diff_snapshot(&mut core, &source_id, 64);
+    assert!(
+        review["files"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|file| file["path"] == "README.md"),
+        "{review}"
+    );
+    let primary_review = diff_snapshot(&mut core, &primary_source, 65);
+    assert!(primary_review["files"].as_array().unwrap().is_empty(), "{primary_review}");
+
     // Status counts what removal would discard.
     std::fs::write(path.join("scratch.txt"), "draft\n").unwrap();
     let status = worktree_status(&mut core, &workspace_id, &source_id);
     assert_eq!(status["branch"].as_str(), Some(branch.as_str()));
-    assert_eq!(status["uncommittedChanges"], 1);
+    assert_eq!(status["uncommittedChanges"], 2);
     assert_eq!(status["commits"], 0);
     assert_eq!(status["conversationCount"], 2);
 
