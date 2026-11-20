@@ -53,3 +53,5 @@ mod steering;
 mod terminal;
 #[path = "jsonl_protocol/workspace_files.rs"]
 mod workspace_files;
+#[path = "jsonl_protocol/worktree.rs"]
+mod worktree;

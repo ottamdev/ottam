@@ -470,3 +470,17 @@ fn git_output_max_bytes() -> usize {
         .filter(|value| *value > 0)
         .unwrap_or(DEFAULT_GIT_OUTPUT_MAX_BYTES)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::porcelain_entry_count;
+
+    #[test]
+    fn worktree_changes_count_a_rename_once() {
+        assert_eq!(porcelain_entry_count(""), 0);
+        assert_eq!(
+            porcelain_entry_count(" M src/a.rs\0?? notes.txt\0R  new.rs\0old.rs\0"),
+            3
+        );
+    }
+}

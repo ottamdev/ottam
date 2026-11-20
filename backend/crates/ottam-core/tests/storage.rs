@@ -229,7 +229,65 @@ async fn baseline_has_exact_target_tables_integrity_and_connection_pragmas() {
     assert_eq!(tables.4, 1, "SQLite NORMAL is numeric value 1");
     // The applied set is asserted exactly so adding a migration is a deliberate,
     // reviewed change rather than something that lands unnoticed.
-    assert_eq!(tables.5, vec!["00000000000000", "00000000000001"]);
+    assert_eq!(
+        tables.5,
+        vec!["00000000000000", "00000000000001", "00000000000002"]
+    );
+}
+
+/// A home from before managed worktrees gains the two worktree columns on
+/// startup, after a backup, and its sources read as plain checkouts.
+#[tokio::test]
+async fn a_home_before_worktrees_upgrades_with_plain_sources() {
+    let home = TempDir::new().expect("home");
+    let database = Database::open(home.path().to_path_buf()).expect("opens database");
+    let source_id = database
+        .run("test.beforeWorktrees", |connection| {
+            let opened = ProjectRepository::open_local_git(
+                connection,
+                "/tmp/ottam-before-worktrees",
+                "before-worktrees",
+                chrono::Utc::now(),
+            )?;
+            Ok(opened.source.id)
+        })
+        .await
+        .expect("seeds a project");
+    drop(database);
+    let path = home.path().join("ottam.sqlite");
+    {
+        let mut connection =
+            SqliteConnection::establish(path.to_string_lossy().as_ref()).expect("opens SQLite");
+        connection
+            .batch_execute(
+                "ALTER TABLE project_sources DROP COLUMN worktree_base_commit; \
+                 ALTER TABLE project_sources DROP COLUMN worktree_branch; \
+                 DELETE FROM __diesel_schema_migrations WHERE version = '00000000000002';",
+            )
+            .expect("rewinds to before worktrees");
+    }
+
+    let database = Database::open(home.path().to_path_buf()).expect("upgrades the home");
+
+    assert!(home
+        .path()
+        .join("ottam-before-00000000000002.sqlite")
+        .is_file());
+    let source = database
+        .run("test.afterWorktrees", move |connection| {
+            ProjectRepository::get_source(connection, &source_id)
+        })
+        .await
+        .expect("reads the source");
+    assert!(source.is_primary);
+    assert_eq!(source.worktree, None);
+    drop(database);
+    let mut connection =
+        SqliteConnection::establish(path.to_string_lossy().as_ref()).expect("opens SQLite");
+    assert_eq!(
+        applied_migrations(&mut connection),
+        vec!["00000000000000", "00000000000001", "00000000000002"]
+    );
 }
 
 /// A home that ran only the baseline gains the session model columns on
@@ -288,13 +346,13 @@ async fn baseline_home_upgrades_to_session_model_columns() {
 
     assert!(home
         .path()
-        .join("ottam-before-00000000000001.sqlite")
+        .join("ottam-before-00000000000002.sqlite")
         .is_file());
     let mut connection =
         SqliteConnection::establish(path.to_string_lossy().as_ref()).expect("opens SQLite");
     assert_eq!(
         applied_migrations(&mut connection),
-        vec!["00000000000000", "00000000000001"]
+        vec!["00000000000000", "00000000000001", "00000000000002"]
     );
     let kept = diesel::sql_query(
         "SELECT COUNT(*) AS value FROM agent_sessions \
@@ -416,7 +474,7 @@ fn pending_migration_is_backed_up_before_it_runs() {
 
     assert!(Database::open(home.path().to_path_buf()).is_err());
 
-    let backup = home.path().join("ottam-before-00000000000001.sqlite");
+    let backup = home.path().join("ottam-before-00000000000002.sqlite");
     assert!(backup.is_file());
     let coordinated = std::fs::read_dir(home.path().join("backups"))
         .expect("lists coordinated backups")
