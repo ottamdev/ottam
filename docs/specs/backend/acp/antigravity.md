@@ -89,7 +89,8 @@ a Mac already signed in to `agy`.
     "Authentication required" marks the profile signed out, whatever the
     Keychain shows, and offers Sign in (the terminal login, with the home
     argument). That one path covers both failure states. With a revoked
-    token, the login replaces it, which also repairs the user's CLI. If
+    token and the Keychain store, the login replaces it, which also
+    repairs the user's CLI. If
     `agy` fell back to the file store (a recent keyring timeout or a
     failed keyring write), the login writes the token into the managed
     home, but only while that reason still holds. The timeout marker
@@ -104,8 +105,10 @@ a Mac already signed in to `agy`.
     a managed home with the timeout marker active and again after it
     expires. If the two differ, the Keychain login is the one at risk, so
     the Sign in copy also asks the user to sign in with the same Google
-    account their CLI uses. Then the CLI ends up with a fresh token for
-    that same account.
+    account their CLI uses. That repairs the CLI only when the login lands
+    in the Keychain. A login that lands in the managed home leaves the
+    CLI's token as it was, revoked or not. The user repairs that by
+    running `agy` itself, and the add-agent note says so.
   - Upstream ask: a supported switch (a flag or a `settings.json` key)
     for the file token store under `--gemini-dir`. That would make managed
     homes real accounts. Ask the user before posting.
