@@ -11,45 +11,11 @@ each other. A Worktree checkbox at conversation creation makes Core run
 
 ## Current Status
 
-W1 (create, work, delete) is in progress. W2 (a per-project setup command)
-starts once W1 ships; its Try it is below.
+W1 (create, work in and delete a worktree conversation) is shipped; its
+rules are in [persistence.md](../../architecture/backend/persistence.md) ›
+Worktree Sources. W2 (a per-project setup command) is next.
 
 ## Active
-
-### W1: work in a worktree
-
-- [~] `wt:1` Create, work in and delete a worktree conversation.
-  - Why: two conversations on one project need separate checkouts.
-  - Done when: every Try it step below works in the real window.
-  - Verify with: `./scripts/test-rust-core.sh --filter worktree`,
-    `--test jsonl_protocol --filter worktree`, focused Swift tests, the
-    `chat.worktree-conversation` UI scenario, and the Try it with
-    screenshots plus AX.
-
-#### Try it
-
-1. New chat on a git project: a Worktree checkbox sits under the composer.
-   It is absent for Workspace files.
-2. Tick it and send. The send button spins, the conversation opens, and the
-   subtitle reads `<project> · <branch> · Worktree`.
-3. Tools › Terminal: `pwd` is the worktree and `git branch --show-current`
-   is the new branch. In the main checkout `git status` is unchanged and
-   `git worktree list` shows the new entry.
-4. The agent edits a file: Review shows it, the main checkout does not.
-5. A delegated child runs in the same worktree.
-6. Quit and relaunch: same subtitle, and the next message runs in the
-   worktree.
-7. Right-click › Delete Worktree…: the alert counts uncommitted changes and
-   the branch's commits, and warns about commits no branch holds (commit on
-   a detached HEAD to see it). Confirm: the directory is gone, the
-   transcript stays readable, the composer reads "This conversation's folder
-   is unavailable".
-8. Delete Conversation… on another one: the alert names the worktree.
-   Afterwards the branch survives only if it has commits.
-9. On a repo with no commits, ticking Worktree and sending shows an error
-   under the composer, keeps the draft, and leaves nothing on disk.
-
-## Next
 
 ### W2: setup command
 
@@ -77,7 +43,8 @@ starts once W1 ships; its Try it is below.
    Show Output, which then shows the card.
 7. Quit during setup, relaunch: the card says setup was interrupted, and
    Retry works.
-8. A project with no command behaves as W1.
+8. A project with no command makes the worktree and starts the agent
+   straight away.
 
 ## Backlog
 
