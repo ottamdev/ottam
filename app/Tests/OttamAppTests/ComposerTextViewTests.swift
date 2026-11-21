@@ -21,9 +21,23 @@ struct ComposerTextViewTests {
         ))
     }
 
+    /// The editor as first responder of a window that is never shown. A text
+    /// view outside a window has no responder chain: every key its `keyDown`
+    /// passes on ends in `noResponder(for:)`, which sounds the alert.
+    private func hostedEditor() throws -> (editor: ComposerTextView, window: NSWindow) {
+        let frame = NSRect(x: 0, y: 0, width: 400, height: 100)
+        let window = NSWindow(contentRect: frame, styleMask: [.titled], backing: .buffered, defer: true)
+        window.isReleasedWhenClosed = false
+        let editor = ComposerTextView(frame: frame)
+        window.contentView?.addSubview(editor)
+        try #require(window.makeFirstResponder(editor))
+        return (editor, window)
+    }
+
     @Test("holding Escape cannot confirm stopping a run")
     func escapeRepeatDoesNotConfirmStop() throws {
-        let editor = ComposerTextView(frame: NSRect(x: 0, y: 0, width: 400, height: 100))
+        let (editor, window) = try hostedEditor()
+        defer { window.close() }
         var confirmation = ChatEscapeStopConfirmation()
         var stops = 0
         let now = ContinuousClock().now
@@ -47,7 +61,8 @@ struct ComposerTextViewTests {
 
     @Test("Escape during marked text does not arm or confirm run cancellation")
     func escapeBelongsToMarkedText() throws {
-        let editor = ComposerTextView(frame: NSRect(x: 0, y: 0, width: 400, height: 100))
+        let (editor, window) = try hostedEditor()
+        defer { window.close() }
         var escapeCalls = 0
         editor.onEscape = {
             escapeCalls += 1
