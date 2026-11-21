@@ -528,12 +528,15 @@ fn a_failed_checkout_leaves_no_folder_branch_or_registration() {
         json!(74),
     );
     assert!(response.get("error").is_some(), "{response}");
-    assert!(
-        std::fs::read_dir(home.path().join("worktrees"))
-            .map(|entries| entries.count() == 0)
-            .unwrap_or(true),
-        "a checkout folder was left behind"
-    );
+    // The project folder stays, so a concurrent create never loses it; no
+    // checkout folder is left inside it.
+    let checkouts = std::fs::read_dir(home.path().join("worktrees"))
+        .into_iter()
+        .flatten()
+        .flatten()
+        .flat_map(|project| std::fs::read_dir(project.path()).into_iter().flatten().flatten())
+        .count();
+    assert_eq!(checkouts, 0, "a checkout folder was left behind");
     assert!(run_git(repo.path(), ["branch", "--list", "ottam/*"]).trim().is_empty());
     assert_eq!(run_git(repo.path(), ["worktree", "list", "--porcelain"]).matches("worktree ").count(), 1);
     assert_eq!(core.list_conversations(&project_id), json!([]));

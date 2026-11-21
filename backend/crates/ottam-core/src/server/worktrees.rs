@@ -110,16 +110,9 @@ pub(super) fn create_checkout(
         }
         // Claims the name: a concurrent create that drew it too fails here
         // and draws again, so what this attempt later discards is its own.
-        // Git checks out into an empty folder. A removal of the project's last
-        // worktree can take the emptied project folder meanwhile; make it
-        // again once.
-        let claimed = std::fs::create_dir(&path).or_else(|error| match error.kind() {
-            std::io::ErrorKind::NotFound => {
-                std::fs::create_dir_all(&project_dir).and_then(|()| std::fs::create_dir(&path))
-            }
-            _ => Err(error),
-        });
-        match claimed {
+        // Git checks out into an empty folder. The project folder is never
+        // removed, so no concurrent removal takes it out from under this.
+        match std::fs::create_dir(&path) {
             Ok(()) => {}
             Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
             Err(error) => {
@@ -166,10 +159,6 @@ pub(super) fn create_checkout(
         };
         break;
     }
-    if outcome.is_err() {
-        // Only empty, so another worktree of the project is never touched.
-        let _ = std::fs::remove_dir(&project_dir);
-    }
     outcome
 }
 
@@ -191,9 +180,6 @@ pub(super) fn discard_checkout(created: &CreatedCheckout) {
         &created.worktree.base_commit,
     ) {
         tracing::warn!(kind = error.kind, "an unrecorded worktree's branch was not deleted");
-    }
-    if let Some(parent) = path.parent() {
-        let _ = std::fs::remove_dir(parent);
     }
 }
 
@@ -251,10 +237,6 @@ pub(super) fn remove_checkout(home: &Path, released: &ReleasedWorktree) -> Workt
         }
     }
     removal.removed = true;
-    if let Some(parent) = path.parent() {
-        // Only empty: the project's other worktrees stay.
-        let _ = std::fs::remove_dir(parent);
-    }
     let Some(primary) = primary else {
         removal.message = Some("The project's checkout is gone, so its branch was left alone.".into());
         return removal;

@@ -223,7 +223,8 @@ never writes beside the user's checkout.
   branch while a row of its project does, archived or not. Create claims
   the folder (`create_dir`) and then the branch (`git branch`, which fails
   on an existing name) before the checkout, so cleanup only ever touches
-  what it made. The one gap left: Core exiting between deleting an
+  what it made. A project's folder under the root is never removed, so no
+  removal takes it out from under a create. The one gap left: Core exiting between deleting an
   unchanged branch and recording the settled removal, with the same
   `ottam/…` branch remade by hand in between.
 - Create runs git first. A failed `git worktree add` (a failing
