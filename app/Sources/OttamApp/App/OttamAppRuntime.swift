@@ -36,7 +36,7 @@ final class OttamAppRuntime {
             // that reaches ready (startup, recovery, a replaced core) reseeds.
             guard case .ready(let instance) = connectionState, connectionState != oldValue else { return }
             attention.connected(to: instance)
-            focusReporter.resend()
+            focusReporter.coreBecameReady()
         }
     }
     private(set) var coreExitError: CoreExitError?
@@ -134,7 +134,6 @@ final class OttamAppRuntime {
         // Before core can be ready, so the subscription is in place before
         // the first snapshot is read.
         await attention.start()
-        focusReporter.start()
         await refreshWorkspaces()
     }
 

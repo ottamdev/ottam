@@ -4,6 +4,16 @@ import Testing
 @preconcurrency import UserNotifications
 @testable import OttamApp
 
+/// Polls `condition` within a bound. It sleeps between checks rather than
+/// yielding, so a wait leaves the main actor to the window tests beside it.
+@MainActor
+private func waitUntil(_ condition: () -> Bool) async {
+    let deadline = ContinuousClock.now + .seconds(5)
+    while !condition(), ContinuousClock.now < deadline {
+        try? await Task.sleep(for: .milliseconds(5))
+    }
+}
+
 /// Stands in for the system notification center, which a test process
 /// cannot reach.
 @MainActor
@@ -42,14 +52,6 @@ final class FakeNotificationCenter: NotificationCenterCapability {
     func answerPrompt() {
         promptAnswer?.resume()
         promptAnswer = nil
-    }
-
-    /// Yields until the prompt is up, within a bound.
-    func waitForPrompt() async {
-        let deadline = ContinuousClock.now + .seconds(2)
-        while !isPrompting, ContinuousClock.now < deadline {
-            await Task.yield()
-        }
     }
 
     func add(_ banner: NotificationBanner) async {
@@ -149,7 +151,7 @@ struct AttentionPresenterTests {
         let settings = settings()
         let presenter = presenter(center, settings: settings)
         let posting = Task { await presenter.post(entry("a")) }
-        await center.waitForPrompt()
+        await waitUntil { center.isPrompting }
         #expect(center.isPrompting)
         settings.agentFinished = false
         center.answerPrompt()
@@ -257,29 +259,23 @@ struct AttentionStoreTests {
         defaults.removePersistentDomain(forName: suite)
         let presenter = NotificationPresenter(center: center, settings: NotificationSettings(defaults: defaults))
         let store = AttentionStore(client: client(), presenter: presenter) { _ in }
-        let deadline = ContinuousClock.now + .seconds(2)
         store.receive(change(1, "b", .unseen, notify: true))
-        while center.added.isEmpty, ContinuousClock.now < deadline {
-            await Task.yield()
-        }
+        await waitUntil { !center.added.isEmpty }
         #expect(center.added.map(\.identifier) == ["attention.unseen.b"])
 
         // The post awaits authorization; the change right behind it ends the
         // state, so the banner is never added, not added and then removed.
         store.receive(change(2, "a", .unseen, notify: true))
         store.receive(change(3, "a", .none, notify: false))
-        while !center.removed.contains("attention.unseen.a"), ContinuousClock.now < deadline {
-            await Task.yield()
-        }
+        await waitUntil { center.removed.contains("attention.unseen.a") }
         #expect(center.removed.contains("attention.unseen.a"))
         #expect(center.added.map(\.identifier) == ["attention.unseen.b"])
 
         // Focus withdraws an ask's banner that core still holds.
         store.receive(change(4, "c", .needsInput, notify: true))
         store.withdrawBanners(for: ConversationID("c"))
-        while !center.removed.contains("attention.needsInput.c"), ContinuousClock.now < deadline {
-            await Task.yield()
-        }
+        await waitUntil { center.removed.contains("attention.needsInput.c") }
+        #expect(center.removed.contains("attention.needsInput.c"))
         #expect(center.added.map(\.identifier) == ["attention.unseen.b"])
     }
 
@@ -293,14 +289,11 @@ struct AttentionStoreTests {
         let presenter = NotificationPresenter(center: center, settings: NotificationSettings(defaults: defaults))
         let store = AttentionStore(client: client(), presenter: presenter) { _ in }
         store.receive(change(1, "a", .unseen, notify: true))
-        await center.waitForPrompt()
+        await waitUntil { center.isPrompting }
         #expect(center.isPrompting)
         store.receive(change(2, "a", .none, notify: false))
         center.answerPrompt()
-        let deadline = ContinuousClock.now + .seconds(2)
-        while !center.removed.contains("attention.unseen.a"), ContinuousClock.now < deadline {
-            await Task.yield()
-        }
+        await waitUntil { center.removed.contains("attention.unseen.a") }
         #expect(center.removed.contains("attention.unseen.a"))
         #expect(center.added.isEmpty)
     }

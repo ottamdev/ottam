@@ -155,8 +155,17 @@ final class FocusReporter {
         self.windows = windows
     }
 
-    func start() {
-        guard !started else { return }
+    /// Core is up. The first time, observing starts: before it there is
+    /// nothing to report to, and tests, whose core never comes up, register
+    /// no system observers. After that, a core that just came up holds no
+    /// focus for this app yet.
+    func coreBecameReady() {
+        guard started else { return start() }
+        hasReported = false
+        update()
+    }
+
+    private func start() {
         started = true
         let local = NotificationCenter.default
         for name in [
@@ -178,12 +187,6 @@ final class FocusReporter {
         let distributed = DistributedNotificationCenter.default()
         observe(Notification.Name("com.apple.screenIsLocked"), on: distributed) { $0.screenIsUnlocked = false }
         observe(Notification.Name("com.apple.screenIsUnlocked"), on: distributed) { $0.screenIsUnlocked = true }
-        update()
-    }
-
-    /// A core that just came up holds no focus for this app yet.
-    func resend() {
-        hasReported = false
         update()
     }
 
