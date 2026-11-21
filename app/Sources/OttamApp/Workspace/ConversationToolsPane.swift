@@ -103,8 +103,7 @@ struct ConversationToolsPane: View {
     let backend: DiffReviewModel
 
     private var project: ResolvedProject? {
-        guard let sourceID = conversation.workingRoot.sourceID else { return nil }
-        return workspace.projects.first { $0.source.projectSourceID == sourceID }?.resolvedProject
+        conversation.workingRoot.reviewProject(in: workspace.projects)
     }
 
     private var root: URL {

@@ -33,6 +33,7 @@ mod hidden_sessions {
             project_id: None,
             source_id: None,
             availability: WorkingRootAvailability::Available,
+            worktree: None,
         }
     }
 

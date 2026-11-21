@@ -230,6 +230,8 @@ public enum AccessibilityID {
     /// The composer's working-root chooser, mounted only in the 2+-project
     /// shape — its absence in the collapsed shape is itself the assertion.
     public static let chatWorkingRootMenu = "chat.working-root-menu"
+    /// The composer's Worktree checkbox, present only for a project root.
+    public static let chatWorktreeToggle = "chat.worktree-toggle"
 
     /// Matches the native SwiftUI scene identifier exposed on the AXWindow.
     public static let settingsWindow = "settings"
@@ -323,6 +325,7 @@ public enum AccessibilityID {
         sidebarChatsSection,
         sidebarHistorySection,
         chatWorkingRootMenu,
+        chatWorktreeToggle,
         settingsWindow,
         settingsAgentAdapterAction,
         settingsAgentReinstall,

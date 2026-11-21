@@ -258,6 +258,9 @@ impl AgentServer {
             Ok(path) => path,
             Err(error) => return core_error_response(request.id, -32000, error),
         };
+        if let Err(error) = super::worktrees::refuse_managed_project_path(self.database.home(), &canonical_path) {
+            return core_error_response(request.id, -32000, error);
+        }
         let display_name = Path::new(&canonical_path)
             .file_name()
             .and_then(|name| name.to_str())
@@ -414,6 +417,7 @@ pub(super) fn workspace_detail(
             project_id: None,
             source_id: None,
             availability: WorkingRootAvailability::Available,
+            worktree: None,
         },
         projects: detail
             .projects

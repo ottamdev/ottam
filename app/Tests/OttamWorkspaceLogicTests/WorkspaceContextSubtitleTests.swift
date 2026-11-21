@@ -93,6 +93,22 @@ struct WorkspaceContextSubtitleTests {
         }
     }
 
+    @Test("a worktree names its project, its branch and that it is a worktree, in either shape")
+    func worktree() {
+        let alpha = project("alpha", branch: "main")
+        let beta = project("beta", branch: "develop")
+        for projects in [[alpha], [alpha, beta]] {
+            #expect(
+                WorkspaceContextSubtitle.resolve(
+                    rootName: "alpha",
+                    sourceID: ProjectSourceID("source-worktree"),
+                    projects: projects,
+                    worktreeBranch: "ottam/fix-login-3f2a"
+                ) == "alpha · ottam/fix-login-3f2a · Worktree"
+            )
+        }
+    }
+
     @Test("no root means no subtitle")
     func noRoot() {
         #expect(WorkspaceContextSubtitle.resolve(rootName: nil, sourceID: nil, projects: []).isEmpty)

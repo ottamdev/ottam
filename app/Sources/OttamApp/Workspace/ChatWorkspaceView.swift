@@ -1099,17 +1099,34 @@ private struct ChatLandingComposer: View {
                 autoFocus: true,
                 resetGeneration: resetGeneration
             )
-            // Dropped rather than disabled where the Workspace has a single
-            // implied root: a control offering one answer is noise, and the row
-            // would otherwise claim a decision the user does not have.
-            if !WorkspaceShape.of(projects: model.projects).collapsesRootChooser {
-                ChatWorkingRootMenu(model: model, addProject: addProject)
+            // The root chooser is dropped rather than disabled where the
+            // Workspace has a single implied root: a control offering one
+            // answer is noise, and the row would otherwise claim a decision
+            // the user does not have. The Worktree checkbox stands on its own.
+            let offersRootChoice = !WorkspaceShape.of(projects: model.projects).collapsesRootChooser
+            if offersRootChoice || model.canDraftWorktree {
+                HStack(spacing: 16) {
+                    if offersRootChoice {
+                        ChatWorkingRootMenu(model: model, addProject: addProject)
+                    }
+                    if model.canDraftWorktree {
+                        Toggle("Worktree", isOn: $model.draftCreatesWorktree)
+                            .toggleStyle(.checkbox)
+                            .disabled(model.isSubmitting)
+                            .help("Work in a new git worktree on its own branch, apart from the project's checkout")
+                            .accessibilityIdentifier(AccessibilityID.chatWorktreeToggle)
+                    }
+                    Spacer()
+                }
+                .appFont(.callout)
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 4)
             }
         }
     }
 }
 
-/// The quiet project / environment / branch row beneath the composer.
+/// The quiet project / environment / branch chooser beneath the composer.
 ///
 /// Only mounted in the multi-project shape; see `ChatLandingComposer`.
 private struct ChatWorkingRootMenu: View {
@@ -1117,19 +1134,13 @@ private struct ChatWorkingRootMenu: View {
     let addProject: () -> Void
 
     var body: some View {
-        HStack {
-            if model.isPreparingEngines {
-                // Static stand-in while loading; see the composer control bar.
-                Label(model.draftWorkingRootName, systemImage: "folder")
-                    .fixedSize()
-            } else {
-                workingRootMenu
-            }
-            Spacer()
+        if model.isPreparingEngines {
+            // Static stand-in while loading; see the composer control bar.
+            Label(model.draftWorkingRootName, systemImage: "folder")
+                .fixedSize()
+        } else {
+            workingRootMenu
         }
-        .appFont(.callout)
-        .foregroundStyle(.secondary)
-        .padding(.horizontal, 4)
     }
 
     private var workingRootMenu: some View {

@@ -2218,6 +2218,8 @@ public struct WorkingRootSummary: Codable, Equatable, Sendable {
     public var projectID: ProjectID?
     public var sourceID: ProjectSourceID?
     public var availability: WorkingRootAvailability
+    /// Set when the source is a worktree Core made for a conversation.
+    public var worktree: WorktreeSummary?
 
     public init(
         kind: WorkingRootKind,
@@ -2225,7 +2227,8 @@ public struct WorkingRootSummary: Codable, Equatable, Sendable {
         canonicalPath: String,
         projectID: ProjectID? = nil,
         sourceID: ProjectSourceID? = nil,
-        availability: WorkingRootAvailability
+        availability: WorkingRootAvailability,
+        worktree: WorktreeSummary? = nil
     ) {
         self.kind = kind
         self.displayName = displayName
@@ -2233,6 +2236,17 @@ public struct WorkingRootSummary: Codable, Equatable, Sendable {
         self.projectID = projectID
         self.sourceID = sourceID
         self.availability = availability
+        self.worktree = worktree
+    }
+}
+
+public struct WorktreeSummary: Codable, Equatable, Sendable {
+    public var branch: String
+    public var baseCommit: String
+
+    public init(branch: String, baseCommit: String) {
+        self.branch = branch
+        self.baseCommit = baseCommit
     }
 }
 
@@ -3674,19 +3688,23 @@ public struct ConversationCreateParams: Codable, Equatable, Sendable {
     public var contextProjectIDs: [ProjectID]
     public var title: String?
     public var message: ConversationInitialMessage?
+    /// Work in a new git worktree: Core cuts a branch off the project's primary checkout HEAD and links the conversation to it. Needs a project working root.
+    public var createWorktree: Bool
 
     public init(
         workspaceID: WorkspaceID,
         workingRoot: WorkingRootSelection,
         contextProjectIDs: [ProjectID],
         title: String? = nil,
-        message: ConversationInitialMessage? = nil
+        message: ConversationInitialMessage? = nil,
+        createWorktree: Bool
     ) {
         self.workspaceID = workspaceID
         self.workingRoot = workingRoot
         self.contextProjectIDs = contextProjectIDs
         self.title = title
         self.message = message
+        self.createWorktree = createWorktree
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -3695,6 +3713,7 @@ public struct ConversationCreateParams: Codable, Equatable, Sendable {
         case contextProjectIDs
         case title
         case message
+        case createWorktree
     }
 
     public init(from decoder: Decoder) throws {
@@ -3704,6 +3723,7 @@ public struct ConversationCreateParams: Codable, Equatable, Sendable {
         contextProjectIDs = try container.decodeIfPresent([ProjectID].self, forKey: .contextProjectIDs) ?? []
         title = try container.decodeIfPresent(String.self, forKey: .title)
         message = try container.decodeIfPresent(ConversationInitialMessage.self, forKey: .message)
+        createWorktree = try container.decode(Bool.self, forKey: .createWorktree)
     }
 }
 
@@ -4278,10 +4298,17 @@ public struct ConversationDeleteParams: Codable, Equatable, Sendable {
 public struct ConversationDeleteResult: Codable, Equatable, Sendable {
     public var conversationID: ConversationID
     public var harnessSessionCleanup: [HarnessSessionCleanup]
+    /// The worktree removed with the last conversation working in it.
+    public var worktree: WorktreeRemoval?
 
-    public init(conversationID: ConversationID, harnessSessionCleanup: [HarnessSessionCleanup]) {
+    public init(
+        conversationID: ConversationID,
+        harnessSessionCleanup: [HarnessSessionCleanup],
+        worktree: WorktreeRemoval? = nil
+    ) {
         self.conversationID = conversationID
         self.harnessSessionCleanup = harnessSessionCleanup
+        self.worktree = worktree
     }
 }
 
@@ -4300,6 +4327,33 @@ public struct HarnessSessionCleanup: Codable, Equatable, Sendable {
         self.engineID = engineID
         self.agentSessionID = agentSessionID
         self.status = status
+        self.message = message
+    }
+}
+
+public struct WorktreeRemoval: Codable, Equatable, Sendable {
+    public var projectSourceID: ProjectSourceID
+    public var branch: String
+    public var path: String
+    /// Whether the directory is gone. When false, `message` says why and whether Core tries again.
+    public var removed: Bool
+    /// Whether the branch is still there: it has moved off the commit it started from, or Core could not tell.
+    public var branchKept: Bool
+    public var message: String?
+
+    public init(
+        projectSourceID: ProjectSourceID,
+        branch: String,
+        path: String,
+        removed: Bool,
+        branchKept: Bool,
+        message: String? = nil
+    ) {
+        self.projectSourceID = projectSourceID
+        self.branch = branch
+        self.path = path
+        self.removed = removed
+        self.branchKept = branchKept
         self.message = message
     }
 }
@@ -5343,6 +5397,60 @@ public struct ConversationListChangedParams: Codable, Equatable, Sendable {
 public struct ToolPermissionsGetParams: Codable, Equatable, Sendable {
 
     public init() {}
+}
+
+public struct WorktreeSourceParams: Codable, Equatable, Sendable {
+    public var workspaceID: WorkspaceID
+    public var projectSourceID: ProjectSourceID
+
+    public init(workspaceID: WorkspaceID, projectSourceID: ProjectSourceID) {
+        self.workspaceID = workspaceID
+        self.projectSourceID = projectSourceID
+    }
+}
+
+public struct WorktreeStatusResult: Codable, Equatable, Sendable {
+    public var projectSourceID: ProjectSourceID
+    public var branch: String
+    public var path: String
+    /// Changed, staged and untracked paths in the worktree.
+    public var uncommittedChanges: Int
+    /// Commits on the branch since the worktree was made.
+    public var commits: Int
+    /// Whether removal keeps the branch: it has moved off the commit it started from. Removal decides by the same rule.
+    public var branchKept: Bool
+    /// Commits at the worktree's HEAD that no branch, tag or remote holds; removal loses them.
+    public var unbranchedCommits: Int
+    /// Conversations working in this worktree.
+    public var conversationCount: Int
+
+    public init(
+        projectSourceID: ProjectSourceID,
+        branch: String,
+        path: String,
+        uncommittedChanges: Int,
+        commits: Int,
+        branchKept: Bool,
+        unbranchedCommits: Int,
+        conversationCount: Int
+    ) {
+        self.projectSourceID = projectSourceID
+        self.branch = branch
+        self.path = path
+        self.uncommittedChanges = uncommittedChanges
+        self.commits = commits
+        self.branchKept = branchKept
+        self.unbranchedCommits = unbranchedCommits
+        self.conversationCount = conversationCount
+    }
+}
+
+public struct WorktreeRemoveResult: Codable, Equatable, Sendable {
+    public var removal: WorktreeRemoval
+
+    public init(removal: WorktreeRemoval) {
+        self.removal = removal
+    }
 }
 
 public struct ConversationResolveRunInputDeliveryParams: Codable, Equatable, Sendable {

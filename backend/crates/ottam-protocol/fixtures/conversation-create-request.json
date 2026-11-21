@@ -14,6 +14,7 @@
       "body": "Discuss how engine routing should work.",
       "idempotencyKey": "client-key-1",
       "attachmentIDs": []
-    }
+    },
+    "createWorktree": true
   }
 }

@@ -19,6 +19,7 @@ pub(super) use transcript::{
 mod wire;
 
 pub(super) use attachments::sweep_attachments;
+pub(super) use conversations::NewWorktreeSource;
 pub(super) use delegation::{ChildLink, DelegatedChild, WaitingNote};
 pub(super) use history::{HISTORY_DEFAULT_ENTRIES, HISTORY_MAX_ENTRIES};
 pub(super) use runs::{BeginRunRecord, ConfirmedSelection};

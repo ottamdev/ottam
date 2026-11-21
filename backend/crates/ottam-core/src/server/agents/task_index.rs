@@ -581,6 +581,26 @@ impl TaskIndex {
             .map(|entry| &entry.owner.conversation_id)
     }
 
+    /// The live tasks of `conversations` that carry a task id, as
+    /// `(workspace, conversation, run, task)`: what stopping each needs.
+    pub(super) fn live_tasks_of(
+        &self,
+        conversations: &[ConversationID],
+    ) -> Vec<(WorkspaceID, ConversationID, ConversationRunID, String)> {
+        self.entries
+            .values()
+            .filter(|entry| entry.live && conversations.contains(&entry.owner.conversation_id))
+            .filter_map(|entry| {
+                Some((
+                    entry.owner.workspace_id.clone(),
+                    entry.owner.conversation_id.clone(),
+                    entry.owner.run_id.clone(),
+                    entry.task_id.clone()?,
+                ))
+            })
+            .collect()
+    }
+
     pub(super) fn has_live_agent(&self, agent: &str) -> bool {
         self.entries
             .values()

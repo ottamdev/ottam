@@ -422,6 +422,12 @@ final class ChatWorkspaceModel {
     private(set) var workspaceFiles: WorkingRootSummary?
     private(set) var projects: [WorkspaceProjectSummary] = []
     var draftWorkingRoot: WorkingRootSelection = .workspaceFiles
+    /// The composer's Worktree checkbox. Kept across drafts with the draft
+    /// root, and read only where `canDraftWorktree` offers it.
+    var draftCreatesWorktree = false {
+        // A send error was about the draft as it was.
+        didSet { if draftCreatesWorktree != oldValue { errorText = nil } }
+    }
     /// Advances whenever the composer-first landing starts a logically new
     /// draft without necessarily leaving the Chat route.
     private(set) var draftGeneration = 0
@@ -1140,6 +1146,13 @@ final class ChatWorkspaceModel {
     @ObservationIgnored private var alwaysAllowWrite: Task<Void, Never>?
     /// Counts `conversation.listChanged` re-lists, so only the latest applies.
     @ObservationIgnored private var listChangedGeneration = 0
+    /// A worktree root was detached by its project leaving and the project
+    /// is back: only Core's list can say whether the checkout survived. Kept
+    /// across reconfiguration until a re-list lands.
+    @ObservationIgnored private(set) var worktreeRootsNeedRelist = false
+    /// Hands each re-list's roots to the window's terminals, which hold
+    /// worktree roots of their own.
+    @ObservationIgnored var didRelistConversations: (([ConversationSummary]) -> Void)?
     /// Re-lists when a named agent changes in Settings, for its children's
     /// tiles.
     @ObservationIgnored private var namedAgentsObserver: Task<Void, Never>?
@@ -2283,6 +2296,12 @@ final class ChatWorkspaceModel {
         }
     }
 
+    /// Every project is a git checkout, so a project root can work in a
+    /// worktree; Workspace files cannot.
+    var canDraftWorktree: Bool {
+        if case .project = draftWorkingRoot { true } else { false }
+    }
+
     /// Applies a root the user picked from the composer's chooser.
     ///
     /// Normalized as well as validity-checked: the chooser only exists in the
@@ -2290,12 +2309,15 @@ final class ChatWorkspaceModel {
     /// stale state rather than a visible control and must not stand.
     func selectDraftWorkingRoot(_ selection: WorkingRootSelection) {
         guard isValid(selection) else { return }
-        draftWorkingRoot = normalizeRestoredWorkingRoot(
+        let selected = normalizeRestoredWorkingRoot(
             selection,
             projects: projects,
             selectedProject: projectSummary,
             hasWorkspaceFiles: workspaceFiles != nil
         )
+        // A send error was about the root it tried.
+        if selected != draftWorkingRoot { errorText = nil }
+        draftWorkingRoot = selected
     }
 
     private func isValid(_ selection: WorkingRootSelection) -> Bool {
@@ -2325,6 +2347,20 @@ final class ChatWorkspaceModel {
             messageQueue = ChatMessageQueue.restored(from: defaults, workspaceID: workspaceID)
         }
         self.workspaceFiles = workspaceFiles
+        // A worktree read as detached while its project was away. When the
+        // project returns only Core knows whether the checkout went meanwhile.
+        let rejoined = Set(projects.map(\.project.projectID))
+            .subtracting(self.projects.map(\.project.projectID))
+        let rejoinedWorktree = conversations.contains { conversation in
+            conversation.workingRoot.worktree != nil
+                && conversation.workingRoot.projectID.map(rejoined.contains) == true
+        }
+        worktreeRootsNeedRelist = !changedWorkspace && (worktreeRootsNeedRelist || rejoinedWorktree)
+        if rejoinedWorktree {
+            // A re-list already in flight was read while the project was
+            // away; its answer must not stand for the rejoined roots.
+            listChangedGeneration += 1
+        }
         self.projects = projects
         self.projectSummary = projectSummary
         conversations = conversations.map { conversation in
@@ -2386,6 +2422,8 @@ final class ChatWorkspaceModel {
             // its load task ran with no workspaceID and gave up. Now that the model
             // is configured, load whatever is still missing (no-op once loaded).
             await loadIfNeeded(backend: backend)
+            guard worktreeRootsNeedRelist, !Task.isCancelled else { return }
+            await relistConversations(workspaceID: workspaceID, backend: backend)
         }
     }
 
@@ -2658,7 +2696,11 @@ final class ChatWorkspaceModel {
             for index in conversations.indices where conversations[index].parentConversationID == conversation.conversationID {
                 conversations[index].parentConversationID = nil
             }
-            noticeText = Self.harnessCleanupNotice(result.harnessSessionCleanup)
+            let notices = [
+                Self.harnessCleanupNotice(result.harnessSessionCleanup),
+                result.worktree.flatMap(WorktreeText.removalNotice),
+            ].compactMap { $0 }
+            noticeText = notices.isEmpty ? nil : notices.joined(separator: " ")
             isMutating = false
             Self.logger.info(
                 "deleted conversation conversationID=\(conversation.conversationID.rawValue, privacy: .public)"
@@ -2671,6 +2713,62 @@ final class ChatWorkspaceModel {
                 "failed to delete conversation: \(error.localizedDescription, privacy: .private)"
             )
             return false
+        }
+    }
+
+    /// What removing `root`'s worktree would take with it, for the alerts.
+    /// When Core cannot count, the alerts still say the folder goes, with
+    /// the counts unknown. Nil when there is no worktree left to remove.
+    func worktreeConfirmation(of root: WorkingRootSummary, backend: DiffReviewModel) async -> WorktreeConfirmation? {
+        guard let workspaceID, root.worktree != nil, let sourceID = root.sourceID else { return nil }
+        do {
+            return WorktreeConfirmation(
+                try await backend.worktreeStatus(workspaceID: workspaceID, projectSourceID: sourceID)
+            )
+        } catch AgentConnectionError.rpcError(_, _, let data?) where data.objectString("kind") == "worktreeUnavailable" {
+            // Removed since the list loaded: its rows read as detached now.
+            noticeText = WorktreeText.alreadyRemoved(root)
+            if let list = try? await backend.listConversations(workspaceID: workspaceID) {
+                apply(conversations: list.conversations)
+            }
+            return nil
+        } catch {
+            Self.logger.error("worktree status failed: \(error.localizedDescription, privacy: .private)")
+            return WorktreeConfirmation(uncounted: root, conversations: conversations)
+        }
+    }
+
+    /// Removes a worktree while its conversations stay: Core stops their
+    /// runs and they read as detached from then on.
+    func removeWorktree(_ worktree: WorktreeConfirmation, backend: DiffReviewModel) async {
+        guard let workspaceID else {
+            markUnavailable()
+            return
+        }
+        isMutating = true
+        errorText = nil
+        noticeText = nil
+        defer { isMutating = false }
+        do {
+            let result = try await backend.removeWorktree(
+                workspaceID: workspaceID,
+                projectSourceID: worktree.projectSourceID
+            )
+            noticeText = WorktreeText.removalNotice(result.removal)
+            Self.logger.info(
+                "removed worktree projectSourceID=\(worktree.projectSourceID.rawValue, privacy: .public) removed=\(result.removal.removed, privacy: .public)"
+            )
+        } catch {
+            errorText = error.localizedDescription
+            Self.logger.error("failed to remove worktree: \(error.localizedDescription, privacy: .private)")
+        }
+        let failure = errorText
+        let list = try? await backend.listConversations(workspaceID: workspaceID)
+        if let list { apply(conversations: list.conversations) }
+        if let selectedConversationID {
+            await loadDetail(selectedConversationID, backend: backend)
+            // The refresh clears errors; why the removal failed outranks it.
+            if let failure { errorText = failure }
         }
     }
 
@@ -2891,6 +2989,7 @@ final class ChatWorkspaceModel {
             // Pinned before the wait below, which a new selection can outlast.
             let targetConversationID = selectedConversationID
             let workingRoot = draftWorkingRoot
+            let createWorktree = canDraftWorktree && draftCreatesWorktree
             // A new chat copies the switch's default, and a run reads its value.
             await settleAlwaysAllowToolActions()
             let conversationID: ConversationID
@@ -2917,7 +3016,8 @@ final class ChatWorkspaceModel {
                         body: message,
                         idempotencyKey: UUID().uuidString,
                         attachmentIDs: attachmentIDs
-                    )
+                    ),
+                    createWorktree: createWorktree
                 )
                 conversationID = created.conversation.summary.conversationID
                 guard let initialInput = created.initialInput else {
@@ -3688,6 +3788,7 @@ final class ChatWorkspaceModel {
 
     /// Replaces the conversation list with core's, unless the window let go
     /// of core, the workspace changed, or a later re-list started meanwhile.
+    /// The open conversation takes Core's root too.
     private func relistConversations(workspaceID: WorkspaceID, backend: DiffReviewModel) async {
         guard !backendHandlersRetired else { return }
         listChangedGeneration += 1
@@ -3697,7 +3798,19 @@ final class ChatWorkspaceModel {
               self.workspaceID == workspaceID,
               generation == listChangedGeneration
         else { return }
-        apply(conversations: list.conversations)
+        worktreeRootsNeedRelist = false
+        let fresh = list.conversations.map { conversation in
+            var updated = conversation
+            updated.workingRoot = conversation.workingRoot.updatingAvailability(for: projects)
+            return updated
+        }
+        apply(conversations: fresh)
+        if var detail = selectedDetail,
+           let summary = fresh.first(where: { $0.conversationID == detail.summary.conversationID }) {
+            detail.summary.workingRoot = summary.workingRoot
+            selectedDetail = detail
+        }
+        didRelistConversations?(fresh)
     }
 
     /// Merges into the shown store or a cached one. Only the shown store

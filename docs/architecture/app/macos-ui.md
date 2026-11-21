@@ -82,6 +82,10 @@ hold UI state only; durable domain authority stays behind the Core protocol
 - The agents pill is an `NSMenuToolbarItem` (AX "Agents") beside the title,
   shown only while the selected conversation has a parent or children. Names
   live in its tooltip and AX label, not in the pill.
+- A worktree conversation has no sidebar badge (2026-11-18): the window
+  subtitle reads `<project> · <branch> · Worktree`
+  (`OttamWorkspaceLogic/WorkspaceContextSubtitle.swift`), which keeps rows
+  uncluttered.
 
 ## Attention
 

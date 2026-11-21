@@ -24,7 +24,7 @@ use crate::server::chat::{
     HISTORY_MAX_ENTRIES,
 };
 use crate::server::text::excerpt;
-use crate::storage::repositories::{NamedAgentRecord, NamedAgentRepository};
+use crate::storage::repositories::{NamedAgentRecord, NamedAgentRepository, ReleasedWorktree};
 use crate::storage::Database;
 use ottam_protocol::{
     ConversationContextUsage, ConversationContinueDelegationResult, ConversationDeleteChildren,
@@ -848,6 +848,8 @@ impl ConversationRunCoordinator {
                     idempotency_key: uuid::Uuid::now_v7().to_string(),
                     attachment_ids: Vec::new(),
                 }),
+                // The child works where its parent does, a worktree included.
+                None,
             )
             .await
             .map_err(|error| error.message)?;
@@ -2027,16 +2029,21 @@ impl ConversationRunCoordinator {
         workspace_id: &WorkspaceID,
         conversation: &ConversationID,
         children: ConversationDeleteChildren,
-    ) -> Result<ConversationDeleteResult, CoreError> {
+    ) -> Result<(ConversationDeleteResult, Vec<ReleasedWorktree>), CoreError> {
         let delegated = chat.children(conversation).await?;
-        let mut result = self.delete_conversation(chat, conversation).await?;
+        // A parent and its children share a worktree, so with children
+        // deleted it is the last child's delete that releases it.
+        let (mut result, mut released) = self.delete_conversation(chat, conversation).await?;
         for child in &delegated {
             match children {
                 ConversationDeleteChildren::Delete => {
                     match self.delete_conversation(chat, &child.conversation_id).await {
-                        Ok(deleted) => result
-                            .harness_session_cleanup
-                            .extend(deleted.harness_session_cleanup),
+                        Ok((deleted, child_released)) => {
+                            result
+                                .harness_session_cleanup
+                                .extend(deleted.harness_session_cleanup);
+                            released.extend(child_released);
+                        }
                         Err(error) => {
                             tracing::warn!(kind = error.kind, "a delegated child was not deleted");
                         }
@@ -2057,7 +2064,7 @@ impl ConversationRunCoordinator {
         if !delegated.is_empty() {
             self.notify_list_changed(workspace_id);
         }
-        Ok(result)
+        Ok((result, released))
     }
 
     /// The user stopped `parent`'s turn: stop its working children too.

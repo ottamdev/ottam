@@ -13,6 +13,7 @@ public enum ScenarioRegistry {
             .chatNativeSteerAndStop,
             .chatQueueDrain,
             .chatToolsPane,
+            .chatWorktreeConversation,
             .chatDeliveryRetry,
             .chatRunFailure,
             .chatTranscriptHistoryRecovery,

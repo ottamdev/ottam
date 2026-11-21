@@ -13,4 +13,4 @@ mod working_roots;
 pub use database::{ottam_home, Database};
 pub use error::StorageError;
 pub use runtime_store::{ResolvedWorkingRoot, WorkspaceRuntimeStore};
-pub use working_roots::{ensure_workspace_paths, WorkspacePaths};
+pub use working_roots::{ensure_workspace_paths, worktree_summary, worktrees_root, WorkspacePaths};

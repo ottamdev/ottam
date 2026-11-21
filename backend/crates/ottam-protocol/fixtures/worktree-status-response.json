@@ -1,0 +1,13 @@
+{
+  "id": 458,
+  "result": {
+    "projectSourceID": "019b0000-0000-7000-8000-000000000009",
+    "branch": "ottam/fix-login-a1b2",
+    "path": "/Users/example/.ottam/worktrees/ottam/fix-login-a1b2",
+    "uncommittedChanges": 3,
+    "commits": 1,
+    "branchKept": true,
+    "unbranchedCommits": 0,
+    "conversationCount": 2
+  }
+}

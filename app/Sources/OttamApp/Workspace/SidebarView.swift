@@ -33,6 +33,12 @@ struct SidebarView: View {
     /// persisted — a fresh window starts capped.
     @State private var uncappedSections: Set<SidebarSectionKind> = []
     @State private var deletionTarget: ConversationSummary?
+    /// The deletion target's worktree, read before its alert shows.
+    @State private var deletionWorktree: WorktreeConfirmation?
+    @State private var worktreeRemovalTarget: WorktreeConfirmation?
+    /// Each confirmation request's ticket; only the latest one's answer
+    /// opens an alert.
+    @State private var confirmationGeneration = 0
     /// Parents whose delegated children are folded away. Not persisted: a
     /// fresh window shows every child.
     @State private var foldedParents: Set<ConversationID> = []
@@ -152,6 +158,29 @@ struct SidebarView: View {
         } message: { conversation in
             Text(deleteMessage(for: conversation))
         }
+        .alert(
+            worktreeRemovalTarget.map(WorktreeText.removalTitle) ?? "",
+            isPresented: worktreeRemovalPresented,
+            presenting: worktreeRemovalTarget
+        ) { worktree in
+            Button("Delete Worktree", role: .destructive) {
+                Task { await chatWorkspace.removeWorktree(worktree, backend: backend) }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: { worktree in
+            Text(WorktreeText.removalMessage(worktree))
+        }
+    }
+
+    private var worktreeRemovalPresented: Binding<Bool> {
+        Binding {
+            worktreeRemovalTarget != nil
+        } set: { presented in
+            if !presented {
+                worktreeRemovalTarget = nil
+                confirmationGeneration &+= 1
+            }
+        }
     }
 
     // MARK: - Sections
@@ -222,13 +251,54 @@ struct SidebarView: View {
         _ item: SidebarConversationItem,
         nesting: SidebarConversationRow.Nesting = .none
     ) -> some View {
-        SidebarConversationRow(
+        let root = item.summary.workingRoot
+        let hasWorktree = root.worktree != nil && root.availability == .available
+        return SidebarConversationRow(
             item: item,
             nesting: nesting,
             deleteDisabled: chatWorkspace.isMutating,
-            deleteAction: { deletionTarget = item.summary }
+            deleteAction: { requestDeletion(of: item.summary) },
+            worktreeActions: hasWorktree ? SidebarConversationRow.WorktreeActions(
+                reveal: {
+                    NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: root.canonicalPath)])
+                },
+                delete: { requestWorktreeRemoval(of: root) }
+            ) : nil
         )
         .tag(SidebarSelection.conversation(item.id))
+    }
+
+    /// The alert waits for the worktree's status, so it can say what goes.
+    /// A worktree detached only by its project leaving still goes with its
+    /// last conversation, so it is asked about too; one Core reported gone
+    /// (detached while its project is a member) has nothing left to say.
+    private func requestDeletion(of conversation: ConversationSummary) {
+        confirmationGeneration &+= 1
+        let generation = confirmationGeneration
+        let root = conversation.workingRoot
+        let projectIsMember = chatWorkspace.projects.contains { $0.project.projectID == root.projectID }
+        guard root.worktree != nil, root.availability == .available || !projectIsMember else {
+            deletionWorktree = nil
+            deletionTarget = conversation
+            return
+        }
+        Task {
+            let worktree = await chatWorkspace.worktreeConfirmation(of: root, backend: backend)
+            // A later request or a dismissal outranks this answer.
+            guard generation == confirmationGeneration else { return }
+            deletionWorktree = worktree
+            deletionTarget = conversation
+        }
+    }
+
+    private func requestWorktreeRemoval(of root: WorkingRootSummary) {
+        confirmationGeneration &+= 1
+        let generation = confirmationGeneration
+        Task {
+            let worktree = await chatWorkspace.worktreeConfirmation(of: root, backend: backend)
+            guard generation == confirmationGeneration else { return }
+            worktreeRemovalTarget = worktree
+        }
     }
 
     /// A parent's first few children, plus any past them that are selected
@@ -400,14 +470,22 @@ struct SidebarView: View {
         let removes = "This removes the conversation and its local history. "
             + "Associated harness sessions will also be removed where supported."
         let children = delegatedChildren(of: conversation)
-        guard !children.isEmpty else { return removes }
+        let worktree = deletionWorktree.map { worktree in
+            WorktreeText.conversationDeletion(
+                worktree,
+                deletedChildren: children.filter { $0.workingRoot.sourceID == worktree.projectSourceID }.count
+            )
+        }
+        guard !children.isEmpty else {
+            return [removes, worktree].compactMap { $0 }.joined(separator: "\n\n")
+        }
         let names = children.map { $0.delegatedAgentName ?? $0.taskTitle }
         let delegated = children.count == 1
             ? "It delegated a task to \(names[0]). Delete that conversation too, or keep it: "
                 + "a kept conversation stops working and stands on its own in the sidebar."
             : "It delegated \(children.count) tasks, to \(ListFormatter.localizedString(byJoining: Array(Set(names)).sorted())). "
                 + "Delete those conversations too, or keep them: kept conversations stop working and stand on their own in the sidebar."
-        return removes + "\n\n" + delegated
+        return [removes, delegated, worktree].compactMap { $0 }.joined(separator: "\n\n")
     }
 
     private var deleteConfirmationPresented: Binding<Bool> {
@@ -416,6 +494,8 @@ struct SidebarView: View {
         } set: { presented in
             if !presented {
                 deletionTarget = nil
+                deletionWorktree = nil
+                confirmationGeneration &+= 1
             }
         }
     }
@@ -447,6 +527,13 @@ private struct SidebarConversationRow: View {
     var nesting: Nesting = .none
     let deleteDisabled: Bool
     let deleteAction: () -> Void
+    /// Present while the row's conversation works in a worktree that is there.
+    var worktreeActions: WorktreeActions?
+
+    struct WorktreeActions {
+        let reveal: () -> Void
+        let delete: () -> Void
+    }
 
     /// How far a title sits in from the row's content edge. The sidebar
     /// puts that edge where a Label's icon would start, 6pt inside the
@@ -547,7 +634,15 @@ private struct SidebarConversationRow: View {
             Button("Copy Conversation ID") {
                 WorkspacePasteboard.copy(item.summary.conversationID.rawValue)
             }
+            if let worktreeActions {
+                Divider()
+                Button("Reveal Worktree in Finder", action: worktreeActions.reveal)
+            }
             Divider()
+            if let worktreeActions {
+                Button("Delete Worktree…", role: .destructive, action: worktreeActions.delete)
+                    .disabled(deleteDisabled)
+            }
             Button("Delete Conversation…", role: .destructive, action: deleteAction)
                 .disabled(deleteDisabled)
         }

@@ -246,11 +246,14 @@ struct WorkspaceRootView: View {
         .onChange(of: workspace.selectedProjectID) { _, projectID in
             session.restored.projectID = projectID?.rawValue ?? ""
         }
-        .onChange(of: workspace.projects.map(\.source.projectSourceID)) { _, sourceIDs in
-            session.tools.retainReviewModels(for: Set(sourceIDs))
+        .onChange(of: session.reviewableSourceIDs) { _, sourceIDs in
+            session.tools.retainReviewModels(for: sourceIDs)
         }
         .onChange(of: chatWorkspace.draftWorkingRoot) { _, selection in
             session.restored.chatRoot = WorkspaceWindowSession.encode(selection)
+        }
+        .onChange(of: chatWorkspace.draftCreatesWorktree) { _, createsWorktree in
+            session.restored.chatWorktree = createsWorktree
         }
         .onChange(of: chatWorkspace.selectedConversationID) { _, conversationID in
             session.restored.conversationID = conversationID?.rawValue ?? ""
