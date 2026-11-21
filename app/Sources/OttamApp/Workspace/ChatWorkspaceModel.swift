@@ -424,7 +424,10 @@ final class ChatWorkspaceModel {
     var draftWorkingRoot: WorkingRootSelection = .workspaceFiles
     /// The composer's Worktree checkbox. Kept across drafts with the draft
     /// root, and read only where `canDraftWorktree` offers it.
-    var draftCreatesWorktree = false
+    var draftCreatesWorktree = false {
+        // A send error was about the draft as it was.
+        didSet { if draftCreatesWorktree != oldValue { errorText = nil } }
+    }
     /// Advances whenever the composer-first landing starts a logically new
     /// draft without necessarily leaving the Chat route.
     private(set) var draftGeneration = 0
@@ -2299,12 +2302,15 @@ final class ChatWorkspaceModel {
     /// stale state rather than a visible control and must not stand.
     func selectDraftWorkingRoot(_ selection: WorkingRootSelection) {
         guard isValid(selection) else { return }
-        draftWorkingRoot = normalizeRestoredWorkingRoot(
+        let selected = normalizeRestoredWorkingRoot(
             selection,
             projects: projects,
             selectedProject: projectSummary,
             hasWorkspaceFiles: workspaceFiles != nil
         )
+        // A send error was about the root it tried.
+        if selected != draftWorkingRoot { errorText = nil }
+        draftWorkingRoot = selected
     }
 
     private func isValid(_ selection: WorkingRootSelection) -> Bool {

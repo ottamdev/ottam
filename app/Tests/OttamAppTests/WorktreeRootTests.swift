@@ -78,4 +78,60 @@ struct WorktreeRootTests {
         #expect(record?.workingRoot.sourceID == ProjectSourceID("source-worktree"))
         terminals.closeAll(backend: backend)
     }
+
+    @Test("a send error under the composer clears once the draft's root or Worktree checkbox changes")
+    func draftChangeClearsSendError() async throws {
+        let backend = DiffReviewModel(client: OttamCoreProcessClient(
+            executableURL: URL(fileURLWithPath: "/nonexistent/ottam-core")
+        ))
+        var beta = member
+        beta.project.projectID = ProjectID("project-beta")
+        beta.source.projectSourceID = ProjectSourceID("source-beta")
+        beta.source.projectID = beta.project.projectID
+        let model = ChatWorkspaceModel(defaults: UserDefaults(suiteName: "worktree-draft-\(UUID())")!)
+        model.configure(
+            workspaceID: WorkspaceID("worktrees"),
+            workspaceFiles: WorkingRootSummary(
+                kind: .workspaceFiles,
+                displayName: "Files",
+                canonicalPath: "/tmp",
+                projectID: nil,
+                sourceID: nil,
+                availability: .available
+            ),
+            projects: [member, beta],
+            projectSummary: nil,
+            backend: backend
+        )
+        let alpha = WorkingRootSelection.project(
+            projectID: ProjectID("project-alpha"),
+            sourceID: ProjectSourceID("source-alpha")
+        )
+        model.selectDraftWorkingRoot(alpha)
+        #expect(model.draftWorkingRoot == alpha)
+
+        func failToSend() async throws {
+            _ = await model.submit("add a line", backend: backend)
+            try #require(model.errorText != nil)
+        }
+
+        // Let configure's own load against the missing core finish first.
+        let deadline = ContinuousClock.now + .seconds(3)
+        while model.errorText == nil, ContinuousClock.now < deadline {
+            try? await Task.sleep(for: .milliseconds(10))
+        }
+        try? await Task.sleep(for: .milliseconds(100))
+
+        try await failToSend()
+        model.selectDraftWorkingRoot(alpha)
+        model.draftCreatesWorktree = false
+        #expect(model.errorText != nil, "nothing changed, so the error still applies")
+        model.selectDraftWorkingRoot(.workspaceFiles)
+        #expect(model.errorText == nil)
+
+        model.selectDraftWorkingRoot(alpha)
+        try await failToSend()
+        model.draftCreatesWorktree = true
+        #expect(model.errorText == nil)
+    }
 }
