@@ -54,19 +54,22 @@ struct WorktreeTextTests {
         #expect(WorktreeText.removalMessage(worktree()).hasPrefix("This removes its folder, which has no uncommitted changes."))
     }
 
-    @Test("the branch's fate follows Core's branchKept, and commits on no branch are called lost")
+    @Test("the branch's fate follows Core's branchKept, and commits on no branch are kept under a recovery ref")
     func branchFate() {
         // Moved off its base without commits of its own, as after a reset.
         #expect(WorktreeText.removalMessage(worktree(branchKept: true)).contains(" The branch is kept. "))
-        // A detached HEAD's commits: the branch goes, and so do they.
+        // A detached HEAD's commits: the branch goes, and Core keeps them.
         #expect(
             WorktreeText.removalMessage(worktree(unbranched: 2)).hasPrefix(
                 "This removes its folder, which has no uncommitted changes. "
                     + "The branch has no commits of its own and is deleted too. "
-                    + "This also loses 2 commits that no branch holds."
+                    + "2 commits that no branch holds are kept under refs/ottam/removed/fix-login-3f2a."
             )
         )
-        #expect(WorktreeText.removalMessage(worktree(unbranched: 1)).contains("This also loses 1 commit that no branch holds."))
+        #expect(
+            WorktreeText.removalMessage(worktree(unbranched: 1))
+                .contains(" 1 commit that no branch holds is kept under refs/ottam/removed/fix-login-3f2a.")
+        )
     }
 
     @Test("deleting the last conversation in a worktree names the worktree and what goes")
@@ -101,7 +104,8 @@ struct WorktreeTextTests {
     @Test("when Core cannot count, both alerts still say the folder and its changes go")
     func uncountedFallback() {
         let unknown = "This removes its folder and any uncommitted changes in it; Ottam could not count them. "
-            + "The branch is deleted too unless it has new commits, and commits no branch holds are lost."
+            + "The branch is deleted too unless it has new commits, and commits no branch holds are kept "
+            + "under refs/ottam/removed/fix-login-3f2a."
         let alone = uncounted(conversations: 1)
         #expect(alone.projectSourceID == ProjectSourceID("source-worktree-fix"))
         #expect(WorktreeText.removalTitle(alone) == "Delete Worktree “ottam/fix-login-3f2a”?")
@@ -125,7 +129,8 @@ struct WorktreeTextTests {
                 == "It works in the worktree ottam/fix-login-3f2a, and so do its delegated conversations. "
                 + "Delete All removes the worktree with them: this removes its folder and any uncommitted "
                 + "changes in it; Ottam could not count them. The branch is deleted too unless it has new commits, "
-                + "and commits no branch holds are lost. Keeping them keeps the worktree."
+                + "and commits no branch holds are kept under refs/ottam/removed/fix-login-3f2a. "
+                + "Keeping them keeps the worktree."
         )
 
         // A root with no worktree has nothing to confirm.

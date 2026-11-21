@@ -92,16 +92,24 @@ public enum WorktreeText {
     }
 
     private static func removal(_ worktree: WorktreeConfirmation) -> String {
+        let kept = recoveryRef(worktree.branch)
         guard let status = worktree.status else {
             return "This removes its folder and any uncommitted changes in it; Ottam could not count them. "
-                + "The branch is deleted too unless it has new commits, and commits no branch holds are lost."
+                + "The branch is deleted too unless it has new commits, and commits no branch holds are kept under \(kept)."
         }
-        let lost = switch status.unbranchedCommits {
+        let unbranched = switch status.unbranchedCommits {
         case 0: ""
-        case 1: " This also loses 1 commit that no branch holds."
-        default: " This also loses \(status.unbranchedCommits) commits that no branch holds."
+        case 1: " 1 commit that no branch holds is kept under \(kept)."
+        default: " \(status.unbranchedCommits) commits that no branch holds are kept under \(kept)."
         }
-        return removesFolder(status) + " " + branchFate(status) + lost
+        return removesFolder(status) + " " + branchFate(status) + unbranched
+    }
+
+    /// Where Core keeps a removed worktree's commits that no branch holds;
+    /// mirrors `git::recovery_ref` in ottam-core.
+    private static func recoveryRef(_ branch: String) -> String {
+        let name = branch.hasPrefix("ottam/") ? String(branch.dropFirst("ottam/".count)) : branch
+        return "refs/ottam/removed/\(name)"
     }
 
     private static func removesFolder(_ status: WorktreeStatusResult) -> String {

@@ -320,6 +320,7 @@ fn commits_on_a_detached_head_are_reported_as_unbranched() {
     std::fs::write(path.join("loose.txt"), "loose\n").unwrap();
     run_git(&path, ["add", "-A"]);
     run_git(&path, ["commit", "-m", "loose"]);
+    let loose = run_git(&path, ["rev-parse", "HEAD"]).trim().to_string();
 
     let status = worktree_status(&mut core, &workspace_id, &source_id);
     assert_eq!(status["commits"], 0, "{status}");
@@ -338,6 +339,13 @@ fn commits_on_a_detached_head_are_reported_as_unbranched() {
     assert_eq!(removed["result"]["removal"]["removed"], true, "{removed}");
     assert_eq!(removed["result"]["removal"]["branchKept"], false);
     assert!(!branch_exists(repo.path(), &branch));
+    // The loose commit outlives its folder under a recovery ref.
+    let reference = format!("refs/ottam/removed/{}", branch.trim_start_matches("ottam/"));
+    assert_eq!(
+        removed["result"]["removal"]["message"],
+        format!("Commits no branch held are kept under {reference}.")
+    );
+    assert_eq!(run_git(repo.path(), ["rev-parse", reference.as_str()]).trim(), loose);
     core.shutdown();
 }
 

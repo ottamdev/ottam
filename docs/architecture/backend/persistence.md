@@ -241,13 +241,16 @@ never writes beside the user's checkout.
 - The branch goes only while its tip is still the base commit and no
   worktree has it checked out, as one compare-and-delete. `worktree.status`
   reports the branch's fate by the same rule (`git::branch_fate`), and counts
-  the commits at HEAD that no branch, tag or remote holds, which removal
-  loses.
+  the commits at HEAD that no branch, tag or remote holds.
+- Right before the folder goes, removal keeps those commits under
+  `refs/ottam/removed/<name>` (2026-11-20), so a commit made after the
+  confirmation is kept too. A failed check keeps the folder, owed. With the
+  project's checkout gone there is no repository to keep them in.
 - Deleting the last conversation on a worktree removes it, in that
   deletion's transaction (2026-11-18, revised 2026-11-20); `worktree.remove`
   leaves the conversations, which read as detached. Each confirmation says
-  what goes, with counts left unknown when Core cannot read them, so
-  committed work is never lost unannounced.
+  what goes and what is kept, with counts left unknown when Core cannot
+  read them.
 - A failed removal's message is the only place a retry is promised; the app
   adds none.
 

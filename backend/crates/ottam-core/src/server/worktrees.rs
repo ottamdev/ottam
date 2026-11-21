@@ -185,7 +185,9 @@ pub(super) fn discard_checkout(created: &CreatedCheckout) {
 
 /// Remove an archived worktree's directory, then its branch when it has no
 /// commits of its own. Never touches a path outside `$OTTAM_HOME/worktrees`.
-pub(super) fn remove_checkout(home: &Path, released: &ReleasedWorktree) -> WorktreeRemoval {
+/// The flag says the removal is settled: its folder went and its branch was
+/// decided, so no later launch owes it anything.
+pub(super) fn remove_checkout(home: &Path, released: &ReleasedWorktree) -> (WorktreeRemoval, bool) {
     let path = PathBuf::from(&released.source.canonical_path);
     let primary = released
         .primary_path
@@ -199,20 +201,39 @@ pub(super) fn remove_checkout(home: &Path, released: &ReleasedWorktree) -> Workt
         branch_kept: true,
         message: None,
     };
+    let mut kept_ref = None;
     // A folder Core cannot look up (an untraversable parent) is not gone.
     let present = match path.try_exists() {
         Ok(present) => present,
         Err(error) => {
             tracing::warn!(%error, "a worktree folder could not be looked up");
             removal.message = Some(format!("{error}. Ottam tries again on its next launch."));
-            return removal;
+            return (removal, false);
         }
     };
     if present {
         if !is_managed_path(home, &path) {
             tracing::warn!("a worktree path outside Ottam's home was not removed");
             removal.message = Some("Ottam removes only worktrees it made in its own folder.".into());
-            return removal;
+            return (removal, false);
+        }
+        // Right before the folder goes, so a commit made after the user
+        // confirmed is kept too. With the project's checkout gone there is
+        // no repository left to keep it in. A folder a failed removal already
+        // emptied of its `.git` has no HEAD left to keep.
+        if primary.is_some() && path.join(".git").exists() {
+            match git::keep_unbranched_head(&released.source.canonical_path, &released.worktree.branch) {
+                Ok(kept) => kept_ref = kept,
+                Err(error) => {
+                    tracing::warn!(kind = error.kind, "a worktree's unbranched commits were not checked");
+                    removal.message = Some(
+                        "Ottam could not check the worktree for commits no branch holds, so it kept the folder. \
+                         Ottam tries again on its next launch."
+                            .into(),
+                    );
+                    return (removal, false);
+                }
+            }
         }
         let removed_by_git = primary.is_some_and(|primary| {
             git::worktree_remove(primary, &path)
@@ -231,7 +252,7 @@ pub(super) fn remove_checkout(home: &Path, released: &ReleasedWorktree) -> Workt
                     // The app quotes this after the path; the retry promise is
                     // Core's to make, since only Core knows the row owes it.
                     removal.message = Some(format!("{error}. Ottam tries again on its next launch."));
-                    return removal;
+                    return (removal, false);
                 }
             }
         }
@@ -239,7 +260,7 @@ pub(super) fn remove_checkout(home: &Path, released: &ReleasedWorktree) -> Workt
     removal.removed = true;
     let Some(primary) = primary else {
         removal.message = Some("The project's checkout is gone, so its branch was left alone.".into());
-        return removal;
+        return (removal, false);
     };
     if let Err(error) = git::worktree_prune(primary) {
         // Its stale registration still holds the branch checked out, so the
@@ -250,7 +271,7 @@ pub(super) fn remove_checkout(home: &Path, released: &ReleasedWorktree) -> Workt
              Ottam tries again on its next launch."
                 .into(),
         );
-        return removal;
+        return (removal, false);
     }
     match git::delete_branch_if_unchanged(
         primary,
@@ -261,9 +282,13 @@ pub(super) fn remove_checkout(home: &Path, released: &ReleasedWorktree) -> Workt
         Err(error) => {
             tracing::warn!(kind = error.kind, "a worktree branch was not checked");
             removal.message = Some(format!("The branch was kept: {}", error.message));
+            return (removal, false);
         }
     }
-    removal
+    if let Some(reference) = kept_ref {
+        removal.message = Some(format!("Commits no branch held are kept under {reference}."));
+    }
+    (removal, true)
 }
 
 /// Whether `path` resolves to a folder inside `$OTTAM_HOME/worktrees`.
@@ -324,11 +349,11 @@ pub(super) async fn retry_owed_removals(database: Database) {
         })
         .await;
         match removal {
-            Ok(removal) => {
+            Ok((removal, settled)) => {
                 if folder_left {
                     tracing::info!(removed = removal.removed, "retried an owed worktree removal");
                 }
-                record_settled(&database, &removal).await;
+                record_settled(&database, &removal, settled).await;
             }
             Err(error) => tracing::warn!(kind = error.kind, "an owed worktree removal failed"),
         }
@@ -336,10 +361,9 @@ pub(super) async fn retry_owed_removals(database: Database) {
 }
 
 /// Marks a removal whose folder went and whose branch was decided, so no
-/// later launch retries it against a branch someone made since. Every
-/// partial outcome carries a message.
-async fn record_settled(database: &Database, removal: &WorktreeRemoval) {
-    if !removal.removed || removal.message.is_some() {
+/// later launch retries it against a branch someone made since.
+async fn record_settled(database: &Database, removal: &WorktreeRemoval, settled: bool) {
+    if !settled {
         return;
     }
     let Ok(source_id) = ProjectSourceId::try_from(removal.project_source_id.0.as_str()) else {
@@ -545,10 +569,10 @@ impl AgentServer {
             .await;
             let removal = match removals {
                 Ok(removals) => {
-                    for removal in &removals {
-                        record_settled(&database, removal).await;
+                    for (removal, settled) in &removals {
+                        record_settled(&database, removal, *settled).await;
                     }
-                    removals.into_iter().next()
+                    removals.into_iter().next().map(|(removal, _)| removal)
                 }
                 // The row is archived already, so the folder is owed.
                 Err(error) => {

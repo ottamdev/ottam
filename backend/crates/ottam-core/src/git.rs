@@ -348,7 +348,8 @@ pub struct WorktreeChanges {
     /// Whether removal keeps the branch ([`BranchFate::Moved`]).
     pub branch_kept: bool,
     /// Commits at the worktree's `HEAD` that no branch, tag or remote holds,
-    /// as after the agent detached `HEAD`: removal loses them.
+    /// as after the agent detached `HEAD`: removal keeps them under
+    /// [`recovery_ref`].
     pub unbranched_commits: u32,
 }
 
@@ -376,6 +377,27 @@ pub fn worktree_changes(
         branch_kept: matches!(fate, BranchFate::Moved { .. }),
         unbranched_commits,
     })
+}
+
+/// Where removal keeps a worktree's unbranched commits: `ottam/<name>` keeps
+/// them under `refs/ottam/removed/<name>`.
+pub fn recovery_ref(branch: &str) -> String {
+    format!("refs/ottam/removed/{}", branch.strip_prefix("ottam/").unwrap_or(branch))
+}
+
+/// Point [`recovery_ref`] at the worktree's `HEAD` when commits there are
+/// held by no branch, tag or remote, so removing the folder loses none,
+/// whatever was committed after the confirmation. Returns the ref written.
+pub fn keep_unbranched_head(worktree_path: &str, branch: &str) -> Result<Option<String>, CoreError> {
+    let Some(head) = head_commit(worktree_path)? else {
+        return Ok(None);
+    };
+    if commit_count(worktree_path, &[&head, "--not", "--branches", "--tags", "--remotes"])? == 0 {
+        return Ok(None);
+    }
+    let reference = recovery_ref(branch);
+    run_git_with_allowed_exit_codes(worktree_path, &["update-ref", &reference, &head], &[0])?;
+    Ok(Some(reference))
 }
 
 fn commit_count(repo_path: &str, revisions: &[&str]) -> Result<u32, CoreError> {
@@ -560,8 +582,8 @@ fn git_output_max_bytes() -> usize {
 #[cfg(test)]
 mod tests {
     use super::{
-        branch_commit, create_branch, delete_branch_if_unchanged, porcelain_entry_count,
-        run_git_with_allowed_exit_codes,
+        branch_commit, create_branch, delete_branch_if_unchanged, keep_unbranched_head,
+        porcelain_entry_count, run_git_with_allowed_exit_codes,
     };
     use std::path::Path;
 
@@ -611,6 +633,25 @@ mod tests {
         assert_eq!(create_branch(&path, "ottam/theirs", &base).ok(), Some(false));
         assert_eq!(branch_commit(&path, "ottam/theirs").ok(), Some(Some(theirs)));
         assert!(create_branch(&path, "not a valid ref", &base).is_err());
+    }
+
+    #[test]
+    fn a_detached_commit_is_kept_under_a_recovery_ref() {
+        let (temp, base) = repo_with_commit();
+        let repo = temp.path();
+        let path = repo.to_string_lossy().into_owned();
+
+        // Every commit on a branch: nothing to keep.
+        assert_eq!(keep_unbranched_head(&path, "ottam/quiet-fox-1a2b").ok(), Some(None));
+
+        git(repo, &["checkout", "--quiet", "--detach", &base]);
+        git(repo, &["commit", "--quiet", "--allow-empty", "-m", "detached"]);
+        let detached = git(repo, &["rev-parse", "HEAD"]);
+        assert_eq!(
+            keep_unbranched_head(&path, "ottam/quiet-fox-1a2b").ok(),
+            Some(Some("refs/ottam/removed/quiet-fox-1a2b".to_string()))
+        );
+        assert_eq!(git(repo, &["rev-parse", "refs/ottam/removed/quiet-fox-1a2b"]), detached);
     }
 
     #[test]
