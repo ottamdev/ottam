@@ -388,19 +388,18 @@ impl Attention {
             tokio::time::sleep(ASK_NOTIFY_DELAY).await;
             let Some(attention) = this.upgrade() else { return };
             let mut state = attention.state();
+            // Seen at its deadline: it never alerts, now or later.
+            if state.focused(&task_conversation) {
+                return;
+            }
             let Some(asks) = state.asks.get_mut(&task_conversation) else {
                 return;
             };
-            let latest = asks.last().is_some_and(|ask| ask.id == id);
-            if !latest {
-                if let Some(ask) = asks.iter_mut().find(|ask| ask.id == id) {
-                    ask.deferred = true;
-                }
-                return;
-            }
-            if !state.focused(&task_conversation) {
+            if asks.last().is_some_and(|ask| ask.id == id) {
                 let before = state.entry(&task_conversation);
                 attention.emit(&mut state, &task_conversation, before, true);
+            } else if let Some(ask) = asks.iter_mut().find(|ask| ask.id == id) {
+                ask.deferred = true;
             }
         });
         AskGuard {

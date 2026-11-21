@@ -187,6 +187,13 @@ final class FocusReporter {
         let distributed = DistributedNotificationCenter.default()
         observe(Notification.Name("com.apple.screenIsLocked"), on: distributed) { $0.screenIsUnlocked = false }
         observe(Notification.Name("com.apple.screenIsUnlocked"), on: distributed) { $0.screenIsUnlocked = true }
+        // The observers carry changes from here on; what changed while core
+        // started is read once. The lock key, like the lock notifications,
+        // is undocumented, so a missing one reads as unlocked.
+        let session = CGSessionCopyCurrentDictionary() as? [String: Any]
+        sessionIsActive = (session?[kCGSessionOnConsoleKey] as? Bool) ?? true
+        screenIsUnlocked = (session?["CGSSessionScreenIsLocked"] as? Bool) != true
+        screensAreAwake = CGDisplayIsAsleep(CGMainDisplayID()) == 0
         update()
     }
 
