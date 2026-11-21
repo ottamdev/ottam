@@ -20,6 +20,7 @@ current.
 - [ACP Work Plan](backend/acp/README.md) — active — approve M10's Try it; run the five open real-window checks
 - [Agent Instances](backend/acp/agent-instances.md) — deferred — ask OpenCode upstream about `OPENCODE_DB`; packaged agents unscheduled
 - [Agent Roster And Client Compatibility](backend/acp/agent-roster-compatibility.md) — active — go/no-go on Grok Build (`roster:7`)
+- [Antigravity](backend/acp/antigravity.md) — proposed — approve M11's Try it, then `agy:2` (home as a launch argument)
 - [Context Compaction](backend/acp/context-compaction.md) — active — `cmp:1`–`cmp:4` once the Try it is approved
 - [Subagent Sessions](backend/acp/subagent-sessions.md) — active — record Codex 2.7.0's delegated tasks and check they thread
 - [Usage And Cost](backend/acp/usage-and-cost.md) — active — approve and run the plan-usage Try it (`usage:5`), then per-run cost (`usage:3`)

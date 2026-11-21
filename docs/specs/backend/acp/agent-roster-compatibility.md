@@ -13,7 +13,8 @@ the pins in `agent/registry.rs` (see
 Installation). Two existing-setup walkthrough steps are still open, for
 OpenCode and oh-my-pi
 ([work plan › Open checks](README.md#open-checks-on-shipped-milestones)).
-Whether to add Grok Build is an open decision.
+Whether to add Grok Build is an open decision. Antigravity is planned as
+M11 in [antigravity](antigravity.md).
 
 Label adapter claims "source-verified at <version>" (read from source, no
 live session) or "observed live at <version>". Re-verify any claim that no
