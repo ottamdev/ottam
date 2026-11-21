@@ -76,6 +76,10 @@ final class WorkspaceWindowSession {
         configureWindowActions()
         chatWorkspace.mcpSignIn = runtime.mcpSignIn
         chatWorkspace.didDeleteConversation = { [weak self] in self?.closeTools(of: $0) }
+        chatWorkspace.didRelistConversations = { [weak self] conversations in
+            guard let self else { return }
+            terminalWorkspace.adoptWorktreeRoots(conversations.map(\.workingRoot), backend: diffModel)
+        }
         chatWorkspace.openSubagentThread = { [weak self] conversationID, thread in
             self?.tools.showSubagent(thread, in: conversationID)
         }

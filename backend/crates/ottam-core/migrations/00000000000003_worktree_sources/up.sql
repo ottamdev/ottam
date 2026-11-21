@@ -5,3 +5,7 @@
 -- recorded before this migration.
 ALTER TABLE project_sources ADD COLUMN worktree_branch TEXT;
 ALTER TABLE project_sources ADD COLUMN worktree_base_commit TEXT;
+-- When an archived worktree's folder and branch were both settled, so no
+-- later launch retries them. NULL while a removal is still owed.
+ALTER TABLE project_sources ADD COLUMN worktree_cleaned_at BIGINT
+    CHECK (worktree_cleaned_at >= 0);

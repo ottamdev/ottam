@@ -41,6 +41,7 @@ pub struct ProjectSourceRow {
     pub archived_at: Option<i64>,
     pub worktree_branch: Option<String>,
     pub worktree_base_commit: Option<String>,
+    pub worktree_cleaned_at: Option<i64>,
 }
 
 #[derive(Debug, Insertable)]
@@ -58,6 +59,7 @@ pub struct NewProjectSourceRow<'a> {
     pub archived_at: Option<i64>,
     pub worktree_branch: Option<&'a str>,
     pub worktree_base_commit: Option<&'a str>,
+    pub worktree_cleaned_at: Option<i64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

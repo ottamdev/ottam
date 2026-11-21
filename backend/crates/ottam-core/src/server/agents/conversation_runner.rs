@@ -3055,7 +3055,9 @@ impl ConversationRunCoordinator {
     }
 
     /// Stop the active runs of `conversations`, whose worktree is going away,
-    /// in whichever workspace they run.
+    /// in whichever workspace they run, then the background tasks that
+    /// outlive a run. A subagent that outlives its run has no stop request in
+    /// ACP and keeps going.
     pub(super) async fn cancel_conversations_runs(&self, conversations: &[ConversationID]) {
         let runs = {
             let active = self.active_runs().await;
@@ -3080,6 +3082,20 @@ impl ConversationRunCoordinator {
                     error = %error,
                     run_id = %run_id.0,
                     "failed to cancel a run for a removed worktree"
+                );
+            }
+        }
+        for (workspace_id, conversation_id, run_id, task_id) in
+            self.attribution.live_tasks_of(conversations)
+        {
+            if let Err(error) = self
+                .stop_background_task(&workspace_id, &conversation_id, &run_id, &task_id)
+                .await
+            {
+                tracing::warn!(
+                    error = %error.message,
+                    run_id = %run_id.0,
+                    "failed to stop a background task for a removed worktree"
                 );
             }
         }

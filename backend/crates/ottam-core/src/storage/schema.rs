@@ -209,6 +209,7 @@ diesel::table! {
         archived_at -> Nullable<BigInt>,
         worktree_branch -> Nullable<Text>,
         worktree_base_commit -> Nullable<Text>,
+        worktree_cleaned_at -> Nullable<BigInt>,
     }
 }
 

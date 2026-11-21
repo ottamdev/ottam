@@ -1,6 +1,6 @@
 use crate::support::{
     assert_error_data_kind, assert_success_response, run_git, CoreProcess, FakeAcpRuntime,
-    GitRepoFixture,
+    FakePromptBehavior, GitRepoFixture,
 };
 use serde_json::{json, Value};
 use std::path::{Path, PathBuf};
@@ -590,5 +590,111 @@ fn a_refused_removal_is_retried_on_the_next_launch() {
         assert!(Instant::now() < deadline, "the owed removal never ran");
         std::thread::sleep(Duration::from_millis(20));
     }
+    core.shutdown();
+}
+
+/// A removal that settled is recorded, so a later launch leaves alone a
+/// branch someone made since under the same name at the same base.
+#[test]
+fn a_settled_removal_is_never_retried() {
+    let repo = GitRepoFixture::init();
+    repo.commit_empty("initial");
+    let head = repo.git(["rev-parse", "HEAD"]).trim().to_string();
+    let home = TempDir::new().expect("OTTAM_HOME");
+    let mut core = CoreProcess::new_in_home(home.path());
+    core.initialize();
+    let opened = core.open_path(repo.path());
+    let project_id = opened["project"]["projectID"].as_str().unwrap().to_string();
+    let workspace_id = core.workspace_id(&project_id);
+    let created = create_worktree_conversation(&mut core, &project_id, "Settle once");
+    let source_id = worktree_source(&created);
+    let branch = created["conversation"]["workingRoot"]["worktree"]["branch"]
+        .as_str()
+        .expect("branch")
+        .to_string();
+    let (removed, _) = core.send_for_id(
+        json!({
+            "id": 74,
+            "method": "worktree.remove",
+            "params": {"workspaceID": workspace_id, "projectSourceID": source_id}
+        }),
+        json!(74),
+    );
+    assert_success_response(&removed, &json!(74));
+    assert_eq!(removed["result"]["removal"]["removed"], true, "{removed}");
+    assert!(!branch_exists(repo.path(), &branch));
+    core.shutdown();
+
+    repo.git(["branch", &branch, &head]);
+    let mut core = CoreProcess::new_in_home(home.path());
+    core.initialize();
+    // The startup retry runs off the dispatcher; give it time to act.
+    let deadline = Instant::now() + Duration::from_secs(1);
+    while Instant::now() < deadline {
+        assert!(branch_exists(repo.path(), &branch), "a settled removal ran again");
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    core.shutdown();
+}
+
+/// Removal stops a background task that outlived its run in the checkout.
+#[test]
+fn removing_a_worktree_stops_its_background_tasks() {
+    let repo = GitRepoFixture::init();
+    repo.write("README.md", "background\n");
+    repo.commit_all("initial");
+    let home = TempDir::new().expect("OTTAM_HOME");
+    let runtime = FakeAcpRuntime::new();
+    runtime.set_next_prompt(FakePromptBehavior::AsyncTasksFollowUp);
+    let mut core = CoreProcess::new_in_home_with_env(home.path(), runtime.environment());
+    core.initialize();
+    let opened = core.open_path(repo.path());
+    let project_id = opened["project"]["projectID"].as_str().unwrap().to_string();
+    let workspace_id = core.workspace_id(&project_id);
+    let created = create_worktree_conversation(&mut core, &project_id, "Run in background");
+    let conversation_id = created["conversation"]["conversationID"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let source_id = worktree_source(&created);
+    core.start_conversation_run(&project_id, &conversation_id, "codex", &first_input_id(&created));
+
+    let deadline = Instant::now() + Duration::from_secs(10);
+    loop {
+        let (page, _) = core.send_for_id(
+            json!({
+                "id": 75,
+                "method": "conversation.listTranscript",
+                "params": {"workspaceID": workspace_id, "conversationID": conversation_id}
+            }),
+            json!(75),
+        );
+        assert_success_response(&page, &json!(75));
+        let live = page["result"]["backgroundTasks"]
+            .as_array()
+            .is_some_and(|counts| counts.iter().any(|count| count["live"].as_u64() > Some(0)));
+        if live {
+            break;
+        }
+        assert!(Instant::now() < deadline, "no background task went live");
+        std::thread::sleep(Duration::from_millis(20));
+    }
+
+    let (removed, _) = core.send_for_id(
+        json!({
+            "id": 76,
+            "method": "worktree.remove",
+            "params": {"workspaceID": workspace_id, "projectSourceID": source_id}
+        }),
+        json!(76),
+    );
+    assert_success_response(&removed, &json!(76));
+    assert_eq!(
+        runtime
+            .request_log()
+            .matches("_session/async_task/stop")
+            .count(),
+        1
+    );
     core.shutdown();
 }

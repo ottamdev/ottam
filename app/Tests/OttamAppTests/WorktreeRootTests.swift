@@ -79,7 +79,7 @@ struct WorktreeRootTests {
         terminals.closeAll(backend: backend)
     }
 
-    @Test("a worktree terminal detached by its project leaving reattaches when the project returns")
+    @Test("a worktree terminal detached by its project leaving comes back only on Core's word")
     func worktreeTerminalReattachesWithItsProject() throws {
         let backend = DiffReviewModel(client: OttamCoreProcessClient(
             executableURL: URL(fileURLWithPath: "/nonexistent/ottam-core")
@@ -91,9 +91,53 @@ struct WorktreeRootTests {
         let id = try #require(record?.id)
         terminals.configure(workspaceID: workspaceID, workspaceFiles: nil, projects: [], backend: backend)
         #expect(terminals.record(for: id)?.workingRoot.availability == .detached)
+        // Membership alone does not bring it back: Core may have removed it.
         terminals.configure(workspaceID: workspaceID, workspaceFiles: nil, projects: [member], backend: backend)
+        #expect(terminals.record(for: id)?.workingRoot.availability == .detached)
+        terminals.adoptWorktreeRoots([worktreeRoot(.detached)], backend: backend)
+        #expect(terminals.record(for: id)?.workingRoot.availability == .detached)
+        terminals.adoptWorktreeRoots([worktreeRoot()], backend: backend)
         #expect(terminals.record(for: id)?.workingRoot.availability == .available)
         terminals.closeAll(backend: backend)
+    }
+
+    @Test("a rejoined project's worktree roots wait for a re-list across reconfiguration")
+    func rejoinedWorktreeAwaitsRelist() {
+        let backend = DiffReviewModel(client: OttamCoreProcessClient(
+            executableURL: URL(fileURLWithPath: "/nonexistent/ottam-core")
+        ))
+        let model = ChatWorkspaceModel(defaults: UserDefaults(suiteName: "worktree-relist-\(UUID())")!)
+        let workspaceID = WorkspaceID("worktrees")
+        let configure = { (projects: [WorkspaceProjectSummary]) in
+            model.configure(
+                workspaceID: workspaceID,
+                workspaceFiles: nil,
+                projects: projects,
+                projectSummary: nil,
+                backend: backend
+            )
+        }
+        configure([member])
+        model.apply(conversations: [
+            ConversationSummary(
+                conversationID: ConversationID("worktree-chat"),
+                workspaceID: workspaceID,
+                workingRoot: worktreeRoot(),
+                title: "Fix",
+                createdAt: "2026-11-20T00:00:00Z",
+                updatedAt: "2026-11-20T00:00:00Z",
+                alwaysAllowToolActions: false
+            )
+        ])
+        configure([])
+        #expect(!model.worktreeRootsNeedRelist)
+        configure([member])
+        #expect(model.worktreeRootsNeedRelist)
+        // A second configure before the re-list lands keeps it owed; this
+        // Core never answers, so nothing clears it.
+        configure([member])
+        #expect(model.worktreeRootsNeedRelist)
+        #expect(model.conversations.first?.workingRoot.availability == .detached)
     }
 
     @Test("a send error under the composer clears once the draft's root or Worktree checkbox changes")

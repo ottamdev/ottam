@@ -265,7 +265,8 @@ async fn a_home_before_worktrees_upgrades_with_plain_sources() {
             SqliteConnection::establish(path.to_string_lossy().as_ref()).expect("opens SQLite");
         connection
             .batch_execute(
-                "ALTER TABLE project_sources DROP COLUMN worktree_base_commit; \
+                "ALTER TABLE project_sources DROP COLUMN worktree_cleaned_at; \
+                 ALTER TABLE project_sources DROP COLUMN worktree_base_commit; \
                  ALTER TABLE project_sources DROP COLUMN worktree_branch; \
                  DELETE FROM __diesel_schema_migrations WHERE version = '00000000000003';",
             )

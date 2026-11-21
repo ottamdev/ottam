@@ -219,14 +219,21 @@ never writes beside the user's checkout.
   and Core never adopts a worktree it did not make. Create and removal check
   the same resolved root, so Core never records a checkout it would refuse
   to remove.
+- A worktree name (folder and branch) is never handed out twice while any
+  row of the project, archived or not, holds it, and create claims its
+  folder before git runs. Cleanup therefore only ever touches its own
+  checkout.
 - Create runs git first. A failed `git worktree add` (a failing
   `post-checkout` hook, the timeout) or a failed insert takes down the
   checkout, its registration and its branch.
 - Removal archives the row first. An archived row owes its folder, and the
-  branch left after it, until startup's retry finds both gone. A second
-  removal of an archived row answers `worktreeUnavailable` and repeats
-  nothing. Runs, terminals and cached roots on the source stop in every
-  workspace.
+  branch left after it, until a removal settles both and sets
+  `worktree_cleaned_at`; startup retries only unsettled rows, so it never
+  acts on a branch made later under the same name. A second removal of an
+  archived row answers `worktreeUnavailable` and repeats nothing. Runs,
+  background tasks, terminals and cached roots on the source stop in every
+  workspace; a subagent that outlives its run has no ACP stop and keeps
+  going.
 - The branch goes only while its tip is still the base commit and no
   worktree has it checked out, as one compare-and-delete. `worktree.status`
   reports the branch's fate by the same rule (`git::branch_fate`), and counts

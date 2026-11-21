@@ -132,18 +132,30 @@ final class TerminalWorkspaceModel {
         records = records.map { record in
             var updated = record
             updated.workingRoot = record.workingRoot.updatingAvailability(for: projects)
-            // Core closes a removed worktree's terminals, so a worktree
-            // terminal still here was detached only by its project leaving.
-            if updated.workingRoot.worktree != nil,
-               projects.contains(where: { $0.project.projectID == updated.workingRoot.projectID }) {
-                updated.workingRoot.availability = .available
-            }
             return updated
         }
         for record in records {
             sessionModels[record.id]?.configure(
                 workspaceID: record.workspaceID,
                 workingRoot: record.workingRoot,
+                backend: backend
+            )
+        }
+    }
+
+    /// Takes Core's word on worktree roots from a conversation re-list: how
+    /// a worktree terminal detached by its project leaving comes back, and
+    /// why one Core removed meanwhile stays detached.
+    func adoptWorktreeRoots(_ roots: [WorkingRootSummary], backend: DiffReviewModel) {
+        for index in records.indices where records[index].workingRoot.worktree != nil {
+            guard let core = roots.first(where: { $0.sourceID == records[index].workingRoot.sourceID })
+            else { continue }
+            let availability = core.updatingAvailability(for: projects).availability
+            guard availability != records[index].workingRoot.availability else { continue }
+            records[index].workingRoot.availability = availability
+            sessionModels[records[index].id]?.configure(
+                workspaceID: records[index].workspaceID,
+                workingRoot: records[index].workingRoot,
                 backend: backend
             )
         }

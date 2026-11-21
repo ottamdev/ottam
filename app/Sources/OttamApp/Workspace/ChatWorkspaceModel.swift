@@ -1146,6 +1146,13 @@ final class ChatWorkspaceModel {
     @ObservationIgnored private var alwaysAllowWrite: Task<Void, Never>?
     /// Counts `conversation.listChanged` re-lists, so only the latest applies.
     @ObservationIgnored private var listChangedGeneration = 0
+    /// A worktree root was detached by its project leaving and the project
+    /// is back: only Core's list can say whether the checkout survived. Kept
+    /// across reconfiguration until a re-list lands.
+    @ObservationIgnored private(set) var worktreeRootsNeedRelist = false
+    /// Hands each re-list's roots to the window's terminals, which hold
+    /// worktree roots of their own.
+    @ObservationIgnored var didRelistConversations: (([ConversationSummary]) -> Void)?
     /// Re-lists when a named agent changes in Settings, for its children's
     /// tiles.
     @ObservationIgnored private var namedAgentsObserver: Task<Void, Never>?
@@ -2344,10 +2351,11 @@ final class ChatWorkspaceModel {
         // project returns only Core knows whether the checkout went meanwhile.
         let rejoined = Set(projects.map(\.project.projectID))
             .subtracting(self.projects.map(\.project.projectID))
-        let rereadsWorktreeRoots = !changedWorkspace && conversations.contains { conversation in
+        let rejoinedWorktree = conversations.contains { conversation in
             conversation.workingRoot.worktree != nil
                 && conversation.workingRoot.projectID.map(rejoined.contains) == true
         }
+        worktreeRootsNeedRelist = !changedWorkspace && (worktreeRootsNeedRelist || rejoinedWorktree)
         self.projects = projects
         self.projectSummary = projectSummary
         conversations = conversations.map { conversation in
@@ -2409,27 +2417,8 @@ final class ChatWorkspaceModel {
             // its load task ran with no workspaceID and gave up. Now that the model
             // is configured, load whatever is still missing (no-op once loaded).
             await loadIfNeeded(backend: backend)
-            guard rereadsWorktreeRoots, !Task.isCancelled else { return }
-            await rereadWorkingRoots(backend: backend)
-        }
-    }
-
-    /// Core's roots in place of ones the app detached by project membership.
-    private func rereadWorkingRoots(backend: DiffReviewModel) async {
-        guard let workspaceID,
-              let list = try? await backend.listConversations(workspaceID: workspaceID),
-              self.workspaceID == workspaceID
-        else { return }
-        let fresh = list.conversations.map { conversation in
-            var updated = conversation
-            updated.workingRoot = conversation.workingRoot.updatingAvailability(for: projects)
-            return updated
-        }
-        apply(conversations: fresh)
-        if var detail = selectedDetail,
-           let fresh = fresh.first(where: { $0.conversationID == detail.summary.conversationID }) {
-            detail.summary.workingRoot = fresh.workingRoot
-            selectedDetail = detail
+            guard worktreeRootsNeedRelist, !Task.isCancelled else { return }
+            await relistConversations(workspaceID: workspaceID, backend: backend)
         }
     }
 
@@ -3794,6 +3783,7 @@ final class ChatWorkspaceModel {
 
     /// Replaces the conversation list with core's, unless the window let go
     /// of core, the workspace changed, or a later re-list started meanwhile.
+    /// The open conversation takes Core's root too.
     private func relistConversations(workspaceID: WorkspaceID, backend: DiffReviewModel) async {
         guard !backendHandlersRetired else { return }
         listChangedGeneration += 1
@@ -3803,7 +3793,19 @@ final class ChatWorkspaceModel {
               self.workspaceID == workspaceID,
               generation == listChangedGeneration
         else { return }
-        apply(conversations: list.conversations)
+        worktreeRootsNeedRelist = false
+        let fresh = list.conversations.map { conversation in
+            var updated = conversation
+            updated.workingRoot = conversation.workingRoot.updatingAvailability(for: projects)
+            return updated
+        }
+        apply(conversations: fresh)
+        if var detail = selectedDetail,
+           let summary = fresh.first(where: { $0.conversationID == detail.summary.conversationID }) {
+            detail.summary.workingRoot = summary.workingRoot
+            selectedDetail = detail
+        }
+        didRelistConversations?(fresh)
     }
 
     /// Merges into the shown store or a cached one. Only the shown store

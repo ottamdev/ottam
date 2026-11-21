@@ -97,6 +97,7 @@ impl ProjectRepository {
                 archived_at: None,
                 worktree_branch: None,
                 worktree_base_commit: None,
+                worktree_cleaned_at: None,
             })
             .execute(connection)?;
         Ok((Self::get_opened_by_source_id(connection, &source_id)?, true))
@@ -128,6 +129,7 @@ impl ProjectRepository {
                 archived_at: None,
                 worktree_branch: Some(&worktree.branch),
                 worktree_base_commit: Some(&worktree.base_commit),
+                worktree_cleaned_at: None,
             })
             .execute(connection)?;
         Self::get_source(connection, &source_id)
@@ -218,14 +220,15 @@ impl ProjectRepository {
     }
 
     /// Archived worktree sources whose directories Core may still owe a
-    /// removal. A path an active source has since claimed is left out, so a
-    /// retry never deletes a live checkout.
+    /// removal. A settled one, or a path an active source has since claimed,
+    /// is left out, so a retry never deletes a later checkout or branch.
     pub fn archived_worktree_sources(
         connection: &mut SqliteConnection,
     ) -> Result<Vec<ReleasedWorktree>, StorageError> {
         let archived = project_sources::table
             .filter(project_sources::worktree_branch.is_not_null())
             .filter(project_sources::archived_at.is_not_null())
+            .filter(project_sources::worktree_cleaned_at.is_null())
             .select(ProjectSourceRow::as_select())
             .load::<ProjectSourceRow>(connection)?
             .into_iter()
@@ -245,6 +248,38 @@ impl ProjectRepository {
             .filter(|source| !claimed.contains(&source.canonical_path))
             .map(|source| Self::released(connection, source))
             .collect()
+    }
+
+    /// An archived worktree's folder and branch are settled; no launch
+    /// retries it again.
+    pub fn mark_worktree_cleaned(
+        connection: &mut SqliteConnection,
+        source_id: &ProjectSourceId,
+        now: DateTime<Utc>,
+    ) -> Result<(), StorageError> {
+        diesel::update(project_sources::table.find(source_id.to_string()))
+            .filter(project_sources::archived_at.is_not_null())
+            .set(project_sources::worktree_cleaned_at.eq(now.timestamp_millis()))
+            .execute(connection)?;
+        Ok(())
+    }
+
+    /// Every worktree path and branch a source of the project ever held,
+    /// archived or not. Ottam never hands one out again, so an owed removal
+    /// can only ever name its own checkout.
+    pub fn worktree_names_in_use(
+        connection: &mut SqliteConnection,
+        project_id: &ProjectId,
+    ) -> Result<(Vec<String>, Vec<String>), StorageError> {
+        let rows = project_sources::table
+            .filter(project_sources::project_id.eq(project_id.to_string()))
+            .filter(project_sources::worktree_branch.is_not_null())
+            .select((project_sources::canonical_path, project_sources::worktree_branch))
+            .load::<(String, Option<String>)>(connection)?;
+        Ok(rows
+            .into_iter()
+            .map(|(path, branch)| (path, branch.unwrap_or_default()))
+            .unzip())
     }
 
 

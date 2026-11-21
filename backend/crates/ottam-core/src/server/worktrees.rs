@@ -45,10 +45,13 @@ pub(super) struct CreatedCheckout {
 
 /// `git worktree add` a new `ottam/<words>-<hex>` branch off the primary
 /// checkout's HEAD into `$OTTAM_HOME/worktrees/<project>/<words>-<hex>`.
+/// `taken` is every path and branch a worktree row of the project holds,
+/// archived or not: a name is never handed out twice.
 pub(super) fn create_checkout(
     home: &Path,
     project_name: &str,
     primary_path: &str,
+    taken: &(Vec<String>, Vec<String>),
     message: Option<&str>,
 ) -> Result<CreatedCheckout, CoreError> {
     // Before anything touches the disk, so a repository with no commits
@@ -99,8 +102,27 @@ pub(super) fn create_checkout(
         let name = format!("{words}-{}", random_suffix());
         let branch = format!("ottam/{name}");
         let path = project_dir.join(&name);
-        if path.exists() || git::branch_commit(primary_path, &branch)?.is_some() {
+        if taken.0.iter().any(|held| Path::new(held) == path)
+            || taken.1.contains(&branch)
+            || git::branch_commit(primary_path, &branch)?.is_some()
+        {
             continue;
+        }
+        // Claims the name: a concurrent create that drew it too fails here
+        // and draws again, so what this attempt later discards is its own.
+        // Git checks out into an empty folder.
+        match std::fs::create_dir(&path) {
+            Ok(()) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(error) => {
+                outcome = Err(CoreError::new(
+                    "worktreeCreateFailed",
+                    format!("could not create the worktree folder: {error}"),
+                )
+                .with_path(path.to_string_lossy())
+                .recoverable(true));
+                break;
+            }
         }
         let created = CreatedCheckout {
             canonical_path: path.to_string_lossy().into_owned(),
@@ -113,9 +135,9 @@ pub(super) fn create_checkout(
         outcome = match git::worktree_add(primary_path, &path, &branch, &base_commit) {
             Ok(()) => Ok(created),
             Err(error) => {
-                // The path and branch were free before this attempt, so what
-                // exists now is its own: a failing post-checkout hook or the
-                // timeout leaves the checkout registered.
+                // This attempt claimed the folder and the branch was free,
+                // so what exists now is its own: a failing post-checkout hook
+                // or the timeout leaves the checkout registered.
                 discard_checkout(&created);
                 Err(error)
             }
@@ -278,12 +300,34 @@ pub(super) async fn retry_owed_removals(database: Database) {
         })
         .await;
         match removal {
-            Ok(removal) if folder_left => {
-                tracing::info!(removed = removal.removed, "retried an owed worktree removal")
+            Ok(removal) => {
+                if folder_left {
+                    tracing::info!(removed = removal.removed, "retried an owed worktree removal");
+                }
+                record_settled(&database, &removal).await;
             }
-            Ok(_) => {}
             Err(error) => tracing::warn!(kind = error.kind, "an owed worktree removal failed"),
         }
+    }
+}
+
+/// Marks a removal whose folder went and whose branch was decided, so no
+/// later launch retries it against a branch someone made since. Every
+/// partial outcome carries a message.
+async fn record_settled(database: &Database, removal: &WorktreeRemoval) {
+    if !removal.removed || removal.message.is_some() {
+        return;
+    }
+    let Ok(source_id) = ProjectSourceId::try_from(removal.project_source_id.0.as_str()) else {
+        return;
+    };
+    let marked = database
+        .run("worktree.cleaned", move |connection| {
+            ProjectRepository::mark_worktree_cleaned(connection, &source_id, chrono::Utc::now())
+        })
+        .await;
+    if let Err(error) = marked {
+        tracing::warn!(kind = error.kind, "a settled worktree removal was not recorded");
     }
 }
 
@@ -360,10 +404,11 @@ impl AgentServer {
                 }
                 let project = ProjectRepository::get_project(connection, &project_id)?;
                 let primary = ProjectRepository::primary_source(connection, &project_id)?;
-                Ok((project.display_name, primary.canonical_path))
+                let taken = ProjectRepository::worktree_names_in_use(connection, &project_id)?;
+                Ok((project.display_name, primary.canonical_path, taken))
             })
             .await;
-        let (project_name, primary_path) = match base {
+        let (project_name, primary_path, taken) = match base {
             Ok(base) => base,
             Err(error) => return Some(core_error_response(request_id, -32000, error.into())),
         };
@@ -380,7 +425,7 @@ impl AgentServer {
         let spawned = lane.spawn(origin, async move {
             let message = params.message.as_ref().map(|message| message.body.clone());
             let created = git::run_blocking("worktreeAdd", move || {
-                create_checkout(&home, &project_name, &primary_path, message.as_deref())
+                create_checkout(&home, &project_name, &primary_path, &taken, message.as_deref())
             })
             .await;
             let created = match created {
@@ -456,6 +501,7 @@ impl AgentServer {
             return Some(respond(request_id, None));
         }
         let home = self.database.home().to_path_buf();
+        let database = self.database.clone();
         let busy = "Ottam was busy with other worktrees and removes this one on its next launch.";
         let Some(lane) = self.worktree_lane.as_mut() else {
             return Some(respond(request_id, released.first().map(|first| owed_removal(first, busy))));
@@ -474,7 +520,12 @@ impl AgentServer {
             })
             .await;
             let removal = match removals {
-                Ok(removals) => removals.into_iter().next(),
+                Ok(removals) => {
+                    for removal in &removals {
+                        record_settled(&database, removal).await;
+                    }
+                    removals.into_iter().next()
+                }
                 // The row is archived already, so the folder is owed.
                 Err(error) => {
                     tracing::warn!(kind = error.kind, "the worktree removal task failed");

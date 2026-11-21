@@ -820,6 +820,14 @@ impl SessionAttribution {
         None
     }
 
+    /// See [`TaskIndex::live_tasks_of`].
+    pub(super) fn live_tasks_of(
+        &self,
+        conversations: &[ConversationID],
+    ) -> Vec<(WorkspaceID, ConversationID, ConversationRunID, String)> {
+        self.sessions().tasks.live_tasks_of(conversations)
+    }
+
     /// See [`TaskIndex::live_session`].
     pub(super) fn live_task_session(
         &self,
