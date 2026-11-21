@@ -100,7 +100,12 @@ a Mac already signed in to `agy`.
   - Verify with: a core test that sign-out is refused on a managed
     Antigravity instance, a core test that an auth-required session marks
     it signed out with the Keychain item present, and the Try it's sign-in
-    step.
+    step. Before shipping, record which store `agy acp --login` picks in
+    a managed home with the timeout marker active and again after it
+    expires. If the two differ, the Keychain login is the one at risk, so
+    the Sign in copy also asks the user to sign in with the same Google
+    account their CLI uses. Then the CLI ends up with a fresh token for
+    that same account.
   - Upstream ask: a supported switch (a flag or a `settings.json` key)
     for the file token store under `--gemini-dir`. That would make managed
     homes real accounts. Ask the user before posting.
