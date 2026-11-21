@@ -193,8 +193,17 @@ final class FocusReporter {
         let session = CGSessionCopyCurrentDictionary() as? [String: Any]
         sessionIsActive = (session?[kCGSessionOnConsoleKey] as? Bool) ?? true
         screenIsUnlocked = (session?["CGSSessionScreenIsLocked"] as? Bool) != true
-        screensAreAwake = CGDisplayIsAsleep(CGMainDisplayID()) == 0
+        screensAreAwake = Self.anyDisplayIsAwake()
         update()
+    }
+
+    /// Displays sleep one at a time; the screens are awake while any is.
+    private static func anyDisplayIsAwake() -> Bool {
+        var count: UInt32 = 0
+        guard CGGetOnlineDisplayList(0, nil, &count) == .success, count > 0 else { return true }
+        var displays = [CGDirectDisplayID](repeating: 0, count: Int(count))
+        guard CGGetOnlineDisplayList(count, &displays, &count) == .success else { return true }
+        return displays.prefix(Int(count)).contains { CGDisplayIsAsleep($0) == 0 }
     }
 
     private func observe(
