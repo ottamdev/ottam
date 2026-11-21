@@ -92,7 +92,11 @@ a Mac already signed in to `agy`.
     token, the login replaces it, which also repairs the user's CLI. If
     `agy` fell back to the file store (a recent keyring timeout or a
     failed keyring write), the login writes the token into the managed
-    home and leaves the Keychain alone. Neither path signs anything out.
+    home, but only while that reason still holds. The timeout marker
+    expires, and then the login may write to the Keychain and replace the
+    CLI's token. Ottam cannot choose the store, so the Sign in copy says
+    it may replace this Mac's Google sign-in. Neither path signs anything
+    out.
   - Verify with: a core test that sign-out is refused on a managed
     Antigravity instance, a core test that an auth-required session marks
     it signed out with the Keychain item present, and the Try it's sign-in
