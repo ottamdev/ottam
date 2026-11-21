@@ -81,11 +81,22 @@ a Mac already signed in to `agy`.
 - [ ] 1. Shared sign-in in the UI (see Decisions, 2026-11-21). A managed
   profile shows the Mac's one Google sign-in and never offers sign-out.
   `session/logout` there would sign the user's own CLI out. Sign-in runs
-  only when no login exists, because a new login replaces the CLI's token.
-  Add a home-is-not-an-account note to the add-agent sheet and to the
+  only when no working login exists, because a new login replaces the
+  CLI's token. Add a home-is-not-an-account note to the add-agent sheet and to the
   agent's Account row. Purge deletes only the managed home's files.
+  - Recovery: the Keychain item's attributes prove only that a login
+    exists, not that it works. A session that fails with `-32000`
+    "Authentication required" marks the profile signed out, whatever the
+    Keychain shows, and offers Sign in (the terminal login, with the home
+    argument). That one path covers both failure states. With a revoked
+    token, the login replaces it, which also repairs the user's CLI. If
+    `agy` fell back to the file store (a recent keyring timeout or a
+    failed keyring write), the login writes the token into the managed
+    home and leaves the Keychain alone. Neither path signs anything out.
   - Verify with: a core test that sign-out is refused on a managed
-    Antigravity instance, and the Try it's sign-in step.
+    Antigravity instance, a core test that an auth-required session marks
+    it signed out with the Keychain item present, and the Try it's sign-in
+    step.
   - Upstream ask: a supported switch (a flag or a `settings.json` key)
     for the file token store under `--gemini-dir`. That would make managed
     homes real accounts. Ask the user before posting.
@@ -157,15 +168,19 @@ a Mac already signed in to `agy`.
   belongs to [usage-and-cost](usage-and-cost.md).
 - Subagents and background tasks (`/teamwork`, `/boost`). Record their
   wire shape before mapping them in [subagent-sessions](subagent-sessions.md).
-- Isolated managed accounts. Trigger: Google ships the standalone ACP
-  server past 1.5.2, or `agy` gains a supported file-store switch. Managed
-  profiles would then run that server with `GEMINI_HOME` at the profile and
-  `AGY_ACP_FORCE_FILE_STORAGE=1`, while existing setups keep `agy acp`.
-  Known quirks, from Orca's integration:
-  - it unpacks about 1 GB per start
-  - newer builds write a workflow skill into the workspace unless the
-    session sends `_meta.antigravity.disabledTools: ["run_workflow"]`
-  - sign-in prints its URL through `BROWSER`
+- Isolated managed accounts, by whichever trigger fires first:
+  - `agy` gains a supported file-store switch. Managed profiles keep
+    `agy acp` and set the switch with `--gemini-dir` at the profile. This
+    is the preferred path.
+  - Google ships the standalone ACP server past 1.5.2 while `agy` still
+    has no switch. Reconsider that server for managed profiles, with
+    `GEMINI_HOME` at the profile and `AGY_ACP_FORCE_FILE_STORAGE=1`.
+    Existing setups keep `agy acp`. Its known quirks, from Orca's
+    integration:
+    - it unpacks about 1 GB per start
+    - newer builds write a workflow skill into the workspace unless the
+      session sends `_meta.antigravity.disabledTools: ["run_workflow"]`
+    - sign-in prints its URL through `BROWSER`
 
 ## Decisions
 
