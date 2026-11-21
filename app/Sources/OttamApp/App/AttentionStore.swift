@@ -20,6 +20,7 @@ final class AttentionStore {
     @ObservationIgnored let presenter: NotificationPresenter?
     @ObservationIgnored private let setBadge: @MainActor (Int) -> Void
     @ObservationIgnored private var subscription: AgentEventSubscriptionToken?
+    @ObservationIgnored private var subscribing: Task<Void, Never>?
     @ObservationIgnored private var seeding: Task<Void, Never>?
     @ObservationIgnored private var presenting: Task<Void, Never>?
     /// Withdrawals asked for per conversation, so a post queued before one
@@ -44,17 +45,21 @@ final class AttentionStore {
         reducer.conversations(in: workspaceID, state: .unseen)
     }
 
-    /// Subscribes before any snapshot is read, so no change falls between.
-    func start() async {
-        guard subscription == nil else { return }
-        subscription = await client.subscribeToEvents(
-            filter: AgentEventFilter(methods: ["attention.changed"])
-        ) { [weak self] notification in
-            let change = try? JSONDecoder().decode(
-                ProtocolNotification<AttentionChangedParams>.self, from: notification.payload
-            ).params
-            guard let change else { return }
-            await self?.receive(change)
+    /// Subscribes without holding up startup; a snapshot waits for it, so no
+    /// change falls between the two.
+    func start() {
+        guard subscribing == nil else { return }
+        subscribing = Task { [weak self, client] in
+            let token = await client.subscribeToEvents(
+                filter: AgentEventFilter(methods: ["attention.changed"])
+            ) { [weak self] notification in
+                let change = try? JSONDecoder().decode(
+                    ProtocolNotification<AttentionChangedParams>.self, from: notification.payload
+                ).params
+                guard let change else { return }
+                await self?.receive(change)
+            }
+            self?.subscription = token
         }
     }
 
@@ -65,7 +70,8 @@ final class AttentionStore {
             attentionLogger.info("attention reset for a new core")
         }
         seeding?.cancel()
-        seeding = Task { [weak self, client] in
+        seeding = Task { [weak self, client, subscribing] in
+            await subscribing?.value
             do {
                 let snapshot = try await client.listAttention()
                 guard !Task.isCancelled, let self else { return }

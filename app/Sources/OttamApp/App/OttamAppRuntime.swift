@@ -131,9 +131,9 @@ final class OttamAppRuntime {
         // Off the startup path: a chat calls a server only once its workspace
         // has opened, long after this subscription lands.
         Task { await mcpSignIn.start() }
-        // Before core can be ready, so the subscription is in place before
-        // the first snapshot is read.
-        await attention.start()
+        // Off the startup path too: the first snapshot waits for the
+        // subscription, so nothing here waits on it.
+        attention.start()
         await refreshWorkspaces()
     }
 

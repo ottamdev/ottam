@@ -4,16 +4,6 @@ import Testing
 @preconcurrency import UserNotifications
 @testable import OttamApp
 
-/// Polls `condition` within a bound. It sleeps between checks rather than
-/// yielding, so a wait leaves the main actor to the window tests beside it.
-@MainActor
-private func waitUntil(_ condition: () -> Bool) async {
-    let deadline = ContinuousClock.now + .seconds(5)
-    while !condition(), ContinuousClock.now < deadline {
-        try? await Task.sleep(for: .milliseconds(5))
-    }
-}
-
 /// Stands in for the system notification center, which a test process
 /// cannot reach.
 @MainActor
@@ -30,6 +20,22 @@ final class FakeNotificationCenter: NotificationCenterCapability {
     var holdsPrompt = false
     private(set) var isPrompting = false
     private var promptAnswer: CheckedContinuation<Void, Never>?
+    private var waiters: [(condition: @MainActor () -> Bool, resume: CheckedContinuation<Void, Never>)] = []
+
+    /// Returns once `condition` holds. The fake checks it whenever it records
+    /// a prompt, an add or a remove, so a test waits on the event itself.
+    func until(_ condition: @escaping @MainActor () -> Bool) async {
+        if condition() { return }
+        await withCheckedContinuation { waiters.append((condition, $0)) }
+    }
+
+    private func changed() {
+        var pending: [(condition: @MainActor () -> Bool, resume: CheckedContinuation<Void, Never>)] = []
+        for waiter in waiters {
+            if waiter.condition() { waiter.resume.resume() } else { pending.append(waiter) }
+        }
+        waiters = pending
+    }
 
     init(status: UNAuthorizationStatus, grants: Bool = true) {
         self.status = status
@@ -42,6 +48,7 @@ final class FakeNotificationCenter: NotificationCenterCapability {
         requests += 1
         if holdsPrompt {
             isPrompting = true
+            changed()
             await withCheckedContinuation { promptAnswer = $0 }
             isPrompting = false
         }
@@ -57,18 +64,20 @@ final class FakeNotificationCenter: NotificationCenterCapability {
     func add(_ banner: NotificationBanner) async {
         added.append(banner)
         delivered.append(banner.identifier)
+        changed()
     }
 
     func remove(identifiers: [String]) {
         removed.append(contentsOf: identifiers)
         delivered.removeAll { identifiers.contains($0) }
+        changed()
     }
 
     func deliveredIdentifiers() async -> [String] { delivered }
 }
 
 @MainActor
-@Suite("Attention presenter")
+@Suite("Attention presenter", .timeLimit(.minutes(1)))
 struct AttentionPresenterTests {
     private let workspace = WorkspaceID("w")
 
@@ -151,7 +160,7 @@ struct AttentionPresenterTests {
         let settings = settings()
         let presenter = presenter(center, settings: settings)
         let posting = Task { await presenter.post(entry("a")) }
-        await waitUntil { center.isPrompting }
+        await center.until { center.isPrompting }
         #expect(center.isPrompting)
         settings.agentFinished = false
         center.answerPrompt()
@@ -214,7 +223,7 @@ struct AttentionPresenterTests {
 }
 
 @MainActor
-@Suite("Attention store")
+@Suite("Attention store", .timeLimit(.minutes(1)))
 struct AttentionStoreTests {
     private func client() -> OttamCoreProcessClient {
         OttamCoreProcessClient(executableURL: URL(fileURLWithPath: "/nonexistent/core"))
@@ -260,21 +269,21 @@ struct AttentionStoreTests {
         let presenter = NotificationPresenter(center: center, settings: NotificationSettings(defaults: defaults))
         let store = AttentionStore(client: client(), presenter: presenter) { _ in }
         store.receive(change(1, "b", .unseen, notify: true))
-        await waitUntil { !center.added.isEmpty }
+        await center.until { !center.added.isEmpty }
         #expect(center.added.map(\.identifier) == ["attention.unseen.b"])
 
         // The post awaits authorization; the change right behind it ends the
         // state, so the banner is never added, not added and then removed.
         store.receive(change(2, "a", .unseen, notify: true))
         store.receive(change(3, "a", .none, notify: false))
-        await waitUntil { center.removed.contains("attention.unseen.a") }
+        await center.until { center.removed.contains("attention.unseen.a") }
         #expect(center.removed.contains("attention.unseen.a"))
         #expect(center.added.map(\.identifier) == ["attention.unseen.b"])
 
         // Focus withdraws an ask's banner that core still holds.
         store.receive(change(4, "c", .needsInput, notify: true))
         store.withdrawBanners(for: ConversationID("c"))
-        await waitUntil { center.removed.contains("attention.needsInput.c") }
+        await center.until { center.removed.contains("attention.needsInput.c") }
         #expect(center.removed.contains("attention.needsInput.c"))
         #expect(center.added.map(\.identifier) == ["attention.unseen.b"])
     }
@@ -289,11 +298,11 @@ struct AttentionStoreTests {
         let presenter = NotificationPresenter(center: center, settings: NotificationSettings(defaults: defaults))
         let store = AttentionStore(client: client(), presenter: presenter) { _ in }
         store.receive(change(1, "a", .unseen, notify: true))
-        await waitUntil { center.isPrompting }
+        await center.until { center.isPrompting }
         #expect(center.isPrompting)
         store.receive(change(2, "a", .none, notify: false))
         center.answerPrompt()
-        await waitUntil { center.removed.contains("attention.unseen.a") }
+        await center.until { center.removed.contains("attention.unseen.a") }
         #expect(center.removed.contains("attention.unseen.a"))
         #expect(center.added.isEmpty)
     }
