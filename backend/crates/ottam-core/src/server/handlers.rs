@@ -991,6 +991,41 @@ impl AgentServer {
         None
     }
 
+    /// `attention.list` and `attention.setFocus`. Focus is per connection, so
+    /// these need `origin`; answered inline, so a focus change orders with
+    /// the requests around it, and without waiting on the database.
+    pub(super) fn handle_attention(
+        &mut self,
+        origin: super::ConnectionId,
+        request: ProtocolRequest<Value>,
+    ) -> Value {
+        let Some(attention) = self
+            .agent_bridge
+            .as_ref()
+            .map(|bridge| Arc::clone(bridge.attention()))
+        else {
+            return error_response(request.id, -32000, "agent runtime is unavailable");
+        };
+        if request.method == ottam_protocol::METHOD_ATTENTION_LIST {
+            if let Err(response) = decode_params::<ottam_protocol::AttentionListParams>(
+                &request,
+                InvalidParamsLog::Warn,
+            ) {
+                return response;
+            }
+            return success_response(request.id, attention.list());
+        }
+        let params = match decode_params::<ottam_protocol::AttentionSetFocusParams>(
+            &request,
+            InvalidParamsLog::Warn,
+        ) {
+            Ok(params) => params,
+            Err(response) => return response,
+        };
+        attention.set_focus(origin, params.conversation_id);
+        success_response(request.id, ottam_protocol::AttentionSetFocusResult {})
+    }
+
     pub(super) fn handle_conversation_continue_delegation(
         &mut self,
         origin: super::ConnectionId,

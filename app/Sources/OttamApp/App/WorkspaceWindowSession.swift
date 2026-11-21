@@ -392,6 +392,17 @@ final class WorkspaceWindowSession {
         chatWorkspace.select(conversationID, backend: diffModel)
     }
 
+    /// Selects a conversation from outside the window, as a banner click
+    /// does. Until the first history load restores a selection, it becomes
+    /// the one that load restores.
+    func reveal(_ conversationID: ConversationID) {
+        guard didRestoreConversationSelection else {
+            restored.conversationID = conversationID.rawValue
+            return
+        }
+        openConversation(conversationID)
+    }
+
     /// Opens a listed conversation, as selecting its sidebar row does.
     func openConversation(_ conversationID: ConversationID) {
         guard chatWorkspace.selectedConversationID != conversationID else { return }

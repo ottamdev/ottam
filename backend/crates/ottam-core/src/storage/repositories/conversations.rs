@@ -6,7 +6,7 @@ use crate::storage::models::{
     ConversationRunId, ConversationRunInput, ConversationRunInputId, ConversationRunInputRow,
     MessageRole, MessageSource, NewConversationMessageRow, NewConversationProjectRow,
     NewConversationRow, NewConversationRunInputRow, Project, ProjectId, ProjectRow, ProjectSource,
-    ProjectSourceId, ProjectSourceRow, RunInputKind, WorkingRootKind, WorkspaceId,
+    ProjectSourceId, ProjectSourceRow, RunInputKind, RunStatus, WorkingRootKind, WorkspaceId,
     WorkspaceProject, WorkspaceProjectRow,
 };
 use crate::storage::repositories::attachments::AttachmentRepository;
@@ -18,7 +18,7 @@ use crate::storage::repositories::pagination::{assemble_page, Page, PageRequest}
 use crate::storage::schema::{
     agent_sessions, conversation_messages, conversation_projects, conversation_run_inputs,
     conversation_run_sources, conversation_runs, conversations, project_sources, projects,
-    run_events, transcript_items, workspace_projects,
+    run_events, transcript_items, workspace_projects, workspaces,
 };
 use chrono::{DateTime, Utc};
 use diesel::prelude::*;
@@ -1177,5 +1177,107 @@ impl ConversationRepository {
             .set(conversation_messages::note_delivered_at.eq(Some(now.timestamp_millis())))
             .execute(connection)?;
         Ok(())
+    }
+}
+
+/// A conversation's unseen finished run, as startup reads it back.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UnseenRunRecord {
+    pub workspace_id: WorkspaceId,
+    pub conversation_id: ConversationId,
+    pub run_id: ConversationRunId,
+    pub status: RunStatus,
+    pub title: String,
+    pub error_json: Option<String>,
+}
+
+impl ConversationRepository {
+    /// Marks `run` as the conversation's unseen run, or clears the mark, and
+    /// says whether the conversation took it. The column's key cannot name
+    /// the workspace, so a run is set only when it belongs to this
+    /// conversation, and only while the workspace is not archived. Leaves
+    /// `updated_at` alone: being looked at is not activity.
+    pub fn set_unseen_run(
+        connection: &mut SqliteConnection,
+        workspace_id: &WorkspaceId,
+        conversation_id: &ConversationId,
+        run_id: Option<&ConversationRunId>,
+    ) -> Result<bool, StorageError> {
+        let conversation = conversations::table
+            .find(conversation_id.to_string())
+            .filter(conversations::workspace_id.eq(workspace_id.to_string()));
+        let updated = match run_id {
+            None => diesel::update(conversation)
+                .set(conversations::unseen_run_id.eq(None::<String>))
+                .execute(connection)?,
+            Some(run_id) => {
+                let owned = conversation_runs::table
+                    .find(run_id.to_string())
+                    .filter(conversation_runs::conversation_id.eq(conversation_id.to_string()))
+                    .filter(conversation_runs::workspace_id.eq(workspace_id.to_string()));
+                let active = workspaces::table
+                    .find(workspace_id.to_string())
+                    .filter(workspaces::archived_at.is_null());
+                diesel::update(
+                    conversation
+                        .filter(diesel::dsl::exists(owned))
+                        .filter(diesel::dsl::exists(active)),
+                )
+                .set(conversations::unseen_run_id.eq(run_id.to_string()))
+                .execute(connection)?
+            }
+        };
+        Ok(updated > 0)
+    }
+
+    pub fn clear_unseen_runs(
+        connection: &mut SqliteConnection,
+        workspace_id: &WorkspaceId,
+    ) -> Result<(), StorageError> {
+        diesel::update(
+            conversations::table
+                .filter(conversations::workspace_id.eq(workspace_id.to_string()))
+                .filter(conversations::unseen_run_id.is_not_null()),
+        )
+        .set(conversations::unseen_run_id.eq(None::<String>))
+        .execute(connection)?;
+        Ok(())
+    }
+
+    /// Every unseen run in a workspace that is not archived.
+    pub fn unseen_runs(
+        connection: &mut SqliteConnection,
+    ) -> Result<Vec<UnseenRunRecord>, StorageError> {
+        let rows = conversations::table
+            .inner_join(workspaces::table)
+            .inner_join(
+                conversation_runs::table
+                    .on(conversations::unseen_run_id.eq(conversation_runs::id.nullable())),
+            )
+            .filter(workspaces::archived_at.is_null())
+            .select((
+                conversations::workspace_id,
+                conversations::id,
+                conversation_runs::id,
+                conversation_runs::status,
+                conversations::title,
+                conversation_runs::error_json,
+            ))
+            .order(conversations::id)
+            .load::<(String, String, String, String, String, Option<String>)>(connection)?;
+        rows.into_iter()
+            .map(
+                |(workspace_id, conversation_id, run_id, status, title, error_json)| {
+                    Ok(UnseenRunRecord {
+                        workspace_id: WorkspaceId::try_from(workspace_id.as_str())?,
+                        conversation_id: ConversationId::try_from(conversation_id.as_str())?,
+                        run_id: ConversationRunId::try_from(run_id.as_str())?,
+                        status: RunStatus::try_from(status)?,
+                        title,
+                        error_json,
+                    })
+                },
+            )
+            .collect()
     }
 }

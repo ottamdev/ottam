@@ -68,6 +68,24 @@ struct WorkspaceWindowSessionTests {
         try await body(id)
     }
 
+    @Test("revealing a conversation before the first load makes it the one restored")
+    func revealBeforeRestore() {
+        let session = session()
+        session.restored.conversationID = "earlier"
+        session.reveal(ConversationID("revealed"))
+        #expect(session.restored.conversationID == "revealed")
+        #expect(session.chatWorkspace.selectedConversationID == nil)
+    }
+
+    @Test("revealing a conversation once the window has restored selects it")
+    func revealAfterRestore() {
+        let session = session()
+        session.didRestoreConversationSelection = true
+        session.reveal(ConversationID("revealed"))
+        #expect(session.chatWorkspace.selectedConversationID == ConversationID("revealed"))
+        #expect(session.restored.conversationID.isEmpty)
+    }
+
     @Test("working roots round-trip through their restoration encoding")
     func workingRootEncoding() {
         let project = WorkingRootSelection.project(

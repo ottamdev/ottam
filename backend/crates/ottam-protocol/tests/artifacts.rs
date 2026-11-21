@@ -184,6 +184,38 @@ fn generated_engine_list_fixtures_match_types() {
 }
 
 #[test]
+fn generated_attention_fixtures_match_types() {
+    assert_fixture_matches(
+        "fixtures/attention-list-request.json",
+        &attention_list_request_fixture(),
+    );
+    assert_fixture_matches(
+        "fixtures/attention-list-response.json",
+        &attention_list_response_fixture(),
+    );
+    assert_fixture_matches(
+        "fixtures/attention-set-focus-request.json",
+        &attention_set_focus_request_fixture(),
+    );
+    assert_fixture_matches(
+        "fixtures/attention-set-focus-response.json",
+        &attention_set_focus_response_fixture(),
+    );
+    assert_fixture_matches(
+        "fixtures/attention-changed-notification.json",
+        &attention_changed_notification_fixture(),
+    );
+    let changed: AttentionChangedNotification =
+        read_fixture("fixtures/attention-changed-notification.json");
+    assert_eq!(changed.method, "attention.changed");
+    assert_eq!(changed.params.entry.state, AttentionState::NeedsInput);
+    let focus: AttentionSetFocusRequest = read_fixture("fixtures/attention-set-focus-request.json");
+    assert!(focus.params.conversation_id.is_some());
+    let cleared: AttentionSetFocusParams = serde_json::from_str("{}").unwrap();
+    assert_eq!(cleared.conversation_id, None);
+}
+
+#[test]
 fn generated_agent_fixtures_match_types() {
     let fixtures = [
         (

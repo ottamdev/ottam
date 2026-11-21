@@ -20,6 +20,7 @@ use crate::agent::{
 use crate::core_error::CoreError;
 use crate::diagnostics::{record_unhandled, shape};
 use crate::mcp::{McpGrant, McpService, SessionGrant};
+use crate::server::attention::Attention;
 use crate::server::chat::{BeginRunRecord, ChatService, ConfirmedSelection};
 use crate::server::deferred::DeferredLane;
 use crate::server::outbound::OutboundSink;
@@ -119,6 +120,8 @@ pub(super) struct ConversationRunCoordinator {
     delegation: delegation::Delegation,
     /// Subscription usage windows; a turn's `_claude/rateLimit` feeds it.
     plan_usage: Arc<PlanUsageService>,
+    /// Which conversations want the user; a run's end feeds it.
+    attention: Arc<Attention>,
 }
 
 /// A lock per conversation, created on first use: launches, and
@@ -191,6 +194,7 @@ impl ConversationRunCoordinator {
         this: Weak<Self>,
     ) -> Self {
         let plan_usage = super::services::plan_usage_service(Arc::clone(&registry), &outbound);
+        let attention = Attention::new(outbound.clone());
         Self {
             registry,
             outbound,
@@ -209,11 +213,16 @@ impl ConversationRunCoordinator {
             mcp: OnceLock::new(),
             delegation: delegation::Delegation::default(),
             plan_usage,
+            attention,
         }
     }
 
     pub(super) fn plan_usage(&self) -> &Arc<PlanUsageService> {
         &self.plan_usage
+    }
+
+    pub(super) fn attention(&self) -> &Arc<Attention> {
+        &self.attention
     }
 
     pub(super) fn install_mcp(&self, service: McpService) {
@@ -1163,6 +1172,17 @@ impl ConversationRunContext {
                 false
             }
         }
+    }
+
+    /// Reads the conversation's title, for an ask shown while it waits; empty
+    /// when it can't be read.
+    pub(super) fn title_reader(&self) -> crate::server::attention::BoxFuture<String> {
+        let (chat, conversation_id) = (self.chat.clone(), self.conversation_id.clone());
+        Box::pin(async move {
+            chat.conversation_title(&conversation_id)
+                .await
+                .unwrap_or_default()
+        })
     }
 
     /// Whether the run's conversation was delegated. A child's "Always allow
@@ -3134,6 +3154,7 @@ impl ConversationRunCoordinator {
         }
 
         let released = chat.delete_conversation(conversation_id).await?;
+        self.attention.forget_conversation(conversation_id);
         self.attribution.forget_conversation(conversation_id);
         self.forget_prompted_runs(conversation_id);
         Ok((

@@ -25,6 +25,9 @@ public struct SidebarConversationItem: Identifiable, Equatable {
     public let summary: ConversationSummary
     public let needsAttention: Bool
     public let isRunning: Bool
+    /// A run ended while nobody was looking, and nobody has looked since. Core
+    /// decides it; see `docs/architecture/app/macos-ui.md` § Attention.
+    public let isUnseen: Bool
     /// Set when the row's root is *not* where the surrounding layout implies it
     /// lives, and `nil` when it agrees.
     ///
@@ -41,12 +44,14 @@ public struct SidebarConversationItem: Identifiable, Equatable {
         summary: ConversationSummary,
         needsAttention: Bool,
         isRunning: Bool,
+        isUnseen: Bool = false,
         rootMark: SidebarRootMark? = nil,
         children: [SidebarConversationItem] = []
     ) {
         self.summary = summary
         self.needsAttention = needsAttention
         self.isRunning = isRunning
+        self.isUnseen = isUnseen
         self.rootMark = rootMark
         self.children = children
     }
@@ -61,15 +66,21 @@ public struct SidebarConversationItem: Identifiable, Equatable {
     /// A delegated child is working.
     public var childIsRunning: Bool { children.contains(where: \.isRunning) }
 
-    /// Rows waiting on the user: this one and its children.
+    /// A delegated child finished unseen.
+    public var childIsUnseen: Bool { children.contains(where: \.isUnseen) }
+
+    /// Rows waiting on the user, for an approval or to be looked at: this one
+    /// and its children.
     public var attentionCount: Int {
-        (needsAttention ? 1 : 0) + children.count(where: \.needsAttention)
+        let wants: (SidebarConversationItem) -> Bool = { $0.needsAttention || $0.isUnseen }
+        return (wants(self) ? 1 : 0) + children.count(where: wants)
     }
 
     /// Whether the row stays past a "Show N More…" cap: it is selected,
-    /// waiting on the user or working, itself or through a delegated child.
+    /// waiting on the user, working or unseen, itself or through a delegated
+    /// child.
     public func staysPastCap(selected: ConversationID?) -> Bool {
-        id == selected || needsAttention || isRunning
+        id == selected || needsAttention || isRunning || isUnseen
             || children.contains { $0.staysPastCap(selected: selected) }
     }
 }
@@ -139,7 +150,8 @@ public enum SidebarSectionBuilder {
         selectedProject: ResolvedProject?,
         conversations: [ConversationSummary],
         attentionConversationIDs: Set<ConversationID>,
-        runningConversationIDs: Set<ConversationID>
+        runningConversationIDs: Set<ConversationID>,
+        unseenConversationIDs: Set<ConversationID> = []
     ) -> [SidebarSection] {
         let shape = WorkspaceShape.of(projects: projects)
         let implied = impliedWorkingRoot(projects: projects, selectedProject: selectedProject)
@@ -166,12 +178,14 @@ public enum SidebarSectionBuilder {
                 summary: conversation,
                 needsAttention: attentionConversationIDs.contains(conversation.conversationID),
                 isRunning: runningConversationIDs.contains(conversation.conversationID),
+                isUnseen: unseenConversationIDs.contains(conversation.conversationID),
                 rootMark: mismatched ? mark(for: conversation.workingRoot) : nil,
                 children: (childrenByParent[conversation.conversationID] ?? []).map { child in
                     SidebarConversationItem(
                         summary: child,
                         needsAttention: attentionConversationIDs.contains(child.conversationID),
-                        isRunning: runningConversationIDs.contains(child.conversationID)
+                        isRunning: runningConversationIDs.contains(child.conversationID),
+                        isUnseen: unseenConversationIDs.contains(child.conversationID)
                     )
                 }
             )

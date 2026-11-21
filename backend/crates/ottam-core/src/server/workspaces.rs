@@ -222,6 +222,13 @@ impl AgentServer {
                     let workspace_id = params.workspace_id.clone();
                     tokio::spawn(async move { runtime.stop_workspace(&workspace_id).await });
                 }
+                // Its conversations stop asking for the user.
+                if let (true, Some(bridge)) = (archived, self.agent_bridge.as_ref()) {
+                    bridge
+                        .attention()
+                        .forget_workspace(&params.workspace_id)
+                        .await;
+                }
                 success_response(request.id, workspace_summary(workspace))
             }
             Err(error) => core_error_response(request.id, -32000, error.into()),

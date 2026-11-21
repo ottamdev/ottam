@@ -70,7 +70,10 @@ tower-service = "0.3"
 tracing = "0.1"
 tracing-appender = "0.2"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
-uuid = { version = "=1.26.0", features = ["v7"] }
+# Cuts text at grapheme clusters, so an excerpt never splits an emoji or an
+# accented letter. Already in the lock file through other crates.
+unicode-segmentation = "1"
+uuid ={ version = "=1.26.0", features = ["v7"] }
 zstd = "0.13"
 
 # MCP server secrets and OAuth tokens go in the login Keychain. Already in the

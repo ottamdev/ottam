@@ -25,7 +25,20 @@ final class OttamAppRuntime {
     let mcpSignIn: McpSignInController
     /// Nil outside release bundles, which alone carry a feed URL.
     let updater: AppUpdater?
-    private(set) var connectionState: ConnectionState = .starting
+    /// Core's attention for the sidebar, the Dock badge and banners.
+    let attention: AttentionStore
+    let focusReporter: FocusReporter
+    /// Nil without a notification center: tests and UI-test runs.
+    var notifications: NotificationPresenter? { attention.presenter }
+    private(set) var connectionState: ConnectionState = .starting {
+        didSet {
+            // Observed here, not in the lifecycle handler, so every path
+            // that reaches ready (startup, recovery, a replaced core) reseeds.
+            guard case .ready(let instance) = connectionState, connectionState != oldValue else { return }
+            attention.connected(to: instance)
+            focusReporter.coreBecameReady()
+        }
+    }
     private(set) var coreExitError: CoreExitError?
     private(set) var workspaces: [WorkspaceListItem] = []
     /// A one-shot deep-link into the Settings window, set just before
@@ -47,11 +60,19 @@ final class OttamAppRuntime {
             executableURL: ReviewEnvironment.ottamCoreExecutableURL
         ),
         onboardingStore: OnboardingStore = .default(),
-        updater: AppUpdater? = nil
+        updater: AppUpdater? = nil,
+        notificationCenter: (any NotificationCenterCapability)? = nil
     ) {
         self.client = client
         self.onboardingStore = onboardingStore
         self.updater = updater
+        self.attention = AttentionStore(
+            client: client,
+            presenter: notificationCenter.map {
+                NotificationPresenter(center: $0, settings: .shared)
+            }
+        )
+        self.focusReporter = FocusReporter(client: client, windows: windows)
         self.onboardingPending = onboardingStore.launchNeedsOnboarding()
         self.runtimeInstall = RuntimeInstallController(client: client)
         self.agentInstall = AgentInstallController(client: client)
@@ -62,6 +83,25 @@ final class OttamAppRuntime {
         windows.suppressesDefaultWindow = onboardingPending
         let windows = self.windows
         updater?.start(canRemind: { windows.showsSidebar })
+        if let presenter = attention.presenter {
+            presenter.onOpen = { [weak self] workspaceID, conversationID in
+                self?.reveal(conversationID, in: workspaceID)
+            }
+            let attention = self.attention
+            focusReporter.onFocus = { [weak attention] conversationID in
+                attention?.withdrawBanners(for: conversationID)
+            }
+        }
+    }
+
+    /// Brings a conversation forward from outside its window, as a banner
+    /// click does, opening the workspace's window when it is closed.
+    func reveal(_ conversationID: ConversationID, in workspaceID: WorkspaceID) {
+        if windows.focus(workspaceID), let session = windows.session(for: workspaceID) {
+            session.reveal(conversationID)
+        } else {
+            windows.open(workspaceID, runtime: self).session.reveal(conversationID)
+        }
     }
 
     var activeWorkspaces: [WorkspaceListItem] {
@@ -91,6 +131,9 @@ final class OttamAppRuntime {
         // Off the startup path: a chat calls a server only once its workspace
         // has opened, long after this subscription lands.
         Task { await mcpSignIn.start() }
+        // Off the startup path too: the first snapshot waits for the
+        // subscription, so nothing here waits on it.
+        attention.start()
         await refreshWorkspaces()
     }
 
@@ -329,6 +372,14 @@ final class WorkspaceWindowRegistry {
 
     func contains(_ window: NSWindow, for workspaceID: WorkspaceID) -> Bool {
         controllers[workspaceID]?.window === window
+    }
+
+    func session(for workspaceID: WorkspaceID) -> WorkspaceWindowSession? {
+        controllers[workspaceID]?.session
+    }
+
+    func session(owning window: NSWindow) -> WorkspaceWindowSession? {
+        controllers.values.first { $0.window === window }?.session
     }
 
     var openWorkspaceCount: Int {

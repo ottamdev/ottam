@@ -596,6 +596,22 @@ impl ChatService {
         Ok(detail)
     }
 
+    /// The conversation's title alone, for attention entries.
+    pub(in crate::server) async fn conversation_title(
+        &self,
+        conversation_id: &ConversationID,
+    ) -> Result<String, CoreError> {
+        let workspace_id = self.workspace()?;
+        let conversation_id = parse_conversation_id(conversation_id)?;
+        self.database
+            .run("conversation.title", move |connection| {
+                ConversationRepository::get(connection, &workspace_id, &conversation_id)
+                    .map(|conversation| conversation.title)
+            })
+            .await
+            .map_err(CoreError::from)
+    }
+
     pub(in crate::server) async fn update_conversation_title(
         &self,
         conversation_id: &ConversationID,

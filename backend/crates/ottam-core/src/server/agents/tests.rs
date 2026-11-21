@@ -8805,6 +8805,51 @@ async fn notes_wait_when_the_run_carrying_them_fails_to_start() {
     harness.bridge.shutdown().await;
 }
 
+/// A parent whose turn ended while its child worked is unseen once the
+/// child ends, even when the child's note wakes nobody: the tree notifies
+/// on the parent, and the child's own core-started run never does.
+#[tokio::test]
+async fn attention_settles_a_parent_whose_child_ended_without_waking_it() {
+    let harness = delegation_harness().await;
+    let parent = harness.conversation_id.clone();
+    harness.delegate("hold").await.expect("delegates");
+    let attention = Arc::clone(harness.bridge.attention());
+    let unseen = |attention: &crate::server::attention::Attention| {
+        attention
+            .list()
+            .entries
+            .into_iter()
+            .map(|entry| (entry.conversation_id, entry.state))
+            .collect::<Vec<_>>()
+    };
+    tokio::time::sleep(Duration::from_secs(3)).await;
+    assert!(unseen(&attention).is_empty(), "the child still works");
+
+    harness
+        .bridge
+        .conversation
+        .stop_children(&harness.env.chat, &parent)
+        .await;
+    assert!(harness.wait_for_notes(1).await[0].waits_for_user);
+    let deadline = std::time::Instant::now() + Duration::from_secs(10);
+    loop {
+        let entries = unseen(&attention);
+        if !entries.is_empty() {
+            assert_eq!(
+                entries,
+                [(parent.clone(), ottam_protocol::AttentionState::Unseen)]
+            );
+            break;
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "the parent never became unseen"
+        );
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    harness.bridge.shutdown().await;
+}
+
 /// A delegated child starts in its agent's read-only mode with the named
 /// agent's instructions, and when it ends the parent gets a note and
 /// continues with the child's report.

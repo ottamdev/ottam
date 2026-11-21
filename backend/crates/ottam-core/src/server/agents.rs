@@ -102,6 +102,7 @@ impl AgentRuntimeBridge {
             },
         );
         permission_broker.bind_follow_ups(&conversation);
+        permission_broker.bind_attention(conversation.attention());
         let replay_coordinator = Arc::downgrade(&conversation);
         registry.set_replay_live_work_guard(Arc::new(move |agent| {
             replay_coordinator
@@ -173,6 +174,7 @@ impl AgentRuntimeBridge {
             },
         );
         permission_broker.bind_follow_ups(&conversation);
+        permission_broker.bind_attention(conversation.attention());
         let replay_coordinator = Arc::downgrade(&conversation);
         registry.set_replay_live_work_guard(Arc::new(move |agent| {
             replay_coordinator
@@ -257,6 +259,12 @@ impl AgentRuntimeBridge {
 
     pub(super) fn plan_usage(&self) -> &Arc<crate::agent::PlanUsageService> {
         self.conversation.plan_usage()
+    }
+
+    /// Which conversations want the user. Anything outside the bridge holds
+    /// it weakly, since it holds an outbound sink.
+    pub(super) fn attention(&self) -> &Arc<super::attention::Attention> {
+        self.conversation.attention()
     }
 
     /// Give every session the run coordinator opens from now on the servers
@@ -561,6 +569,8 @@ impl AgentRuntimeBridge {
         self.services.cancel_installs();
         self.permission_broker.cancel_all();
         self.conversation.shutdown_runs().await;
+        // After the runs, whose ends no longer settle anything.
+        self.attention().shutdown();
         let response_tasks = self
             .response_tasks
             .lock()

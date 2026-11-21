@@ -276,6 +276,12 @@ struct FixtureGateChecks {
             request("agent-plan-usage-request.json", AgentPlanUsageParams.self),
             response("agent-plan-usage-response.json", AgentPlanUsageResult.self),
             notification("agent-plan-usage-changed-notification.json", AgentPlanUsageChangedParams.self),
+            // Attention
+            request("attention-list-request.json", AttentionListParams.self),
+            response("attention-list-response.json", AttentionListResult.self),
+            request("attention-set-focus-request.json", AttentionSetFocusParams.self),
+            response("attention-set-focus-response.json", AttentionSetFocusResult.self),
+            notification("attention-changed-notification.json", AttentionChangedParams.self),
             // Managed Node runtime
             request("runtime-install-request.json", RuntimeInstallParams.self),
             response("runtime-install-response.json", RuntimeInstallResult.self),

@@ -14,6 +14,9 @@ mod agent_install;
 #[cfg(unix)]
 #[path = "jsonl_protocol/attach_socket.rs"]
 mod attach_socket;
+#[cfg(unix)]
+#[path = "jsonl_protocol/attention.rs"]
+mod attention;
 #[path = "jsonl_protocol/attachments.rs"]
 mod attachments;
 #[cfg(unix)]

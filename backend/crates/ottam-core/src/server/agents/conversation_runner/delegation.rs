@@ -18,10 +18,12 @@ use super::{ConversationRunContext, ConversationRunCoordinator};
 use crate::agent::{AgentDefinition, AgentId, ModelCatalogService};
 use crate::core_error::CoreError;
 use crate::mcp::{OttamTools, DelegateRequest, DelegationTargets, McpCaller};
+use crate::server::attention::{Ended, Settle};
 use crate::server::chat::{
     ChatService, ChildLink, DelegatedChild, WaitingNote, HISTORY_DEFAULT_ENTRIES,
     HISTORY_MAX_ENTRIES,
 };
+use crate::server::text::excerpt;
 use crate::storage::repositories::{NamedAgentRecord, NamedAgentRepository, ReleasedWorktree};
 use crate::storage::Database;
 use ottam_protocol::{
@@ -61,6 +63,9 @@ const RUN_END_GRACE: Duration = Duration::from_secs(2);
 const TITLE_CHARS: usize = 60;
 /// How much of a child's latest report `list_children` quotes.
 const LIST_EXCERPT_CHARS: usize = 200;
+/// How far up and down a delegation tree attention looks: past any depth
+/// delegation reaches, and a bound should a link ever loop.
+const MAX_ATTENTION_DEPTH: usize = 16;
 
 /// Who runs a delegated task: a named agent, or an installed agent ad hoc.
 struct DelegationTarget {
@@ -239,15 +244,6 @@ fn task_title(title: Option<&str>, prompt: &str) -> String {
         .filter(|title| !title.is_empty())
         .unwrap_or_else(|| prompt.trim().lines().next().unwrap_or_default());
     excerpt(title, TITLE_CHARS)
-}
-
-fn excerpt(text: &str, chars: usize) -> String {
-    let text = text.trim();
-    let mut cut: String = text.chars().take(chars).collect();
-    if cut.len() < text.len() {
-        cut.push('…');
-    }
-    cut
 }
 
 /// Token usage by agent and scope, as `get_conversation_info` lists it.
@@ -1573,15 +1569,14 @@ impl ConversationRunCoordinator {
     }
 
     /// Runs after any run leaves `active_runs`: a child's run leaves a note
-    /// in its parent, and a parent that is now idle gets its notes.
+    /// in its parent, a parent that is now idle gets its notes, and the
+    /// end's attention is settled.
     pub(super) fn after_run(&self, context: &ConversationRunContext) {
-        if self.delegation.host.get().is_none() {
-            return;
-        }
         let Some(coordinator) = self.this.upgrade() else {
             return;
         };
-        let (workspace_id, conversation_id, run_id) = (
+        let (chat, workspace_id, conversation_id, run_id) = (
+            context.chat.clone(),
             context.workspace_id.clone(),
             context.conversation_id.clone(),
             context.run_id.clone(),
@@ -1594,7 +1589,7 @@ impl ConversationRunCoordinator {
         while run_ends.try_join_next().is_some() {}
         run_ends.spawn(async move {
             coordinator
-                .handle_run_end(workspace_id, conversation_id, run_id)
+                .handle_run_end(chat, workspace_id, conversation_id, run_id)
                 .await;
         });
     }
@@ -1619,18 +1614,39 @@ impl ConversationRunCoordinator {
         }
     }
 
+    /// `run_chat` is the run's own; without a delegation host, as in tests,
+    /// only attention is settled.
     async fn handle_run_end(
         self: Arc<Self>,
+        run_chat: ChatService,
         workspace_id: WorkspaceID,
         conversation: ConversationID,
         run_id: ottam_protocol::ConversationRunID,
     ) {
-        let Some(chat) = self.chat(&workspace_id) else {
-            return;
-        };
+        let delegating = self.delegation.host.get().is_some();
+        let chat = self.chat(&workspace_id).unwrap_or(run_chat);
         let Ok(run) = chat.conversation_run(&conversation, &run_id).await else {
             return;
         };
+        if delegating {
+            self.deliver_run_end(&chat, &workspace_id, &conversation, &run)
+                .await;
+        }
+        // Last, so a follow-up the end started counts as working again.
+        self.attend_run_end(&chat, &workspace_id, &conversation, &run)
+            .await;
+    }
+
+    /// A child's run leaves a note in its parent, and a parent that is now
+    /// idle gets its notes.
+    async fn deliver_run_end(
+        self: &Arc<Self>,
+        chat: &ChatService,
+        workspace_id: &WorkspaceID,
+        conversation: &ConversationID,
+        run: &ConversationRunSummary,
+    ) {
+        let (conversation, run_id) = (conversation.clone(), run.run_id.clone());
         let status = run.status.clone();
         if let Ok(Some((parent, name))) = chat.delegation_of(&conversation).await {
             let report = chat
@@ -1653,7 +1669,7 @@ impl ConversationRunCoordinator {
             });
             // The user drove this turn and saw it end; the parent hears of
             // it on its next run. Waking no one, it counts against no cap.
-            let user_drove = self.user_drove(&conversation, &run);
+            let user_drove = self.user_drove(&conversation, run);
             let capped = !user_drove && self.wake_ups_capped(&parent, &conversation);
             let waits_for_user =
                 stopped_with_parent || capped || stop_cause == Some(DelegationStopCause::Quit);
@@ -1685,17 +1701,126 @@ impl ConversationRunCoordinator {
             let posted = chat.post_note(&parent, &note, body, record_only).await;
             // The child's card shows how its turn ended, and a deferred
             // report's child offers Send to Parent.
-            self.notify_list_changed(&workspace_id);
+            self.notify_list_changed(workspace_id);
             match posted {
-                Ok(()) => self.deliver_if_idle(&chat, &parent).await,
+                Ok(()) => self.deliver_if_idle(chat, &parent).await,
                 Err(error) => tracing::warn!(kind = error.kind, "a child's note was not written"),
             }
         }
         // A parent whose own turn just ended gets what waited meanwhile,
         // unless the user stopped that turn.
         if status != ConversationRunStatus::Canceled {
-            self.deliver_if_idle(&chat, &conversation).await;
+            self.deliver_if_idle(chat, &conversation).await;
         }
+    }
+
+    /// Offers the run's end to attention and settles it, and every ancestor,
+    /// whose tree the end left idle: a child can end without waking its
+    /// parent (a deferred, held, or capped note), and the tree notifies
+    /// once, on the parent (`server/attention.rs`).
+    async fn attend_run_end(
+        self: &Arc<Self>,
+        chat: &ChatService,
+        workspace_id: &WorkspaceID,
+        conversation: &ConversationID,
+        run: &ConversationRunSummary,
+    ) {
+        let parent = chat
+            .delegation_of(conversation)
+            .await
+            .ok()
+            .flatten()
+            .map(|(parent, _)| parent);
+        // A focused end was seen, so its title and message are not read; a
+        // child's run its parent's agent started reports to the parent.
+        let eligible = !self.quitting()
+            && !self.attention.is_focused(conversation)
+            && (parent.is_none() || self.user_drove(conversation, run));
+        let ended = if eligible {
+            let title = chat
+                .conversation_title(conversation)
+                .await
+                .unwrap_or_default();
+            let ended = Ended::from_status(
+                workspace_id.clone(),
+                run.run_id.clone(),
+                &run.status,
+                &run.error,
+                title,
+            );
+            match ended {
+                Some(ended) if run.status == ConversationRunStatus::Completed => {
+                    let message = chat
+                        .final_preview(conversation, &run.run_id)
+                        .await
+                        .unwrap_or_default();
+                    Some(ended.with_message(&message))
+                }
+                ended => ended,
+            }
+        } else {
+            None
+        };
+        self.attention.run_ended(conversation, ended);
+        self.settle_attention(chat, conversation).await;
+        let mut ancestor = parent;
+        for _ in 0..MAX_ATTENTION_DEPTH {
+            let Some(current) = ancestor else { break };
+            self.settle_attention(chat, &current).await;
+            ancestor = chat
+                .delegation_of(&current)
+                .await
+                .ok()
+                .flatten()
+                .map(|(parent, _)| parent);
+        }
+    }
+
+    /// Starts `conversation`'s settle delay if its ended run waits on an
+    /// idle tree and the tree is idle now.
+    async fn settle_attention(self: &Arc<Self>, chat: &ChatService, conversation: &ConversationID) {
+        if !self.attention.has_candidate(conversation)
+            || self.tree_activity(chat, conversation).await != Settle::Idle
+        {
+            return;
+        }
+        let (coordinator, chat, check_conversation) =
+            (self.this.clone(), chat.clone(), conversation.clone());
+        self.attention.settle(conversation, move || {
+            Box::pin(async move {
+                match coordinator.upgrade() {
+                    Some(coordinator) if !coordinator.quitting() => {
+                        coordinator.tree_activity(&chat, &check_conversation).await
+                    }
+                    _ => Settle::Drop,
+                }
+            })
+        });
+    }
+
+    /// Idle when neither `conversation` nor anything it delegated works, the
+    /// test `try_deliver` makes, applied down the tree. A conversation that
+    /// works itself is `Drop`: its next end is offered instead.
+    async fn tree_activity(&self, chat: &ChatService, conversation: &ConversationID) -> Settle {
+        if self.is_working(conversation).await {
+            return Settle::Drop;
+        }
+        let mut pending = vec![(conversation.clone(), 0)];
+        while let Some((parent, depth)) = pending.pop() {
+            if depth >= MAX_ATTENTION_DEPTH {
+                continue;
+            }
+            let Ok(children) = chat.children(&parent).await else {
+                continue;
+            };
+            for child in children {
+                if self.is_working(&child.conversation_id).await {
+                    return Settle::Waiting;
+                }
+                pending.push((child.conversation_id, depth + 1));
+            }
+        }
+        Settle::Idle
     }
 
     /// Delivers the conversation's waiting notes in a follow-up, if it is

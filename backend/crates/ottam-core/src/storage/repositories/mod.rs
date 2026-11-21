@@ -18,7 +18,7 @@ pub use attachments::{
 pub use conversations::{
     ConversationCreateRecord, ConversationDeletion, ConversationListRecord, ConversationRepository,
     ConversationRootSelection, CreateConversationParams, DelegationLink, InitialMessage,
-    MessageWithInput, JSON_PAYLOAD_MAX_BYTES, USER_MESSAGE_MAX_BYTES,
+    MessageWithInput, UnseenRunRecord, JSON_PAYLOAD_MAX_BYTES, USER_MESSAGE_MAX_BYTES,
 };
 pub use core_settings::{CoreSettingsRepository, ALWAYS_ALLOW_TOOL_ACTIONS_DEFAULT};
 pub use mcp_servers::{McpServerRecord, McpServerRepository};

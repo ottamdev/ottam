@@ -32,6 +32,7 @@ use tokio::sync::mpsc::{channel, unbounded_channel};
 
 mod agents;
 mod attach;
+mod attention;
 mod auth_terminal;
 mod chat;
 mod client_link;
@@ -45,6 +46,7 @@ mod outbound;
 mod request_params;
 mod responses;
 mod storage_cache;
+mod text;
 mod transport;
 mod workspaces;
 mod worktrees;
@@ -310,6 +312,12 @@ impl AgentServer {
         bridge
             .model_catalog()
             .restore_probed_auth(&bridge.registry());
+        // Before any request is read, so `attention.list` answers with the
+        // unseen conversations an earlier session left.
+        bridge
+            .attention()
+            .install_store(self.database.clone())
+            .await;
         // The runtime's state sink is an outbound clone; its shutdown lets
         // it go, so the router can exit.
         self.mcp = Some(crate::mcp::McpService::new(
@@ -439,6 +447,10 @@ impl AgentServer {
             attached_registry.clone(),
             attach_dispatch_tx,
             outbound.clone(),
+            self.agent_bridge
+                .as_ref()
+                .map(|bridge| Arc::downgrade(bridge.attention()))
+                .unwrap_or_default(),
             primary_done.clone(),
         );
 
@@ -696,6 +708,12 @@ impl AgentServer {
         }
         if request.method == METHOD_CONVERSATION_SET_MODE {
             return self.handle_conversation_set_mode(origin, request);
+        }
+        if matches!(
+            request.method.as_str(),
+            ottam_protocol::METHOD_ATTENTION_LIST | ottam_protocol::METHOD_ATTENTION_SET_FOCUS
+        ) {
+            return Some(self.handle_attention(origin, request));
         }
         if request.method.starts_with("agent.") {
             return self.handle_agent_request(origin, request);

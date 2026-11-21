@@ -24,6 +24,8 @@ struct SidebarView: View {
     @Bindable var workspace: WorkspaceStore
     @Bindable var chatWorkspace: ChatWorkspaceModel
     @Bindable var backend: DiffReviewModel
+    /// Core's unseen conversations; approvals and running stay local.
+    let attention: AttentionStore
     let updater: AppUpdater?
     let addProject: () -> Void
 
@@ -336,7 +338,8 @@ struct SidebarView: View {
             selectedProject: workspace.projectSummary,
             conversations: chatWorkspace.conversations,
             attentionConversationIDs: chatWorkspace.attentionConversationIDs,
-            runningConversationIDs: chatWorkspace.runningConversationIDs
+            runningConversationIDs: chatWorkspace.runningConversationIDs,
+            unseenConversationIDs: attention.unseenConversationIDs(in: workspace.workspaceID)
         )
     }
 
@@ -364,8 +367,9 @@ struct SidebarView: View {
         return hidden > 0 ? hidden : nil
     }
 
-    /// Pending-approval count surfaced on the header only while the section is
-    /// collapsed; expanded sections show the per-row glyphs instead.
+    /// Rows awaiting an approval or a look, surfaced on the header only while
+    /// the section is collapsed; expanded sections show the per-row glyphs
+    /// instead.
     private func collapsedAttentionBadge(for section: SidebarSection) -> Int {
         guard !isExpandedBinding(section.kind).wrappedValue else { return 0 }
         return section.allItems.reduce(0) { $0 + $1.attentionCount }
@@ -537,6 +541,10 @@ private struct SidebarConversationRow: View {
         unfolded?.wrappedValue == false && item.childIsRunning
     }
 
+    private var foldedChildIsUnseen: Bool {
+        unfolded?.wrappedValue == false && item.childIsUnseen
+    }
+
     /// Rows carry no icon: every row being a chat, a glyph repeated down
     /// the list said nothing. Marks trail the title only when there is
     /// something to say.
@@ -566,8 +574,8 @@ private struct SidebarConversationRow: View {
                     // The row's own action carries it for VoiceOver.
                     .accessibilityHidden(true)
                 }
-                if item.rootMark != nil || item.needsAttention || item.isRunning
-                    || foldedChildNeedsAttention || foldedChildIsRunning
+                if item.rootMark != nil || item.needsAttention || item.isRunning || item.isUnseen
+                    || foldedChildNeedsAttention || foldedChildIsRunning || foldedChildIsUnseen
                 {
                     Spacer(minLength: 0)
                 }
@@ -619,8 +627,9 @@ private struct SidebarConversationRow: View {
         }
     }
 
-    /// Waiting on the user, or working, itself or through a folded child;
-    /// nothing when idle.
+    /// Waiting on the user, working, or finished unseen, itself or through a
+    /// folded child, in that order; nothing when idle. The dot means unread,
+    /// as in Mail, so working shows the system's spinner instead.
     @ViewBuilder
     private var statusMark: some View {
         if item.needsAttention || foldedChildNeedsAttention {
@@ -629,6 +638,10 @@ private struct SidebarConversationRow: View {
                 .foregroundStyle(.orange)
                 .accessibilityHidden(true)
         } else if item.isRunning || foldedChildIsRunning {
+            ProgressView()
+                .controlSize(.mini)
+                .accessibilityHidden(true)
+        } else if item.isUnseen || foldedChildIsUnseen {
             Image(systemName: "circle.fill")
                 .font(.system(size: 7))
                 .foregroundStyle(.tint)
@@ -671,8 +684,10 @@ private struct SidebarConversationRow: View {
         if case .child = nesting, let agent = item.summary.delegatedAgentName { parts.append(agent) }
         if item.needsAttention { parts.append("Approval required") }
         if item.isRunning { parts.append("Agent running") }
+        if item.isUnseen { parts.append("Finished since you last looked") }
         if foldedChildNeedsAttention { parts.append("A delegated conversation needs approval") }
         if foldedChildIsRunning { parts.append("Delegated agent running") }
+        if foldedChildIsUnseen { parts.append("A delegated conversation finished") }
         if let mark = item.rootMark { parts.append(rootExplanation(for: mark)) }
         if let relative = chatRelativeTime(item.summary.updatedAt) {
             parts.append("Updated \(relative)")
@@ -690,8 +705,10 @@ private struct SidebarConversationRow: View {
         }
         if item.needsAttention { parts.append("approval required") }
         if item.isRunning { parts.append("agent running") }
+        if item.isUnseen { parts.append("finished since you last looked") }
         if foldedChildNeedsAttention { parts.append("a delegated conversation needs approval") }
         if foldedChildIsRunning { parts.append("delegated agent running") }
+        if foldedChildIsUnseen { parts.append("a delegated conversation finished") }
         if let unfolded {
             let count = item.children.count
             parts.append("\(count) delegated conversation\(count == 1 ? "" : "s"), \(unfolded.wrappedValue ? "expanded" : "collapsed")")
