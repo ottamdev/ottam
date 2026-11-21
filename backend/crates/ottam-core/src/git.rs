@@ -266,20 +266,38 @@ pub fn branch_commit(repo_path: &str, branch: &str) -> Result<Option<String>, Co
 }
 
 /// `git worktree add -b <branch> <path> <commit>` from the primary checkout.
-pub fn worktree_add(
-    primary_path: &str,
-    worktree_path: &Path,
-    branch: &str,
-    commit: &str,
-) -> Result<(), CoreError> {
+pub fn worktree_add(primary_path: &str, worktree_path: &Path, branch: &str) -> Result<(), CoreError> {
     let worktree_path = worktree_path.to_string_lossy();
     run_git_with_timeout(
         primary_path,
-        &["worktree", "add", "-b", branch, &worktree_path, commit],
+        &["worktree", "add", &worktree_path, branch],
         &[0],
         WORKTREE_TIMEOUT,
     )
     .map(|_| ())
+}
+
+/// Create `branch` at `commit` only if no branch has the name: one ref
+/// transaction, so it claims the name against any other writer. False when
+/// the name was taken.
+pub fn create_branch(primary_path: &str, branch: &str, commit: &str) -> Result<bool, CoreError> {
+    let output = run_git_with_timeout(
+        primary_path,
+        &["branch", "--no-track", "--", branch, commit],
+        &[0, 128],
+        WORKTREE_TIMEOUT,
+    )?;
+    if output.status_code == Some(0) {
+        return Ok(true);
+    }
+    if branch_commit(primary_path, branch)?.is_some() {
+        return Ok(false);
+    }
+    Err(CoreError::new(
+        "worktreeCreateFailed",
+        format!("git could not create the branch {branch}"),
+    )
+    .recoverable(true))
 }
 
 /// `git worktree remove` from the primary checkout. Forced twice, so neither
@@ -541,7 +559,10 @@ fn git_output_max_bytes() -> usize {
 
 #[cfg(test)]
 mod tests {
-    use super::{branch_commit, delete_branch_if_unchanged, porcelain_entry_count, run_git_with_allowed_exit_codes};
+    use super::{
+        branch_commit, create_branch, delete_branch_if_unchanged, porcelain_entry_count,
+        run_git_with_allowed_exit_codes,
+    };
     use std::path::Path;
 
     #[test]
@@ -574,6 +595,22 @@ mod tests {
         git(repo, &["commit", "--quiet", "--allow-empty", "-m", "base"]);
         let base = git(repo, &["rev-parse", "HEAD"]);
         (temp, base)
+    }
+
+    #[test]
+    fn a_branch_is_claimed_once_and_another_writers_branch_is_left_alone() {
+        let (temp, base) = repo_with_commit();
+        let repo = temp.path();
+        let path = repo.to_string_lossy().into_owned();
+
+        assert_eq!(create_branch(&path, "ottam/claimed", &base).ok(), Some(true));
+        // Someone else's branch at the same name and base stays as it was.
+        git(repo, &["commit", "--quiet", "--allow-empty", "-m", "theirs"]);
+        let theirs = git(repo, &["rev-parse", "HEAD"]);
+        git(repo, &["branch", "ottam/theirs", &theirs]);
+        assert_eq!(create_branch(&path, "ottam/theirs", &base).ok(), Some(false));
+        assert_eq!(branch_commit(&path, "ottam/theirs").ok(), Some(Some(theirs)));
+        assert!(create_branch(&path, "not a valid ref", &base).is_err());
     }
 
     #[test]

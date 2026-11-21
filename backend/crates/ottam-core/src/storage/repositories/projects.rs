@@ -264,22 +264,28 @@ impl ProjectRepository {
         Ok(())
     }
 
-    /// Every worktree path and branch a source of the project ever held,
-    /// archived or not. Ottam never hands one out again, so an owed removal
-    /// can only ever name its own checkout.
+    /// Every worktree path any source ever held, and every branch one of the
+    /// project's did, archived or not. Ottam never hands one out again, so
+    /// an owed removal can only ever name its own checkout.
     pub fn worktree_names_in_use(
         connection: &mut SqliteConnection,
         project_id: &ProjectId,
     ) -> Result<(Vec<String>, Vec<String>), StorageError> {
-        let rows = project_sources::table
+        // Paths across every project: two projects with one display name
+        // share a worktrees folder. Branches belong to the project's repository.
+        let paths = project_sources::table
+            .filter(project_sources::worktree_branch.is_not_null())
+            .select(project_sources::canonical_path)
+            .load::<String>(connection)?;
+        let branches = project_sources::table
             .filter(project_sources::project_id.eq(project_id.to_string()))
             .filter(project_sources::worktree_branch.is_not_null())
-            .select((project_sources::canonical_path, project_sources::worktree_branch))
-            .load::<(String, Option<String>)>(connection)?;
-        Ok(rows
+            .select(project_sources::worktree_branch)
+            .load::<Option<String>>(connection)?
             .into_iter()
-            .map(|(path, branch)| (path, branch.unwrap_or_default()))
-            .unzip())
+            .flatten()
+            .collect();
+        Ok((paths, branches))
     }
 
 

@@ -140,12 +140,26 @@ pub(super) fn create_checkout(
                 base_commit: base_commit.clone(),
             },
         };
-        outcome = match git::worktree_add(primary_path, &path, &branch, &base_commit) {
+        // Claims the branch the same way: another writer that made it since
+        // the check keeps it, and this attempt draws again.
+        match git::create_branch(primary_path, &branch, &base_commit) {
+            Ok(true) => {}
+            Ok(false) => {
+                let _ = std::fs::remove_dir(&path);
+                continue;
+            }
+            Err(error) => {
+                let _ = std::fs::remove_dir(&path);
+                outcome = Err(error);
+                break;
+            }
+        }
+        outcome = match git::worktree_add(primary_path, &path, &branch) {
             Ok(()) => Ok(created),
             Err(error) => {
-                // This attempt claimed the folder and the branch was free,
-                // so what exists now is its own: a failing post-checkout hook
-                // or the timeout leaves the checkout registered.
+                // This attempt claimed both the folder and the branch, so
+                // what exists now is its own: a failing post-checkout hook or
+                // the timeout leaves the checkout registered.
                 discard_checkout(&created);
                 Err(error)
             }

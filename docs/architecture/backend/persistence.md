@@ -219,10 +219,13 @@ never writes beside the user's checkout.
   and Core never adopts a worktree it did not make. Create and removal check
   the same resolved root, so Core never records a checkout it would refuse
   to remove.
-- A worktree name (folder and branch) is never handed out twice while any
-  row of the project, archived or not, holds it, and create claims its
-  folder before git runs. Cleanup therefore only ever touches its own
-  checkout.
+- A worktree folder is never handed out twice while any row holds it, nor a
+  branch while a row of its project does, archived or not. Create claims
+  the folder (`create_dir`) and then the branch (`git branch`, which fails
+  on an existing name) before the checkout, so cleanup only ever touches
+  what it made. The one gap left: Core exiting between deleting an
+  unchanged branch and recording the settled removal, with the same
+  `ottam/…` branch remade by hand in between.
 - Create runs git first. A failed `git worktree add` (a failing
   `post-checkout` hook, the timeout) or a failed insert takes down the
   checkout, its registration and its branch.
