@@ -504,10 +504,18 @@ impl ChatService {
                                 now,
                             )?;
                         }
-                        Ok(record)
+                        // Read inside the transaction: an error after commit
+                        // would read as a failed create to a caller that
+                        // undoes what it made for it, such as a worktree.
+                        let detail = load_detail_from_snapshot(
+                            connection,
+                            &home,
+                            &workspace_id,
+                            &record.conversation.id,
+                        )?;
+                        Ok((record, detail))
                     })?;
-                let detail =
-                    load_detail(connection, &home, &workspace_id, &record.conversation.id)?;
+                let (record, detail) = record;
                 Ok(ConversationCreateResult {
                     conversation: detail,
                     initial_input: record

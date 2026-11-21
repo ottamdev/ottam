@@ -36,6 +36,9 @@ struct SidebarView: View {
     /// The deletion target's worktree, read before its alert shows.
     @State private var deletionWorktree: WorktreeConfirmation?
     @State private var worktreeRemovalTarget: WorktreeConfirmation?
+    /// Each confirmation request's ticket; only the latest one's answer
+    /// opens an alert.
+    @State private var confirmationGeneration = 0
     /// Parents whose delegated children are folded away. Not persisted: a
     /// fresh window shows every child.
     @State private var foldedParents: Set<ConversationID> = []
@@ -173,7 +176,10 @@ struct SidebarView: View {
         Binding {
             worktreeRemovalTarget != nil
         } set: { presented in
-            if !presented { worktreeRemovalTarget = nil }
+            if !presented {
+                worktreeRemovalTarget = nil
+                confirmationGeneration &+= 1
+            }
         }
     }
 
@@ -263,21 +269,35 @@ struct SidebarView: View {
     }
 
     /// The alert waits for the worktree's status, so it can say what goes.
+    /// A worktree detached only by its project leaving still goes with its
+    /// last conversation, so it is asked about too; one Core reported gone
+    /// (detached while its project is a member) has nothing left to say.
     private func requestDeletion(of conversation: ConversationSummary) {
-        guard conversation.workingRoot.worktree != nil, conversation.workingRoot.availability == .available else {
+        confirmationGeneration &+= 1
+        let generation = confirmationGeneration
+        let root = conversation.workingRoot
+        let projectIsMember = chatWorkspace.projects.contains { $0.project.projectID == root.projectID }
+        guard root.worktree != nil, root.availability == .available || !projectIsMember else {
             deletionWorktree = nil
             deletionTarget = conversation
             return
         }
         Task {
-            deletionWorktree = await chatWorkspace.worktreeConfirmation(of: conversation.workingRoot, backend: backend)
+            let worktree = await chatWorkspace.worktreeConfirmation(of: root, backend: backend)
+            // A later request or a dismissal outranks this answer.
+            guard generation == confirmationGeneration else { return }
+            deletionWorktree = worktree
             deletionTarget = conversation
         }
     }
 
     private func requestWorktreeRemoval(of root: WorkingRootSummary) {
+        confirmationGeneration &+= 1
+        let generation = confirmationGeneration
         Task {
-            worktreeRemovalTarget = await chatWorkspace.worktreeConfirmation(of: root, backend: backend)
+            let worktree = await chatWorkspace.worktreeConfirmation(of: root, backend: backend)
+            guard generation == confirmationGeneration else { return }
+            worktreeRemovalTarget = worktree
         }
     }
 
@@ -475,6 +495,7 @@ struct SidebarView: View {
             if !presented {
                 deletionTarget = nil
                 deletionWorktree = nil
+                confirmationGeneration &+= 1
             }
         }
     }

@@ -2356,6 +2356,11 @@ final class ChatWorkspaceModel {
                 && conversation.workingRoot.projectID.map(rejoined.contains) == true
         }
         worktreeRootsNeedRelist = !changedWorkspace && (worktreeRootsNeedRelist || rejoinedWorktree)
+        if rejoinedWorktree {
+            // A re-list already in flight was read while the project was
+            // away; its answer must not stand for the rejoined roots.
+            listChangedGeneration += 1
+        }
         self.projects = projects
         self.projectSummary = projectSummary
         conversations = conversations.map { conversation in

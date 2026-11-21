@@ -110,8 +110,16 @@ pub(super) fn create_checkout(
         }
         // Claims the name: a concurrent create that drew it too fails here
         // and draws again, so what this attempt later discards is its own.
-        // Git checks out into an empty folder.
-        match std::fs::create_dir(&path) {
+        // Git checks out into an empty folder. A removal of the project's last
+        // worktree can take the emptied project folder meanwhile; make it
+        // again once.
+        let claimed = std::fs::create_dir(&path).or_else(|error| match error.kind() {
+            std::io::ErrorKind::NotFound => {
+                std::fs::create_dir_all(&project_dir).and_then(|()| std::fs::create_dir(&path))
+            }
+            _ => Err(error),
+        });
+        match claimed {
             Ok(()) => {}
             Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
             Err(error) => {
@@ -191,7 +199,16 @@ pub(super) fn remove_checkout(home: &Path, released: &ReleasedWorktree) -> Workt
         branch_kept: true,
         message: None,
     };
-    if path.exists() {
+    // A folder Core cannot look up (an untraversable parent) is not gone.
+    let present = match path.try_exists() {
+        Ok(present) => present,
+        Err(error) => {
+            tracing::warn!(%error, "a worktree folder could not be looked up");
+            removal.message = Some(format!("{error}. Ottam tries again on its next launch."));
+            return removal;
+        }
+    };
+    if present {
         if !is_managed_path(home, &path) {
             tracing::warn!("a worktree path outside Ottam's home was not removed");
             removal.message = Some("Ottam removes only worktrees it made in its own folder.".into());
@@ -229,7 +246,15 @@ pub(super) fn remove_checkout(home: &Path, released: &ReleasedWorktree) -> Workt
         return removal;
     };
     if let Err(error) = git::worktree_prune(primary) {
+        // Its stale registration still holds the branch checked out, so the
+        // removal stays owed rather than settling with the branch kept.
         tracing::warn!(kind = error.kind, "git worktree prune failed");
+        removal.message = Some(
+            "Git could not forget the worktree yet, so its branch is kept for now. \
+             Ottam tries again on its next launch."
+                .into(),
+        );
+        return removal;
     }
     match git::delete_branch_if_unchanged(
         primary,
@@ -288,7 +313,10 @@ pub(super) async fn retry_owed_removals(database: Database) {
     };
     let home = database.home().to_path_buf();
     for released in owed {
-        let folder_left = Path::new(&released.source.canonical_path).exists();
+        // A folder that cannot be looked up counts as left.
+        let folder_left = Path::new(&released.source.canonical_path)
+            .try_exists()
+            .unwrap_or(true);
         // With the folder gone only the branch can be owed, and that needs
         // the project's checkout. Deleting it is a no-op once done.
         if !folder_left && released.primary_path.is_none() {
