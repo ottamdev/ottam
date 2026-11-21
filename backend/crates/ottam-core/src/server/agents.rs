@@ -518,14 +518,8 @@ impl AgentRuntimeBridge {
             .await;
     }
 
-    pub(super) async fn cancel_conversations_runs(
-        &self,
-        workspace_id: &WorkspaceID,
-        conversations: &[ConversationID],
-    ) {
-        self.conversation
-            .cancel_conversations_runs(workspace_id, conversations)
-            .await;
+    pub(super) async fn cancel_conversations_runs(&self, conversations: &[ConversationID]) {
+        self.conversation.cancel_conversations_runs(conversations).await;
     }
 
     #[cfg(test)]

@@ -79,6 +79,23 @@ struct WorktreeRootTests {
         terminals.closeAll(backend: backend)
     }
 
+    @Test("a worktree terminal detached by its project leaving reattaches when the project returns")
+    func worktreeTerminalReattachesWithItsProject() throws {
+        let backend = DiffReviewModel(client: OttamCoreProcessClient(
+            executableURL: URL(fileURLWithPath: "/nonexistent/ottam-core")
+        ))
+        let terminals = TerminalWorkspaceModel()
+        let workspaceID = WorkspaceID("worktrees")
+        terminals.configure(workspaceID: workspaceID, workspaceFiles: nil, projects: [member], backend: backend)
+        let record = terminals.createTerminal(in: worktreeRoot(), backend: backend)
+        let id = try #require(record?.id)
+        terminals.configure(workspaceID: workspaceID, workspaceFiles: nil, projects: [], backend: backend)
+        #expect(terminals.record(for: id)?.workingRoot.availability == .detached)
+        terminals.configure(workspaceID: workspaceID, workspaceFiles: nil, projects: [member], backend: backend)
+        #expect(terminals.record(for: id)?.workingRoot.availability == .available)
+        terminals.closeAll(backend: backend)
+    }
+
     @Test("a send error under the composer clears once the draft's root or Worktree checkbox changes")
     func draftChangeClearsSendError() async throws {
         let backend = DiffReviewModel(client: OttamCoreProcessClient(

@@ -371,13 +371,15 @@ fn commit_count(repo_path: &str, revisions: &[&str]) -> Result<u32, CoreError> {
 }
 
 /// Entries in `status --porcelain=v1 -z` output. A rename or copy carries its
-/// source path as a second field, which is not a second change.
+/// source path as a second field, which is not a second change; either
+/// column can hold it (an unstaged rename after `git add -N` is ` R`).
 fn porcelain_entry_count(status: &str) -> u32 {
     let mut fields = status.split('\0').filter(|field| !field.is_empty());
     let mut count = 0;
     while let Some(entry) = fields.next() {
         count += 1;
-        if entry.starts_with('R') || entry.starts_with('C') {
+        let columns = entry.as_bytes().get(..2).unwrap_or_default();
+        if columns.iter().any(|column| matches!(column, b'R' | b'C')) {
             fields.next();
         }
     }
@@ -394,12 +396,35 @@ pub fn delete_branch_if_unchanged(
 ) -> Result<bool, CoreError> {
     match branch_fate(repo_path, branch, base_commit)? {
         BranchFate::Missing => Ok(false),
-        BranchFate::Unchanged => {
-            run_git_with_allowed_exit_codes(repo_path, &["branch", "-D", branch], &[0])?;
-            Ok(false)
-        }
         BranchFate::Moved { .. } => Ok(true),
+        BranchFate::Unchanged => {
+            // `update-ref` deletes a checked-out branch, which `branch -D`
+            // refuses; a checkout that reused the name keeps it.
+            if branch_checked_out(repo_path, branch)? {
+                return Ok(true);
+            }
+            // Deletes only while the ref still holds `base_commit`, so a
+            // commit that lands after `branch_fate` read it keeps the branch.
+            let reference = format!("refs/heads/{branch}");
+            let deleted = run_git_with_allowed_exit_codes(
+                repo_path,
+                &["update-ref", "-d", &reference, base_commit],
+                &[0, 1, 128],
+            )?;
+            if deleted.status_code == Some(0) {
+                Ok(false)
+            } else {
+                Ok(branch_commit(repo_path, branch)?.is_some())
+            }
+        }
     }
+}
+
+/// Whether any worktree of the repository has `branch` checked out.
+fn branch_checked_out(repo_path: &str, branch: &str) -> Result<bool, CoreError> {
+    let worktrees = run_git(repo_path, ["worktree", "list", "--porcelain"])?;
+    let checked_out = format!("branch refs/heads/{branch}");
+    Ok(worktrees.lines().any(|line| line == checked_out))
 }
 
 fn read_git_stream<R>(mut reader: R, max_bytes: usize) -> GitStreamReader
@@ -516,7 +541,8 @@ fn git_output_max_bytes() -> usize {
 
 #[cfg(test)]
 mod tests {
-    use super::porcelain_entry_count;
+    use super::{branch_commit, delete_branch_if_unchanged, porcelain_entry_count, run_git_with_allowed_exit_codes};
+    use std::path::Path;
 
     #[test]
     fn worktree_changes_count_a_rename_once() {
@@ -525,5 +551,54 @@ mod tests {
             porcelain_entry_count(" M src/a.rs\0?? notes.txt\0R  new.rs\0old.rs\0"),
             3
         );
+        // Unstaged, after `git add -N new.rs`.
+        assert_eq!(porcelain_entry_count(" R new.rs\0old.rs\0 M src/a.rs\0"), 2);
+        assert_eq!(porcelain_entry_count("RM new.rs\0old.rs\0"), 1);
+    }
+
+    fn git(repo: &Path, args: &[&str]) -> String {
+        let repo = repo.to_string_lossy();
+        run_git_with_allowed_exit_codes(&repo, args, &[0])
+            .unwrap_or_else(|error| panic!("git {args:?} failed: {}", error.message))
+            .stdout
+            .trim()
+            .to_string()
+    }
+
+    fn repo_with_commit() -> (tempfile::TempDir, String) {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let repo = temp.path();
+        git(repo, &["init", "--quiet", "--initial-branch=main"]);
+        git(repo, &["config", "user.email", "ottam@example.invalid"]);
+        git(repo, &["config", "user.name", "Ottam"]);
+        git(repo, &["commit", "--quiet", "--allow-empty", "-m", "base"]);
+        let base = git(repo, &["rev-parse", "HEAD"]);
+        (temp, base)
+    }
+
+    #[test]
+    fn an_unchanged_branch_is_deleted_and_a_moved_or_checked_out_one_kept() {
+        let (temp, base) = repo_with_commit();
+        let repo = temp.path();
+        let path = repo.to_string_lossy().into_owned();
+
+        git(repo, &["branch", "ottam/unchanged", &base]);
+        assert_eq!(delete_branch_if_unchanged(&path, "ottam/unchanged", &base).ok(), Some(false));
+        assert_eq!(branch_commit(&path, "ottam/unchanged").ok(), Some(None));
+
+        // A commit after the worktree was cut keeps the branch.
+        git(repo, &["commit", "--quiet", "--allow-empty", "-m", "later"]);
+        let later = git(repo, &["rev-parse", "HEAD"]);
+        git(repo, &["branch", "ottam/moved", &later]);
+        assert_eq!(delete_branch_if_unchanged(&path, "ottam/moved", &base).ok(), Some(true));
+
+        // A checkout that reused the name keeps it, even at the base commit.
+        git(repo, &["branch", "ottam/reused", &base]);
+        let reuse = temp.path().join("reuse");
+        git(repo, &["worktree", "add", "--quiet", &reuse.to_string_lossy(), "ottam/reused"]);
+        assert_eq!(delete_branch_if_unchanged(&path, "ottam/reused", &base).ok(), Some(true));
+        assert!(branch_commit(&path, "ottam/reused").ok().flatten().is_some());
+
+        assert_eq!(delete_branch_if_unchanged(&path, "ottam/missing", &base).ok(), Some(false));
     }
 }

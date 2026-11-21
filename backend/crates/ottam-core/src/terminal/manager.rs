@@ -333,11 +333,7 @@ impl TerminalManager {
 
     /// Close every terminal working in one project source: a worktree being
     /// removed takes its shells with it.
-    pub fn close_source_terminals(
-        &mut self,
-        workspace_id: &WorkspaceID,
-        source_id: &ottam_protocol::ProjectSourceID,
-    ) {
+    pub fn close_source_terminals(&mut self, source_id: &ottam_protocol::ProjectSourceID) {
         let session_ids = self
             .sessions
             .lock()
@@ -346,8 +342,7 @@ impl TerminalManager {
                     .iter()
                     .filter(|(_, session)| {
                         session.workspace.as_ref().is_some_and(|workspace| {
-                            workspace.workspace_id == *workspace_id
-                                && workspace.working_root.source_id.as_ref() == Some(source_id)
+                            workspace.working_root.source_id.as_ref() == Some(source_id)
                         })
                     })
                     .map(|(session_id, _)| session_id.clone())

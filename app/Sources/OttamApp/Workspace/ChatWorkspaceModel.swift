@@ -2340,6 +2340,14 @@ final class ChatWorkspaceModel {
             messageQueue = ChatMessageQueue.restored(from: defaults, workspaceID: workspaceID)
         }
         self.workspaceFiles = workspaceFiles
+        // A worktree read as detached while its project was away. When the
+        // project returns only Core knows whether the checkout went meanwhile.
+        let rejoined = Set(projects.map(\.project.projectID))
+            .subtracting(self.projects.map(\.project.projectID))
+        let rereadsWorktreeRoots = !changedWorkspace && conversations.contains { conversation in
+            conversation.workingRoot.worktree != nil
+                && conversation.workingRoot.projectID.map(rejoined.contains) == true
+        }
         self.projects = projects
         self.projectSummary = projectSummary
         conversations = conversations.map { conversation in
@@ -2401,6 +2409,27 @@ final class ChatWorkspaceModel {
             // its load task ran with no workspaceID and gave up. Now that the model
             // is configured, load whatever is still missing (no-op once loaded).
             await loadIfNeeded(backend: backend)
+            guard rereadsWorktreeRoots, !Task.isCancelled else { return }
+            await rereadWorkingRoots(backend: backend)
+        }
+    }
+
+    /// Core's roots in place of ones the app detached by project membership.
+    private func rereadWorkingRoots(backend: DiffReviewModel) async {
+        guard let workspaceID,
+              let list = try? await backend.listConversations(workspaceID: workspaceID),
+              self.workspaceID == workspaceID
+        else { return }
+        let fresh = list.conversations.map { conversation in
+            var updated = conversation
+            updated.workingRoot = conversation.workingRoot.updatingAvailability(for: projects)
+            return updated
+        }
+        apply(conversations: fresh)
+        if var detail = selectedDetail,
+           let fresh = fresh.first(where: { $0.conversationID == detail.summary.conversationID }) {
+            detail.summary.workingRoot = fresh.workingRoot
+            selectedDetail = detail
         }
     }
 
@@ -2739,10 +2768,13 @@ final class ChatWorkspaceModel {
             errorText = error.localizedDescription
             Self.logger.error("failed to remove worktree: \(error.localizedDescription, privacy: .private)")
         }
+        let failure = errorText
         let list = try? await backend.listConversations(workspaceID: workspaceID)
         if let list { apply(conversations: list.conversations) }
         if let selectedConversationID {
             await loadDetail(selectedConversationID, backend: backend)
+            // The refresh clears errors; why the removal failed outranks it.
+            if let failure { errorText = failure }
         }
     }
 

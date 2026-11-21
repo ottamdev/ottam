@@ -58,28 +58,17 @@ Worktree Sources. W2 (a per-project setup command) is next.
 
 ## Decisions
 
-1. **Worktrees under Ottam's home (2026-11-18).** They live at
-   `$OTTAM_HOME/worktrees/<project>/<name>` on a new branch off the primary
-   checkout's HEAD, so Ottam owns their lifetime and never writes beside the
-   user's checkout.
-2. **A worktree is a non-primary ProjectSource (2026-11-18).** The
-   conversation links that source, so availability, terminals and Review
-   follow the existing source model instead of a parallel one.
-3. **Setup is an Ottam setting (2026-11-18).** The command is per project in
+W1's decisions (where worktrees live, the source model, removal with the
+last conversation, no sidebar badge) are in
+[persistence.md](../../architecture/backend/persistence.md) › Worktree
+Sources and [macos-ui.md](../../architecture/app/macos-ui.md).
+
+1. **Setup is an Ottam setting (2026-11-18).** The command is per project in
    Settings › Projects, not a checked-in file, so it works on repositories
    the user does not own.
-4. **The first message waits for setup (2026-11-18).** On failure the app
+2. **The first message waits for setup (2026-11-18).** On failure the app
    shows the error with Retry, Fix Here and Fix in New Chat, so the agent
    never starts in a half-built checkout unless the user chooses it.
-5. **Last conversation removes the worktree (2026-11-18, revised
-   2026-11-20).** Deleting a
-   conversation removes its worktree only when no other conversation uses
-   it, and the confirmation says so, with the counts left unknown when Core
-   cannot read them. The branch is kept once it moves off the commit it
-   started from; commits no branch holds go with the folder, and the
-   confirmation counts them, so committed work is never lost unannounced.
-6. **No sidebar indicator (2026-11-18).** The window subtitle reads
-   `<project> · <branch> · Worktree`, which keeps the sidebar uncluttered.
-7. **Out of scope (2026-11-18).** Copy-on-write cloning of ignored files,
+3. **Out of scope (2026-11-18).** Copy-on-write cloning of ignored files,
    merge-back, PR creation, per-subagent worktrees, adopting outside
    worktrees and a base-aware Review diff; each needs its own milestone.

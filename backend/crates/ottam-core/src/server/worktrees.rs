@@ -19,7 +19,7 @@ use crate::storage::repositories::{ProjectRepository, ReleasedWorktree, Workspac
 use crate::storage::{worktrees_root, Database};
 use ottam_protocol::{
     ConversationCreateParams, ConversationID, ConversationListChangedParams, ProjectSourceID,
-    ProtocolNotification, ProtocolRequest, RequestID, WorkingRootSelection, WorkspaceID,
+    ProtocolNotification, ProtocolRequest, RequestID, WorkingRootSelection,
     WorktreeRemoval, WorktreeRemoveResult, WorktreeSourceParams, WorktreeStatusResult,
     METHOD_CONVERSATION_LIST_CHANGED,
 };
@@ -80,6 +80,16 @@ pub(super) fn create_checkout(
         )
         .recoverable(true)
     })?;
+    // A symlinked project folder would put the checkout where removal
+    // refuses to go.
+    if !is_managed_path(home, &project_dir) {
+        return Err(CoreError::new(
+            "worktreeCreateFailed",
+            "the project's worktrees folder resolves outside Ottam's worktrees folder",
+        )
+        .with_path(project_dir.to_string_lossy())
+        .recoverable(true));
+    }
     let mut outcome = Err(CoreError::new(
         "worktreeNameTaken",
         "Ottam could not find a free branch name for the worktree",
@@ -92,16 +102,24 @@ pub(super) fn create_checkout(
         if path.exists() || git::branch_commit(primary_path, &branch)?.is_some() {
             continue;
         }
-        outcome = git::worktree_add(primary_path, &path, &branch, &base_commit).map(|()| {
-            CreatedCheckout {
-                canonical_path: path.to_string_lossy().into_owned(),
-                primary_path: primary_path.to_string(),
-                worktree: ManagedWorktree {
-                    branch,
-                    base_commit: base_commit.clone(),
-                },
+        let created = CreatedCheckout {
+            canonical_path: path.to_string_lossy().into_owned(),
+            primary_path: primary_path.to_string(),
+            worktree: ManagedWorktree {
+                branch: branch.clone(),
+                base_commit: base_commit.clone(),
+            },
+        };
+        outcome = match git::worktree_add(primary_path, &path, &branch, &base_commit) {
+            Ok(()) => Ok(created),
+            Err(error) => {
+                // The path and branch were free before this attempt, so what
+                // exists now is its own: a failing post-checkout hook or the
+                // timeout leaves the checkout registered.
+                discard_checkout(&created);
+                Err(error)
             }
-        });
+        };
         break;
     }
     if outcome.is_err() {
@@ -111,11 +129,17 @@ pub(super) fn create_checkout(
     outcome
 }
 
-/// Undo a checkout whose conversation was never recorded.
+/// Undo a checkout whose conversation was never recorded, or that
+/// `git worktree add` left half made.
 pub(super) fn discard_checkout(created: &CreatedCheckout) {
     let path = PathBuf::from(&created.canonical_path);
-    if let Err(error) = git::worktree_remove(&created.primary_path, &path) {
-        tracing::warn!(kind = error.kind, "an unrecorded worktree was not removed");
+    if path.exists() && git::worktree_remove(&created.primary_path, &path).is_err() {
+        if let Err(error) = std::fs::remove_dir_all(&path) {
+            tracing::warn!(%error, "an unrecorded worktree was not removed");
+        }
+    }
+    if let Err(error) = git::worktree_prune(&created.primary_path) {
+        tracing::warn!(kind = error.kind, "git worktree prune failed");
     }
     if let Err(error) = git::delete_branch_if_unchanged(
         &created.primary_path,
@@ -146,12 +170,7 @@ pub(super) fn remove_checkout(home: &Path, released: &ReleasedWorktree) -> Workt
         message: None,
     };
     if path.exists() {
-        let inside_home = worktrees_root(home)
-            .canonicalize()
-            .ok()
-            .zip(path.canonicalize().ok())
-            .is_some_and(|(root, path)| path.starts_with(&root) && path != root);
-        if !inside_home {
+        if !is_managed_path(home, &path) {
             tracing::warn!("a worktree path outside Ottam's home was not removed");
             removal.message = Some("Ottam removes only worktrees it made in its own folder.".into());
             return removal;
@@ -164,12 +183,17 @@ pub(super) fn remove_checkout(home: &Path, released: &ReleasedWorktree) -> Workt
                 .is_ok()
         });
         if !removed_by_git {
-            if let Err(error) = std::fs::remove_dir_all(&path) {
-                tracing::warn!(%error, "a worktree folder was not removed");
-                // The app quotes this after the path; the retry promise is
-                // Core's to make, since only Core knows the row owes it.
-                removal.message = Some(format!("{error}. Ottam tries again on its next launch."));
-                return removal;
+            match std::fs::remove_dir_all(&path) {
+                Ok(()) => {}
+                // Git deleted the folder, then failed to unregister it.
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                Err(error) => {
+                    tracing::warn!(%error, "a worktree folder was not removed");
+                    // The app quotes this after the path; the retry promise is
+                    // Core's to make, since only Core knows the row owes it.
+                    removal.message = Some(format!("{error}. Ottam tries again on its next launch."));
+                    return removal;
+                }
             }
         }
     }
@@ -199,8 +223,34 @@ pub(super) fn remove_checkout(home: &Path, released: &ReleasedWorktree) -> Workt
     removal
 }
 
-/// Retry the removals archived worktrees still owe: their directories
-/// survived a failed removal or a quit mid-removal.
+/// Whether `path` resolves to a folder inside `$OTTAM_HOME/worktrees`.
+/// Create, remove and project opening all ask, so Core never records a
+/// checkout it would later refuse to remove.
+pub(super) fn is_managed_path(home: &Path, path: &Path) -> bool {
+    worktrees_root(home)
+        .canonicalize()
+        .ok()
+        .zip(path.canonicalize().ok())
+        .is_some_and(|(root, path)| path.starts_with(&root) && path != root)
+}
+
+/// A folder under `$OTTAM_HOME/worktrees` belongs to a conversation, recorded
+/// or not (a removal still owed, a crash mid-create), so it never opens as a
+/// project.
+pub(super) fn refuse_managed_project_path(home: &Path, canonical_path: &str) -> Result<(), CoreError> {
+    if is_managed_path(home, Path::new(canonical_path)) {
+        return Err(CoreError::new(
+            "managedWorktreePath",
+            "this folder is a worktree Ottam made for a conversation; open that conversation instead",
+        )
+        .recoverable(true));
+    }
+    Ok(())
+}
+
+/// Retry the removals archived worktrees still owe: a directory that
+/// survived a failed removal or a quit mid-removal, or a branch left after
+/// its folder went.
 pub(super) async fn retry_owed_removals(database: Database) {
     let owed = database
         .run("worktree.owedRemovals", |connection| {
@@ -216,7 +266,10 @@ pub(super) async fn retry_owed_removals(database: Database) {
     };
     let home = database.home().to_path_buf();
     for released in owed {
-        if !Path::new(&released.source.canonical_path).exists() {
+        let folder_left = Path::new(&released.source.canonical_path).exists();
+        // With the folder gone only the branch can be owed, and that needs
+        // the project's checkout. Deleting it is a no-op once done.
+        if !folder_left && released.primary_path.is_none() {
             continue;
         }
         let home = home.clone();
@@ -225,7 +278,10 @@ pub(super) async fn retry_owed_removals(database: Database) {
         })
         .await;
         match removal {
-            Ok(removal) => tracing::info!(removed = removal.removed, "retried an owed worktree removal"),
+            Ok(removal) if folder_left => {
+                tracing::info!(removed = removal.removed, "retried an owed worktree removal")
+            }
+            Ok(_) => {}
             Err(error) => tracing::warn!(kind = error.kind, "an owed worktree removal failed"),
         }
     }
@@ -382,7 +438,6 @@ impl AgentServer {
         &mut self,
         origin: ConnectionId,
         request_id: RequestID,
-        workspace_id: &WorkspaceID,
         released: Vec<ReleasedWorktree>,
         respond: F,
     ) -> Option<Value>
@@ -391,8 +446,9 @@ impl AgentServer {
     {
         for worktree in &released {
             let source_id = ProjectSourceID(worktree.source.id.to_string());
+            // Every workspace's: the source is archived for all of them.
             if let Some(terminals) = self.terminal_manager.as_mut() {
-                terminals.close_source_terminals(workspace_id, &source_id);
+                terminals.close_source_terminals(&source_id);
             }
             self.source_roots.remove(&source_id);
         }
@@ -400,10 +456,12 @@ impl AgentServer {
             return Some(respond(request_id, None));
         }
         let home = self.database.home().to_path_buf();
+        let busy = "Ottam was busy with other worktrees and removes this one on its next launch.";
         let Some(lane) = self.worktree_lane.as_mut() else {
-            return Some(respond(request_id, released.first().map(owed_removal)));
+            return Some(respond(request_id, released.first().map(|first| owed_removal(first, busy))));
         };
-        let pending = released.first().map(owed_removal);
+        let pending = released.first().map(|first| owed_removal(first, busy));
+        let first = released.first().cloned();
         let id = request_id.clone();
         let respond_later = respond.clone();
         let spawned = lane.spawn(origin, async move {
@@ -414,9 +472,17 @@ impl AgentServer {
                     .map(|released| remove_checkout(&home, released))
                     .collect::<Vec<_>>())
             })
-            .await
-            .unwrap_or_default();
-            respond(id, removals.into_iter().next())
+            .await;
+            let removal = match removals {
+                Ok(removals) => removals.into_iter().next(),
+                // The row is archived already, so the folder is owed.
+                Err(error) => {
+                    tracing::warn!(kind = error.kind, "the worktree removal task failed");
+                    let retry = format!("{}. Ottam tries again on its next launch.", error.message);
+                    first.as_ref().map(|first| owed_removal(first, &retry))
+                }
+            };
+            respond(id, removal)
         });
         if spawned.is_err() {
             // The archived row still owes the removal; the next launch
@@ -521,27 +587,36 @@ impl AgentServer {
                 recorded_transaction(connection, "worktree.remove", |connection| {
                     let conversations =
                         ProjectRepository::conversations_on_source(connection, &source_id)?;
-                    let (released, _) = ProjectRepository::archive_worktree_source_in_transaction(
+                    let (released, archived) = ProjectRepository::archive_worktree_source_in_transaction(
                         connection,
                         &source_id,
                         chrono::Utc::now(),
                     )?;
-                    Ok((released, conversations))
+                    Ok((released, archived, conversations))
                 })
             })
             .await;
-        let (released, conversations) = match archived {
+        let (released, archived, conversations) = match archived {
             Ok(archived) => archived,
             Err(error) => return Some(core_error_response(request.id, -32000, error.into())),
         };
+        // Removed before: what is still owed, the next launch retries. Doing
+        // it again here could reach a checkout that reused the path.
+        if !archived {
+            return Some(core_error_response(
+                request.id,
+                -32000,
+                CoreError::new("worktreeUnavailable", "the worktree has been removed").recoverable(true),
+            ));
+        }
         let conversations = conversations
             .into_iter()
             .map(|id| ConversationID(id.to_string()))
             .collect::<Vec<_>>();
+        // In every workspace: conversation ids are global, and so is the
+        // archived source.
         if let Some(bridge) = self.agent_bridge.as_ref() {
-            bridge
-                .cancel_conversations_runs(&params.workspace_id, &conversations)
-                .await;
+            bridge.cancel_conversations_runs(&conversations).await;
         }
         tracing::info!(conversations = conversations.len(), "worktree archived");
         // The conversations now read as detached.
@@ -559,7 +634,6 @@ impl AgentServer {
         self.finish_worktree_release(
             origin,
             request.id,
-            &params.workspace_id,
             vec![released],
             |id, removal| match removal {
                 Some(removal) => success_response(id, WorktreeRemoveResult { removal }),
@@ -569,16 +643,16 @@ impl AgentServer {
     }
 }
 
-/// A removal the lane had no room for: the row is archived, the folder is
-/// still there, and the next launch removes it.
-fn owed_removal(released: &ReleasedWorktree) -> WorktreeRemoval {
+/// A removal that did not run (no room on the lane, or its task failed): the
+/// row is archived, the folder is still there, and the next launch removes it.
+fn owed_removal(released: &ReleasedWorktree, message: &str) -> WorktreeRemoval {
     WorktreeRemoval {
         project_source_id: ProjectSourceID(released.source.id.to_string()),
         branch: released.worktree.branch.clone(),
         path: released.source.canonical_path.clone(),
         removed: false,
         branch_kept: true,
-        message: Some("Ottam was busy with other worktrees and removes this one on its next launch.".into()),
+        message: Some(message.to_string()),
     }
 }
 

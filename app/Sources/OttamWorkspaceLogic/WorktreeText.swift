@@ -94,7 +94,7 @@ public enum WorktreeText {
     private static func removal(_ worktree: WorktreeConfirmation) -> String {
         guard let status = worktree.status else {
             return "This removes its folder and any uncommitted changes in it; Ottam could not count them. "
-                + "The branch is deleted too unless it has new commits."
+                + "The branch is deleted too unless it has new commits, and commits no branch holds are lost."
         }
         let lost = switch status.unbranchedCommits {
         case 0: ""

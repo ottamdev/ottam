@@ -3034,20 +3034,14 @@ impl ConversationRunCoordinator {
         self.attribution.forget_project(workspace_id, project_id);
     }
 
-    /// Stop the active runs of `conversations`, whose worktree is going away.
-    pub(super) async fn cancel_conversations_runs(
-        &self,
-        workspace_id: &WorkspaceID,
-        conversations: &[ConversationID],
-    ) {
+    /// Stop the active runs of `conversations`, whose worktree is going away,
+    /// in whichever workspace they run.
+    pub(super) async fn cancel_conversations_runs(&self, conversations: &[ConversationID]) {
         let runs = {
             let active = self.active_runs().await;
             active
                 .values()
-                .filter(|run| {
-                    run.context.workspace_id == *workspace_id
-                        && conversations.contains(&run.context.conversation_id)
-                })
+                .filter(|run| conversations.contains(&run.context.conversation_id))
                 .map(|run| {
                     (
                         run.context.chat.clone(),

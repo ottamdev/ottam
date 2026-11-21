@@ -132,6 +132,12 @@ final class TerminalWorkspaceModel {
         records = records.map { record in
             var updated = record
             updated.workingRoot = record.workingRoot.updatingAvailability(for: projects)
+            // Core closes a removed worktree's terminals, so a worktree
+            // terminal still here was detached only by its project leaving.
+            if updated.workingRoot.worktree != nil,
+               projects.contains(where: { $0.project.projectID == updated.workingRoot.projectID }) {
+                updated.workingRoot.availability = .available
+            }
             return updated
         }
         for record in records {

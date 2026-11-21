@@ -391,6 +391,23 @@ fn removing_a_worktree_detaches_its_conversation() {
         "params": {"workspaceID": workspace_id, "projectSourceID": source_id}
     }));
     assert_error_data_kind(&status, "worktreeUnavailable");
+    // A repeat removes nothing: a checkout that reused the path is not its.
+    let again = core.send(json!({
+        "id": 70,
+        "method": "worktree.remove",
+        "params": {"workspaceID": workspace_id, "projectSourceID": source_id}
+    }));
+    assert_error_data_kind(&again, "worktreeUnavailable");
+    // Review no longer resolves it, rather than caching it as a root again.
+    let (snapshot, _) = core.send_for_id(
+        json!({
+            "id": 71,
+            "method": "git.diffSnapshot",
+            "params": {"projectSourceID": source_id}
+        }),
+        json!(71),
+    );
+    assert_error_data_kind(&snapshot, "worktreeUnavailable");
 
     // Its transcript stays, and deleting it later owes nothing more.
     let deleted = delete_conversation(&mut core, &workspace_id, &conversation_id, "keep");
@@ -454,6 +471,72 @@ fn a_worktree_cannot_be_opened_as_a_project() {
         Some(core.project_source_id(&project_id).as_str()),
         "the default source is still the primary checkout"
     );
+
+    // Nor a folder there with no row, as a crash mid-create leaves.
+    let stray = home.path().join("worktrees").join("stray").join("orphan");
+    std::fs::create_dir_all(&stray).unwrap();
+    run_git(&stray, ["init", "--quiet"]);
+    let response = core.send(json!({
+        "id": 72,
+        "method": "project.openPath",
+        "params": {"path": stray.to_string_lossy()}
+    }));
+    assert_error_data_kind(&response, "managedWorktreePath");
+    let response = core.send(json!({
+        "id": 73,
+        "method": "workspace.addProject",
+        "params": {"workspaceID": core.workspace_id(&project_id), "path": stray.to_string_lossy()}
+    }));
+    assert_error_data_kind(&response, "managedWorktreePath");
+    core.shutdown();
+}
+
+/// A `post-checkout` hook that fails leaves `git worktree add`'s checkout
+/// registered; Core takes it back down with the branch.
+#[cfg(unix)]
+#[test]
+fn a_failed_checkout_leaves_no_folder_branch_or_registration() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let repo = GitRepoFixture::init();
+    repo.commit_empty("initial");
+    let hook = repo.path().join(".git/hooks/post-checkout");
+    std::fs::create_dir_all(hook.parent().unwrap()).unwrap();
+    std::fs::write(&hook, "#!/bin/sh\nexit 1\n").unwrap();
+    std::fs::set_permissions(&hook, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let home = TempDir::new().expect("OTTAM_HOME");
+    let mut core = CoreProcess::new_in_home(home.path());
+    core.initialize();
+    let opened = core.open_path(repo.path());
+    let project_id = opened["project"]["projectID"].as_str().unwrap().to_string();
+
+    let (response, _) = core.send_for_id(
+        json!({
+            "id": 74,
+            "method": "conversation.create",
+            "params": {
+                "workspaceID": core.workspace_id(&project_id),
+                "workingRoot": {
+                    "kind": "project",
+                    "projectID": project_id,
+                    "sourceID": core.project_source_id(&project_id)
+                },
+                "message": {"body": "Hook fails", "idempotencyKey": "hook-fails"},
+                "createWorktree": true
+            }
+        }),
+        json!(74),
+    );
+    assert!(response.get("error").is_some(), "{response}");
+    assert!(
+        std::fs::read_dir(home.path().join("worktrees"))
+            .map(|entries| entries.count() == 0)
+            .unwrap_or(true),
+        "a checkout folder was left behind"
+    );
+    assert!(run_git(repo.path(), ["branch", "--list", "ottam/*"]).trim().is_empty());
+    assert_eq!(run_git(repo.path(), ["worktree", "list", "--porcelain"]).matches("worktree ").count(), 1);
+    assert_eq!(core.list_conversations(&project_id), json!([]));
     core.shutdown();
 }
 

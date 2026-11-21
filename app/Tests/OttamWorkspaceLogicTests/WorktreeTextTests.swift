@@ -101,7 +101,7 @@ struct WorktreeTextTests {
     @Test("when Core cannot count, both alerts still say the folder and its changes go")
     func uncountedFallback() {
         let unknown = "This removes its folder and any uncommitted changes in it; Ottam could not count them. "
-            + "The branch is deleted too unless it has new commits."
+            + "The branch is deleted too unless it has new commits, and commits no branch holds are lost."
         let alone = uncounted(conversations: 1)
         #expect(alone.projectSourceID == ProjectSourceID("source-worktree-fix"))
         #expect(WorktreeText.removalTitle(alone) == "Delete Worktree “ottam/fix-login-3f2a”?")
@@ -124,8 +124,8 @@ struct WorktreeTextTests {
             WorktreeText.conversationDeletion(shared, deletedChildren: 1)
                 == "It works in the worktree ottam/fix-login-3f2a, and so do its delegated conversations. "
                 + "Delete All removes the worktree with them: this removes its folder and any uncommitted "
-                + "changes in it; Ottam could not count them. The branch is deleted too unless it has new commits. "
-                + "Keeping them keeps the worktree."
+                + "changes in it; Ottam could not count them. The branch is deleted too unless it has new commits, "
+                + "and commits no branch holds are lost. Keeping them keeps the worktree."
         )
 
         // A root with no worktree has nothing to confirm.

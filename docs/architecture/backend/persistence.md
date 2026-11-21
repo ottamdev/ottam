@@ -203,19 +203,38 @@ leave recoverable orphan state, never half-valid relational state.
 ### Worktree Sources
 
 A conversation's worktree is a non-primary `localGit` ProjectSource with
-`worktree_branch` and `worktree_base_commit` set; Core makes it under
-`$OTTAM_HOME/worktrees` and never adopts one it did not make, nor opens one
-as a project. Create runs git first and compensates on a failed insert;
-removal archives the row first, so an archived row with its directory still
-present owes the removal and startup retries it. Removal only touches paths
-under `$OTTAM_HOME/worktrees`, and deletes the branch only when its tip is
-still the base commit; `worktree.status` reports the branch's fate by that
-same rule (`git::branch_fate`), and counts the commits at the worktree's HEAD
-that no branch, tag or remote holds, which removal loses. A failed removal's message is the
-only place a retry is promised; the app adds none. The last conversation's
-deletion archives the source
-in its own transaction; `worktree.remove` leaves the conversations, which
-read as detached. Owner: `backend/crates/ottam-core/src/server/worktrees.rs`.
+`worktree_branch` and `worktree_base_commit` set (2026-11-18), so
+availability, terminals and Review follow the source model instead of a
+parallel one. Core cuts it on a new branch off the primary checkout's HEAD,
+under `$OTTAM_HOME/worktrees` (2026-11-18), so Ottam owns its lifetime and
+never writes beside the user's checkout.
+
+- Nothing under `$OTTAM_HOME/worktrees` opens as a project, recorded or not,
+  and Core never adopts a worktree it did not make. Create and removal check
+  the same resolved root, so Core never records a checkout it would refuse
+  to remove.
+- Create runs git first. A failed `git worktree add` (a failing
+  `post-checkout` hook, the timeout) or a failed insert takes down the
+  checkout, its registration and its branch.
+- Removal archives the row first. An archived row owes its folder, and the
+  branch left after it, until startup's retry finds both gone. A second
+  removal of an archived row answers `worktreeUnavailable` and repeats
+  nothing. Runs, terminals and cached roots on the source stop in every
+  workspace.
+- The branch goes only while its tip is still the base commit and no
+  worktree has it checked out, as one compare-and-delete. `worktree.status`
+  reports the branch's fate by the same rule (`git::branch_fate`), and counts
+  the commits at HEAD that no branch, tag or remote holds, which removal
+  loses.
+- Deleting the last conversation on a worktree removes it, in that
+  deletion's transaction (2026-11-18, revised 2026-11-20); `worktree.remove`
+  leaves the conversations, which read as detached. Each confirmation says
+  what goes, with counts left unknown when Core cannot read them, so
+  committed work is never lost unannounced.
+- A failed removal's message is the only place a retry is promised; the app
+  adds none.
+
+Owner: `backend/crates/ottam-core/src/server/worktrees.rs`.
 
 ## Enforcement
 

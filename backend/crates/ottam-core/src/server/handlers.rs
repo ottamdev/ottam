@@ -87,6 +87,9 @@ impl AgentServer {
             Ok(root) => root,
             Err(error) => return core_error_response(request.id, -32000, error),
         };
+        if let Err(error) = super::worktrees::refuse_managed_project_path(self.database.home(), &canonical_root) {
+            return core_error_response(request.id, -32000, error);
+        }
         let display_name = Path::new(&canonical_root)
             .file_name()
             .and_then(|name| name.to_str())
@@ -209,6 +212,16 @@ impl AgentServer {
                     })
                     .await
                 {
+                    // A removed worktree's folder may still be going away;
+                    // it is never cached as a root again.
+                    Ok(opened) if opened.source.archived_at.is_some() => {
+                        return Some(core_error_response(
+                            request.id,
+                            -32000,
+                            CoreError::new("worktreeUnavailable", "the worktree has been removed")
+                                .recoverable(true),
+                        ));
+                    }
                     Ok(opened) => {
                         // A worktree is not its project's root.
                         if opened.source.is_primary {
@@ -485,7 +498,6 @@ impl AgentServer {
                 self.finish_worktree_release(
                     origin,
                     request.id,
-                    &params.workspace_id,
                     released,
                     move |id, worktree| {
                         success_response(
