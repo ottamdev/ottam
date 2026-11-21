@@ -229,7 +229,151 @@ async fn baseline_has_exact_target_tables_integrity_and_connection_pragmas() {
     assert_eq!(tables.4, 1, "SQLite NORMAL is numeric value 1");
     // The applied set is asserted exactly so adding a migration is a deliberate,
     // reviewed change rather than something that lands unnoticed.
-    assert_eq!(tables.5, vec!["00000000000000", "00000000000001"]);
+    assert_eq!(
+        tables.5,
+        vec!["00000000000000", "00000000000001", "00000000000002"]
+    );
+}
+
+/// A home on the session-model schema gains the unseen-run marker on
+/// upgrade, backed up first and with its rows kept. The marker takes only a run of its own
+/// conversation, goes with the conversation, and is not read back for an
+/// archived workspace.
+#[tokio::test]
+async fn baseline_home_upgrades_to_the_unseen_run_marker() {
+    use ottam_core::storage::models::{ConversationId, ConversationRunId, RunStatus, WorkspaceId};
+    use ottam_core::storage::repositories::ConversationRepository;
+
+    let home = TempDir::new().expect("home");
+    let path = home.path().join("ottam.sqlite");
+    let [workspace, finished, other, run, other_run] =
+        std::array::from_fn::<_, 5, _>(|_| Uuid::now_v7().to_string());
+    {
+        let mut connection =
+            SqliteConnection::establish(path.to_string_lossy().as_ref()).expect("opens SQLite");
+        connection
+            .batch_execute("PRAGMA foreign_keys = ON; PRAGMA journal_mode = WAL;")
+            .expect("configures SQLite");
+        connection
+            .run_next_migration(MIGRATIONS)
+            .expect("applies the baseline");
+        connection
+            .run_next_migration(MIGRATIONS)
+            .expect("applies the session model columns");
+        assert_eq!(
+            applied_migrations(&mut connection),
+            ["00000000000000", "00000000000001"]
+        );
+        connection
+            .batch_execute(&format!(
+                "INSERT INTO workspaces VALUES ('{workspace}', 'Workspace', 0, 0, 0, NULL); \
+                 INSERT INTO conversations \
+                     (id, workspace_id, working_root_kind, title, created_at, updated_at) \
+                     VALUES ('{finished}', '{workspace}', 'workspaceFiles', 'Finished', 0, 0), \
+                            ('{other}', '{workspace}', 'workspaceFiles', 'Other', 0, 0); \
+                 INSERT INTO conversation_runs \
+                     (id, workspace_id, conversation_id, engine_id, status, queued_at, origin, error_json) \
+                     VALUES ('{run}', '{workspace}', '{finished}', 'codex', 'failed', 1, 'user', \
+                             '{{\"message\":\"Boom\"}}'), \
+                            ('{other_run}', '{workspace}', '{other}', 'codex', 'completed', 1, 'user', NULL);"
+            ))
+            .expect("writes baseline rows");
+    }
+
+    let database = Database::open(home.path().to_path_buf()).expect("upgrades the home");
+    assert!(home
+        .path()
+        .join("ottam-before-00000000000002.sqlite")
+        .is_file());
+
+    let workspace_id = WorkspaceId::try_from(workspace.as_str()).unwrap();
+    let finished_id = ConversationId::try_from(finished.as_str()).unwrap();
+    let other_id = ConversationId::try_from(other.as_str()).unwrap();
+    let run_id = ConversationRunId::try_from(run.as_str()).unwrap();
+    let other_run_id = ConversationRunId::try_from(other_run.as_str()).unwrap();
+    let (applied, untouched, refused, both, after_delete, after_clear, archived) = database
+        .run("test.unseenRuns", move |connection| {
+            let applied = applied_migrations(connection);
+            let untouched = ConversationRepository::unseen_runs(connection)?;
+            assert!(!ConversationRepository::set_unseen_run(
+                connection,
+                &workspace_id,
+                &finished_id,
+                Some(&other_run_id),
+            )?);
+            let refused = ConversationRepository::unseen_runs(connection)?;
+            ConversationRepository::set_unseen_run(
+                connection,
+                &workspace_id,
+                &finished_id,
+                Some(&run_id),
+            )?;
+            ConversationRepository::set_unseen_run(
+                connection,
+                &workspace_id,
+                &other_id,
+                Some(&other_run_id),
+            )?;
+            let both = ConversationRepository::unseen_runs(connection)?;
+            ConversationRepository::delete(connection, &workspace_id, &other_id)?;
+            let after_delete = ConversationRepository::unseen_runs(connection)?;
+            ConversationRepository::clear_unseen_runs(connection, &workspace_id)?;
+            let after_clear = ConversationRepository::unseen_runs(connection)?;
+            ConversationRepository::set_unseen_run(
+                connection,
+                &workspace_id,
+                &finished_id,
+                Some(&run_id),
+            )?;
+            connection.batch_execute("UPDATE workspaces SET archived_at = 1")?;
+            let archived = ConversationRepository::unseen_runs(connection)?;
+            assert!(
+                !ConversationRepository::set_unseen_run(
+                    connection,
+                    &workspace_id,
+                    &finished_id,
+                    Some(&run_id),
+                )?,
+                "an archived workspace takes no marker"
+            );
+            let failures =
+                diesel::sql_query("SELECT COUNT(*) AS value FROM pragma_foreign_key_check")
+                    .get_result::<IntegerValue>(connection)?
+                    .value;
+            assert_eq!(failures, 0);
+            Ok((
+                applied,
+                untouched,
+                refused,
+                both,
+                after_delete,
+                after_clear,
+                archived,
+            ))
+        })
+        .await
+        .expect("reads and writes unseen runs");
+
+    assert_eq!(
+        applied,
+        ["00000000000000", "00000000000001", "00000000000002"]
+    );
+    assert!(untouched.is_empty(), "the upgrade leaves no marker");
+    assert!(refused.is_empty(), "another conversation's run is refused");
+    assert_eq!(both.len(), 2);
+    let failed = both
+        .iter()
+        .find(|record| record.conversation_id.to_string() == finished)
+        .expect("the finished conversation is unseen");
+    assert_eq!(failed.workspace_id.to_string(), workspace);
+    assert_eq!(failed.run_id.to_string(), run);
+    assert_eq!(failed.status, RunStatus::Failed);
+    assert_eq!(failed.title, "Finished");
+    assert_eq!(failed.error_json.as_deref(), Some("{\"message\":\"Boom\"}"));
+    assert_eq!(after_delete.len(), 1);
+    assert_eq!(after_delete[0].conversation_id.to_string(), finished);
+    assert!(after_clear.is_empty());
+    assert!(archived.is_empty());
 }
 
 /// A home that ran only the baseline gains the session model columns on
@@ -288,13 +432,13 @@ async fn baseline_home_upgrades_to_session_model_columns() {
 
     assert!(home
         .path()
-        .join("ottam-before-00000000000001.sqlite")
+        .join("ottam-before-00000000000002.sqlite")
         .is_file());
     let mut connection =
         SqliteConnection::establish(path.to_string_lossy().as_ref()).expect("opens SQLite");
     assert_eq!(
         applied_migrations(&mut connection),
-        vec!["00000000000000", "00000000000001"]
+        vec!["00000000000000", "00000000000001", "00000000000002"]
     );
     let kept = diesel::sql_query(
         "SELECT COUNT(*) AS value FROM agent_sessions \
@@ -416,7 +560,8 @@ fn pending_migration_is_backed_up_before_it_runs() {
 
     assert!(Database::open(home.path().to_path_buf()).is_err());
 
-    let backup = home.path().join("ottam-before-00000000000001.sqlite");
+    // Named for the newest migration the binary embeds.
+    let backup = home.path().join("ottam-before-00000000000002.sqlite");
     assert!(backup.is_file());
     let coordinated = std::fs::read_dir(home.path().join("backups"))
         .expect("lists coordinated backups")

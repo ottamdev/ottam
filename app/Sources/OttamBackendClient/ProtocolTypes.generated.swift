@@ -674,6 +674,23 @@ public enum AgentPlanUsageSource: String, Codable, Equatable, Sendable {
     case probe
 }
 
+public enum AttentionState: String, Codable, Equatable, Sendable {
+    /// The agent waits on the user: a permission, a question, or a plan.
+    case needsInput
+    /// A run ended while nobody looked at the conversation.
+    case unseen
+    /// Nothing; sent when an earlier state ends.
+    case none
+}
+
+public enum AttentionReason: String, Codable, Equatable, Sendable {
+    case permission
+    case question
+    case plan
+    case completed
+    case failed
+}
+
 public enum RuntimeInstallPhase: String, Codable, Equatable, Sendable {
     case extracting
     case ready
@@ -3507,6 +3524,79 @@ public struct AgentPlanUsageChangedParams: Codable, Equatable, Sendable {
     public init(agentID: AgentID, usage: AgentPlanUsage? = nil) {
         self.agentID = agentID
         self.usage = usage
+    }
+}
+
+public struct AttentionListParams: Codable, Equatable, Sendable {
+
+    public init() {}
+}
+
+public struct AttentionListResult: Codable, Equatable, Sendable {
+    /// The revision of the last `attention.changed` core sent before this answer. An entry a client stamped at or below it is superseded.
+    public var revision: UInt64
+    /// Entries whose state is not `none`.
+    public var entries: [AttentionEntry]
+
+    public init(revision: UInt64, entries: [AttentionEntry]) {
+        self.revision = revision
+        self.entries = entries
+    }
+}
+
+public struct AttentionEntry: Codable, Equatable, Sendable {
+    public var workspaceID: WorkspaceID
+    public var conversationID: ConversationID
+    public var state: AttentionState
+    /// Why the state holds; for `none`, why the state that ended held.
+    public var reason: AttentionReason
+    public var runID: ConversationRunID?
+    /// The conversation's title when the entry was made.
+    public var title: String
+    /// Markdown: the asking tool's title for an ask, the failure message for a failed run, the start of its last message for a completed run. Bounded, not cut to fit: a client renders it, then cuts it. A completed run restored after a restart has none: it never alerts again.
+    public var detail: String?
+
+    public init(
+        workspaceID: WorkspaceID,
+        conversationID: ConversationID,
+        state: AttentionState,
+        reason: AttentionReason,
+        runID: ConversationRunID? = nil,
+        title: String,
+        detail: String? = nil
+    ) {
+        self.workspaceID = workspaceID
+        self.conversationID = conversationID
+        self.state = state
+        self.reason = reason
+        self.runID = runID
+        self.title = title
+        self.detail = detail
+    }
+}
+
+public struct AttentionSetFocusParams: Codable, Equatable, Sendable {
+    public var conversationID: ConversationID?
+
+    public init(conversationID: ConversationID? = nil) {
+        self.conversationID = conversationID
+    }
+}
+
+public struct AttentionSetFocusResult: Codable, Equatable, Sendable {
+
+    public init() {}
+}
+
+public struct AttentionChangedParams: Codable, Equatable, Sendable {
+    public var revision: UInt64
+    public var entry: AttentionEntry
+    public var notify: Bool
+
+    public init(revision: UInt64, entry: AttentionEntry, notify: Bool) {
+        self.revision = revision
+        self.entry = entry
+        self.notify = notify
     }
 }
 

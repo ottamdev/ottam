@@ -13,6 +13,7 @@
 //! same trust domain as the sqlite file beside it. `OTTAM_ATTACH=off`
 //! disables it; a bind failure is never fatal.
 
+use crate::server::attention::Attention;
 use crate::server::client_link::PendingClientRequests;
 use crate::server::outbound::{AttachedRegistry, ConnectionId, OutboundSink};
 use crate::server::transport::{reader_task, writer_task, InboundMessage};
@@ -20,6 +21,7 @@ use crate::terminal::TerminalOutputQueue;
 use std::os::unix::ffi::OsStrExt;
 use std::os::unix::fs::{DirBuilderExt, MetadataExt, PermissionsExt};
 use std::path::{Path, PathBuf};
+use std::sync::Weak;
 use std::time::Duration;
 use tokio::net::{UnixListener, UnixStream};
 use tokio::sync::mpsc::Sender;
@@ -101,6 +103,7 @@ pub(super) fn spawn(
     registry: AttachedRegistry,
     dispatch_tx: Sender<InboundMessage>,
     outbound: OutboundSink,
+    attention: Weak<Attention>,
     primary_done: CancellationToken,
 ) -> Option<AttachRuntime> {
     let (listener, socket_path) = bind(home)?;
@@ -110,6 +113,7 @@ pub(super) fn spawn(
         registry,
         dispatch_tx,
         outbound,
+        attention,
         primary_done,
     ));
     Some(AttachRuntime { handle })
@@ -162,6 +166,7 @@ async fn accept_loop(
     registry: AttachedRegistry,
     dispatch_tx: Sender<InboundMessage>,
     outbound: OutboundSink,
+    attention: Weak<Attention>,
     primary_done: CancellationToken,
 ) {
     let mut connections = tokio::task::JoinSet::new();
@@ -181,6 +186,7 @@ async fn accept_loop(
                         registry.clone(),
                         dispatch_tx.clone(),
                         outbound.clone(),
+                        attention.clone(),
                     ));
                 }
                 Err(error) => {
@@ -209,13 +215,22 @@ async fn serve_connection(
     registry: AttachedRegistry,
     dispatch_tx: Sender<InboundMessage>,
     outbound: OutboundSink,
+    attention: Weak<Attention>,
 ) {
     let (read_half, write_half) = stream.into_split();
     let (writer_tx, writer_rx) = tokio::sync::mpsc::unbounded_channel();
     registry.register(id, writer_tx);
+    // Before any of its requests is read, so its focus counts.
+    if let Some(attention) = attention.upgrade() {
+        attention.connection_opened(ConnectionId::Attached(id));
+    }
     // Removes the registry entry on every exit path, including this task
     // being aborted at shutdown; the writer then drains out and exits.
-    let registry_guard = RegistryGuard { registry, id };
+    let registry_guard = RegistryGuard {
+        registry,
+        id,
+        attention,
+    };
     let writer = tokio::spawn(writer_task(
         writer_rx,
         TerminalOutputQueue::new(ATTACHED_TERMINAL_QUEUE_BYTES),
@@ -240,11 +255,16 @@ async fn serve_connection(
 struct RegistryGuard {
     registry: AttachedRegistry,
     id: u64,
+    attention: Weak<Attention>,
 }
 
 impl Drop for RegistryGuard {
     fn drop(&mut self) {
         self.registry.remove(self.id);
+        // Its focus ends, and a `setFocus` still queued cannot restore it.
+        if let Some(attention) = self.attention.upgrade() {
+            attention.connection_closed(ConnectionId::Attached(self.id));
+        }
     }
 }
 

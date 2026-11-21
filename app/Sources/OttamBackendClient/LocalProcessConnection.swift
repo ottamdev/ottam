@@ -280,6 +280,16 @@ public actor LocalProcessConnection: AgentConnection {
         return result
     }
 
+    /// Focus goes only to a core that is up: reporting it must never start one.
+    public func setAttentionFocusIfRunning(conversationID: ConversationID?) async throws {
+        guard latestInitializeResult != nil, let process, process.isRunning else { return }
+        guard let connection, await connection.isActive else { throw AgentConnectionError.failedToStart("The running core is not responding.") }
+        let _: AttentionSetFocusResult = try await connection.request(
+            method: "attention.setFocus",
+            params: AttentionSetFocusParams(conversationID: conversationID)
+        )
+    }
+
     public func prepareShutdownIfRunning(operationKey: String) async throws {
         guard latestInitializeResult != nil, let process, process.isRunning else { return }
         guard let connection, await connection.isActive else { throw AgentConnectionError.failedToStart("The running core is not responding.") }

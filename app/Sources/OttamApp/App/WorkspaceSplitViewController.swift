@@ -420,6 +420,7 @@ struct WorkspaceSidebarColumn: View {
                 workspace: session.workspace,
                 chatWorkspace: session.chatWorkspace,
                 backend: session.diffModel,
+                attention: session.runtime.attention,
                 updater: session.runtime.updater,
                 addProject: session.chooseWorkspace
             )

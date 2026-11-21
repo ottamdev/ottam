@@ -160,6 +160,7 @@ diesel::table! {
         delegated_avatar_seed -> Nullable<BigInt>,
         delegated_named_agent_id -> Nullable<Text>,
         delegated_from_run_id -> Nullable<Text>,
+        unseen_run_id -> Nullable<Text>,
     }
 }
 

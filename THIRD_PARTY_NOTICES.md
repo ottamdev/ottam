@@ -6641,7 +6641,7 @@ SOFTWARE.
 ```
 ### MIT License
 
-Used by: [tokio-native-tls 0.3.1](https://github.com/tokio-rs/tls), [tracing-appender 0.2.5](https://github.com/tokio-rs/tracing), [tracing-attributes 0.1.31](https://github.com/tokio-rs/tracing), [tracing-core 0.1.36](https://github.com/tokio-rs/tracing), [tracing-log 0.2.0](https://github.com/tokio-rs/tracing), [tracing-serde 0.2.0](https://github.com/tokio-rs/tracing), [tracing-subscriber 0.3.23](https://github.com/tokio-rs/tracing), [tracing 0.1.44](https://github.com/tokio-rs/tracing)
+Used by: [tokio-native-tls 0.3.1](https://github.com/tokio-rs/tls), [tracing-appender 0.2.5](https://github.com/tokio-rs/tracing), [tracing-attributes 0.1.31](https://github.com/tokio-rs/tracing), [tracing-core 0.1.36](https://github.com/tokio-rs/tracing), [tracing-log 0.2.0](https://github.com/tokio-rs/tracing), [tracing-subscriber 0.3.23](https://github.com/tokio-rs/tracing), [tracing 0.1.44](https://github.com/tokio-rs/tracing)
 
 ```text
 Copyright (c) 2019 Tokio Contributors

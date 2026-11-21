@@ -117,6 +117,11 @@ pub enum FakePromptBehavior {
     /// [`Self::AskQuestion`], withdrawn by the adapter on
     /// [`FakeAcpRuntime::publish_marker`]`("withdraw-question")`.
     AskQuestionWithdrawn,
+    /// A `session/request_permission` for a shell command; the turn then
+    /// holds until cancelled.
+    RequestPermission,
+    /// A turn that ends with a session failure, so the run fails.
+    SessionFailure,
 }
 
 #[cfg(unix)]
@@ -135,6 +140,8 @@ impl FakePromptBehavior {
             Self::SubagentThreads => "subagentThreads",
             Self::AskQuestion => "askQuestion",
             Self::AskQuestionWithdrawn => "askQuestionWithdrawn",
+            Self::RequestPermission => "requestPermission",
+            Self::SessionFailure => "sessionFailure",
         }
     }
 }

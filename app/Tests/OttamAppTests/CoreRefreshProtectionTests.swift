@@ -15,6 +15,8 @@ struct CoreRefreshProtectionTests {
         #expect(try await connection.shutdownReadinessIfRunning() == nil)
         try await connection.prepareShutdownIfRunning(operationKey: "no-core")
         try await connection.cancelShutdownIfRunning(operationKey: "no-core")
+        // Neither does reporting attention focus.
+        try await connection.setAttentionFocusIfRunning(conversationID: ConversationID("no-core"))
         await connection.close()
     }
     @Test func unknownAndUnreadableLocksFailClosed() throws {
