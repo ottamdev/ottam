@@ -72,6 +72,7 @@
 		BBF5ADD19910BFE696C2D592 /* QueueDatabase.swift in Sources */ = {isa = PBXBuildFile; fileRef = B3191DC90181CF2E291BCC93 /* QueueDatabase.swift */; };
 		BC784D6AC6076FD417066193 /* ChatBackgroundTasksScenario.swift in Sources */ = {isa = PBXBuildFile; fileRef = FCB9854846424F99C271CC04 /* ChatBackgroundTasksScenario.swift */; };
 		BE3E6CFDEEA5579B709146FB /* libCoordinatorKit.a in Frameworks */ = {isa = PBXBuildFile; fileRef = C66B8643D00A8340FCFB7DE6 /* libCoordinatorKit.a */; };
+		C1A9A45F1E5288EF58870350 /* WorktreeConversationScenario.swift in Sources */ = {isa = PBXBuildFile; fileRef = 71F1EC4E10AF7B9AAB3DAE76 /* WorktreeConversationScenario.swift */; };
 		C3AA97229A9D413670E8595B /* UniformTypeIdentifiers.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 6586E5D242669347F676C97C /* UniformTypeIdentifiers.framework */; };
 		C81AB78F708D89B7B33B51C9 /* libOttamUIScenarios.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 5DB6314AE2012F2AEF1DD20E /* libOttamUIScenarios.a */; };
 		D1B28B999BC69157C603A737 /* ScenarioRuntimeContext.swift in Sources */ = {isa = PBXBuildFile; fileRef = 19CBDA0AB28D575CC42C1640 /* ScenarioRuntimeContext.swift */; };
@@ -258,6 +259,7 @@
 		6586E5D242669347F676C97C /* UniformTypeIdentifiers.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = UniformTypeIdentifiers.framework; path = System/Library/Frameworks/UniformTypeIdentifiers.framework; sourceTree = SDKROOT; };
 		6A9931D6A2D23DC9EEDD59B9 /* OttamUINativeTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = OttamUINativeTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		71D29E4DA91FB9B7A034A96F /* DriverScenarios.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DriverScenarios.swift; sourceTree = "<group>"; };
+		71F1EC4E10AF7B9AAB3DAE76 /* WorktreeConversationScenario.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorktreeConversationScenario.swift; sourceTree = "<group>"; };
 		76B470189D106D4D8AC02BA9 /* Capture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Capture.swift; sourceTree = "<group>"; };
 		7905F385C5D72E876E0BAD64 /* OttamUITestCoordinator */ = {isa = PBXFileReference; includeInIndex = 0; path = OttamUITestCoordinator; sourceTree = BUILT_PRODUCTS_DIR; };
 		7CBB5B71DA7DCCCC67453AFB /* AppKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AppKit.framework; path = System/Library/Frameworks/AppKit.framework; sourceTree = SDKROOT; };
@@ -571,6 +573,7 @@
 				CCF55304124012748D490636 /* SmokeScenario.swift */,
 				7D74B8831E4E3EEEFAE8678A /* TranscriptMeasurementScenarios.swift */,
 				62A270B5EA6B47DFA1D1BBAC /* WorkspaceShapeScenarios.swift */,
+				71F1EC4E10AF7B9AAB3DAE76 /* WorktreeConversationScenario.swift */,
 			);
 			path = Scenarios;
 			sourceTree = "<group>";
@@ -1021,6 +1024,7 @@
 				74C2130725227ECE72353673 /* SmokeScenario.swift in Sources */,
 				BB032800BDE44B748F34E52E /* TranscriptMeasurementScenarios.swift in Sources */,
 				A2403FA4C21A876B5ED674BC /* WorkspaceShapeScenarios.swift in Sources */,
+				C1A9A45F1E5288EF58870350 /* WorktreeConversationScenario.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

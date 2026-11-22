@@ -81,7 +81,7 @@ fn project_conversation(
         &CreateConversationParams {
             workspace_id: &seed.workspace_id,
             title: "Thread",
-            root: ConversationRootSelection::Project(&seed.project_id),
+            root: ConversationRootSelection::Project(&seed.project_id, None),
             context_projects: &[],
             initial_message: Some(InitialMessage {
                 body,
@@ -191,7 +191,7 @@ async fn conversation_creation_links_projects_and_seeds_pending_input() {
                 &CreateConversationParams {
                     workspace_id: &seed.other_workspace_id,
                     title: "Cross",
-                    root: ConversationRootSelection::Project(&seed.project_id),
+                    root: ConversationRootSelection::Project(&seed.project_id, None),
                     context_projects: &[],
                     initial_message: None,
                 },
@@ -2631,7 +2631,8 @@ async fn deleting_a_conversation_returns_its_attachment_paths_to_unlink() {
             // repository sweeps attachments before the Messages they hang on.
             let removed =
                 ConversationRepository::delete(connection, &seed.workspace_id, &conversation_id)?;
-            assert_eq!(removed, vec!["kept.png".to_string()]);
+            assert_eq!(removed.attachment_paths, vec!["kept.png".to_string()]);
+            assert!(removed.released_worktrees.is_empty());
             let remaining =
                 diesel::sql_query("SELECT COUNT(*) AS value FROM conversation_attachments")
                     .get_result::<IntegerValue>(connection)?

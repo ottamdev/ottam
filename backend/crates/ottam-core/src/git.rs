@@ -1,11 +1,12 @@
 use crate::core_error::CoreError;
 use std::env;
-use std::io::Read;
-use std::path::Path;
+use std::io::{Read, Write};
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, Receiver};
-use std::sync::Arc;
+use std::collections::HashSet;
+use std::sync::{Arc, Mutex, OnceLock};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -67,9 +68,20 @@ pub fn run_git_with_allowed_exit_codes(
     args: &[&str],
     allowed_exit_codes: &[i32],
 ) -> Result<GitCommandResult, CoreError> {
+    run_git_with_timeout(repo_path, args, allowed_exit_codes, git_timeout())
+}
+
+/// [`run_git_with_allowed_exit_codes`] with its own deadline, for commands
+/// whose cost grows with the checkout (a worktree's checkout or removal) and
+/// so cannot share the snapshot timeout.
+pub fn run_git_with_timeout(
+    repo_path: &str,
+    args: &[&str],
+    allowed_exit_codes: &[i32],
+    timeout: Duration,
+) -> Result<GitCommandResult, CoreError> {
     let started = Instant::now();
     let git_path = git_executable();
-    let timeout = git_timeout();
     let mut command = Command::new(&git_path);
     command
         .arg("-C")
@@ -228,6 +240,323 @@ pub fn canonical_git_root(path: &str) -> Result<String, CoreError> {
         .map(|path| path.to_string_lossy().to_string())
 }
 
+/// Checking out or deleting a whole tree takes longer than a status read.
+const WORKTREE_TIMEOUT: Duration = Duration::from_secs(120);
+
+/// The commit `HEAD` names, or `None` in a repository with no commits yet.
+pub fn head_commit(repo_path: &str) -> Result<Option<String>, CoreError> {
+    let result = run_git_with_allowed_exit_codes(
+        repo_path,
+        &["rev-parse", "--verify", "--quiet", "HEAD^{commit}"],
+        &[0, 1],
+    )?;
+    let commit = result.stdout.trim();
+    Ok((result.status_code == Some(0) && !commit.is_empty()).then(|| commit.to_string()))
+}
+
+/// The commit a local branch points at, or `None` when there is no such branch.
+pub fn branch_commit(repo_path: &str, branch: &str) -> Result<Option<String>, CoreError> {
+    let reference = format!("refs/heads/{branch}");
+    let result = run_git_with_allowed_exit_codes(
+        repo_path,
+        &["rev-parse", "--verify", "--quiet", &reference],
+        &[0, 1],
+    )?;
+    let commit = result.stdout.trim();
+    Ok((result.status_code == Some(0) && !commit.is_empty()).then(|| commit.to_string()))
+}
+
+/// `git worktree add -b <branch> <path> <commit>` from the primary checkout.
+pub fn worktree_add(primary_path: &str, worktree_path: &Path, branch: &str) -> Result<(), CoreError> {
+    let worktree_path = worktree_path.to_string_lossy();
+    run_git_with_timeout(
+        primary_path,
+        &["worktree", "add", &worktree_path, branch],
+        &[0],
+        WORKTREE_TIMEOUT,
+    )
+    .map(|_| ())
+}
+
+/// Create `branch` at `commit` only if no branch has the name: one ref
+/// transaction, so it claims the name against any other writer. False when
+/// the name was taken.
+pub fn create_branch(primary_path: &str, branch: &str, commit: &str) -> Result<bool, CoreError> {
+    let output = run_git_with_timeout(
+        primary_path,
+        &["branch", "--no-track", "--", branch, commit],
+        &[0, 128],
+        WORKTREE_TIMEOUT,
+    )?;
+    if output.status_code == Some(0) {
+        return Ok(true);
+    }
+    if branch_commit(primary_path, branch)?.is_some() {
+        return Ok(false);
+    }
+    Err(CoreError::new(
+        "worktreeCreateFailed",
+        format!("git could not create the branch {branch}"),
+    )
+    .recoverable(true))
+}
+
+/// `git worktree remove` from the primary checkout. Forced twice, so neither
+/// uncommitted changes nor a lock keep the directory: the user confirmed the
+/// removal.
+pub fn worktree_remove(primary_path: &str, worktree_path: &Path) -> Result<(), CoreError> {
+    let worktree_path = worktree_path.to_string_lossy();
+    run_git_with_timeout(
+        primary_path,
+        &["worktree", "remove", "--force", "--force", &worktree_path],
+        &[0],
+        WORKTREE_TIMEOUT,
+    )
+    .map(|_| ())
+}
+
+/// Forget worktrees whose directories are gone.
+pub fn worktree_prune(primary_path: &str) -> Result<(), CoreError> {
+    run_git(primary_path, ["worktree", "prune"]).map(|_| ())
+}
+
+/// What becomes of a worktree's branch when the worktree goes. Status and
+/// removal both decide by this, so the confirmation names the branch's fate.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum BranchFate {
+    Missing,
+    /// Still at the commit it started from: removal deletes it.
+    Unchanged,
+    /// Moved off that commit: removal keeps it.
+    Moved { tip: String },
+}
+
+pub fn branch_fate(repo_path: &str, branch: &str, base_commit: &str) -> Result<BranchFate, CoreError> {
+    Ok(match branch_commit(repo_path, branch)? {
+        None => BranchFate::Missing,
+        Some(tip) if tip == base_commit => BranchFate::Unchanged,
+        Some(tip) => BranchFate::Moved { tip },
+    })
+}
+
+/// What a worktree holds that its removal would discard.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct WorktreeChanges {
+    /// Changed, staged and untracked paths.
+    pub uncommitted: u32,
+    /// Commits on the worktree's branch since `base_commit`.
+    pub branch_commits: u32,
+    /// Whether removal keeps the branch ([`BranchFate::Moved`]).
+    pub branch_kept: bool,
+    /// Commits at the worktree's `HEAD` that no branch, tag or remote holds,
+    /// as after the agent detached `HEAD`: removal keeps them under
+    /// [`recovery_ref`].
+    pub unbranched_commits: u32,
+}
+
+pub fn worktree_changes(
+    worktree_path: &str,
+    branch: &str,
+    base_commit: &str,
+) -> Result<WorktreeChanges, CoreError> {
+    let status = run_git(
+        worktree_path,
+        ["status", "--porcelain=v1", "-z", "--untracked-files=all"],
+    )?;
+    let fate = branch_fate(worktree_path, branch, base_commit)?;
+    let branch_commits = match &fate {
+        BranchFate::Moved { tip } => commit_count(worktree_path, &[&format!("{base_commit}..{tip}")])?,
+        BranchFate::Missing | BranchFate::Unchanged => 0,
+    };
+    let unbranched_commits = commit_count(
+        worktree_path,
+        &["HEAD", "--not", "--branches", "--tags", "--remotes"],
+    )?;
+    Ok(WorktreeChanges {
+        uncommitted: porcelain_entry_count(&status),
+        branch_commits,
+        branch_kept: matches!(fate, BranchFate::Moved { .. }),
+        unbranched_commits,
+    })
+}
+
+/// Where removal keeps a worktree's unbranched commits: `ottam/<name>` keeps
+/// them under `refs/ottam/removed/<name>`.
+pub fn recovery_ref(branch: &str) -> String {
+    format!("refs/ottam/removed/{}", branch.strip_prefix("ottam/").unwrap_or(branch))
+}
+
+/// A worktree's `HEAD.lock`, git's own lock on its HEAD: while held, no
+/// commit or checkout in that worktree moves HEAD. Dropping it releases the
+/// lock; after `git worktree remove` it is already gone with the admin dir.
+pub struct HeadLock(PathBuf);
+
+impl Drop for HeadLock {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.0);
+        held_head_locks().remove(&self.0);
+    }
+}
+
+/// The `HEAD.lock`s this process holds. A startup retry can overlap a
+/// request's removal of the same worktree; the second waits its turn rather
+/// than sharing a lock the first would drop under it.
+fn held_head_locks() -> std::sync::MutexGuard<'static, HashSet<PathBuf>> {
+    static HELD: OnceLock<Mutex<HashSet<PathBuf>>> = OnceLock::new();
+    HELD.get_or_init(Default::default)
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
+/// What a removal writes into `HEAD.lock`, with its process id, so a later
+/// launch can tell a crashed removal's lock from a running git command's or
+/// a live removal's.
+const HEAD_LOCK_MARKER: &str = "ottam: removing this worktree, pid ";
+
+fn head_lock_marker(pid: u32) -> String {
+    format!("{HEAD_LOCK_MARKER}{pid}\n")
+}
+
+/// A marked lock is free to take over only when its owner is gone: this
+/// process holds no lock there (checked by the caller), and the pid it names
+/// is this process or one no longer running.
+fn is_abandoned_head_lock(contents: &str) -> bool {
+    let Some(pid) = contents
+        .strip_prefix(HEAD_LOCK_MARKER)
+        .and_then(|rest| rest.trim_end().parse::<u32>().ok())
+    else {
+        return false;
+    };
+    if pid == std::process::id() {
+        return true;
+    }
+    let Ok(pid) = libc::pid_t::try_from(pid) else {
+        return false;
+    };
+    // SAFETY: signal 0 only checks whether the process exists.
+    let alive = unsafe { libc::kill(pid, 0) } == 0
+        || std::io::Error::last_os_error().raw_os_error() != Some(libc::ESRCH);
+    !alive
+}
+
+fn lock_head(worktree_path: &str) -> Result<HeadLock, CoreError> {
+    let admin = run_git_with_allowed_exit_codes(worktree_path, &["rev-parse", "--absolute-git-dir"], &[0])?;
+    let path = Path::new(admin.stdout.trim()).join("HEAD.lock");
+    let busy = || CoreError::new("gitBusy", "a git command is running in the worktree").recoverable(true);
+    let mut held = held_head_locks();
+    if held.contains(&path) {
+        return Err(busy());
+    }
+    let marker = head_lock_marker(std::process::id());
+    let created = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&path)
+        .and_then(|mut file| file.write_all(marker.as_bytes()));
+    match created {
+        Ok(()) => {}
+        Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
+            let abandoned = std::fs::read_to_string(&path).is_ok_and(|contents| is_abandoned_head_lock(&contents));
+            if !abandoned {
+                return Err(busy());
+            }
+            std::fs::write(&path, &marker)
+                .map_err(|error| CoreError::new("gitLockFailed", error.to_string()).recoverable(true))?;
+        }
+        Err(error) => return Err(CoreError::new("gitLockFailed", error.to_string()).recoverable(true)),
+    }
+    held.insert(path.clone());
+    Ok(HeadLock(path))
+}
+
+/// Lock the worktree's HEAD, then point [`recovery_ref`] at it when commits
+/// there are held by no branch, tag or remote. Hold the lock until the
+/// folder is gone, so no commit lands after the read, and removing the
+/// folder loses none, whatever was committed after the confirmation.
+/// Returns the lock and the ref written.
+pub fn keep_unbranched_head(
+    worktree_path: &str,
+    branch: &str,
+) -> Result<(HeadLock, Option<String>), CoreError> {
+    let lock = lock_head(worktree_path)?;
+    let Some(head) = head_commit(worktree_path)? else {
+        return Ok((lock, None));
+    };
+    if commit_count(worktree_path, &[&head, "--not", "--branches", "--tags", "--remotes"])? == 0 {
+        return Ok((lock, None));
+    }
+    let reference = recovery_ref(branch);
+    run_git_with_allowed_exit_codes(worktree_path, &["update-ref", &reference, &head], &[0])?;
+    Ok((lock, Some(reference)))
+}
+
+fn commit_count(repo_path: &str, revisions: &[&str]) -> Result<u32, CoreError> {
+    let mut args = vec!["rev-list", "--count"];
+    args.extend_from_slice(revisions);
+    Ok(run_git_with_allowed_exit_codes(repo_path, &args, &[0])?
+        .stdout
+        .trim()
+        .parse::<u32>()
+        .unwrap_or(0))
+}
+
+/// Entries in `status --porcelain=v1 -z` output. A rename or copy carries its
+/// source path as a second field, which is not a second change; either
+/// column can hold it (an unstaged rename after `git add -N` is ` R`).
+fn porcelain_entry_count(status: &str) -> u32 {
+    let mut fields = status.split('\0').filter(|field| !field.is_empty());
+    let mut count = 0;
+    while let Some(entry) = fields.next() {
+        count += 1;
+        let columns = entry.as_bytes().get(..2).unwrap_or_default();
+        if columns.iter().any(|column| matches!(column, b'R' | b'C')) {
+            fields.next();
+        }
+    }
+    count
+}
+
+/// Delete `branch` when it still points at `base_commit`, so a worktree whose
+/// agent committed nothing leaves no branch behind. Returns whether the branch
+/// is still there afterwards.
+pub fn delete_branch_if_unchanged(
+    repo_path: &str,
+    branch: &str,
+    base_commit: &str,
+) -> Result<bool, CoreError> {
+    match branch_fate(repo_path, branch, base_commit)? {
+        BranchFate::Missing => Ok(false),
+        BranchFate::Moved { .. } => Ok(true),
+        BranchFate::Unchanged => {
+            // `update-ref` deletes a checked-out branch, which `branch -D`
+            // refuses; a checkout that reused the name keeps it.
+            if branch_checked_out(repo_path, branch)? {
+                return Ok(true);
+            }
+            // Deletes only while the ref still holds `base_commit`, so a
+            // commit that lands after `branch_fate` read it keeps the branch.
+            let reference = format!("refs/heads/{branch}");
+            let deleted = run_git_with_allowed_exit_codes(
+                repo_path,
+                &["update-ref", "-d", &reference, base_commit],
+                &[0, 1, 128],
+            )?;
+            if deleted.status_code == Some(0) {
+                Ok(false)
+            } else {
+                Ok(branch_commit(repo_path, branch)?.is_some())
+            }
+        }
+    }
+}
+
+/// Whether any worktree of the repository has `branch` checked out.
+fn branch_checked_out(repo_path: &str, branch: &str) -> Result<bool, CoreError> {
+    let worktrees = run_git(repo_path, ["worktree", "list", "--porcelain"])?;
+    let checked_out = format!("branch refs/heads/{branch}");
+    Ok(worktrees.lines().any(|line| line == checked_out))
+}
+
 fn read_git_stream<R>(mut reader: R, max_bytes: usize) -> GitStreamReader
 where
     R: Read + Send + 'static,
@@ -338,4 +667,144 @@ fn git_output_max_bytes() -> usize {
         .and_then(|value| value.trim().parse::<usize>().ok())
         .filter(|value| *value > 0)
         .unwrap_or(DEFAULT_GIT_OUTPUT_MAX_BYTES)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        branch_commit, create_branch, delete_branch_if_unchanged, keep_unbranched_head,
+        head_lock_marker, porcelain_entry_count, run_git_with_allowed_exit_codes,
+    };
+    use std::path::Path;
+
+    #[test]
+    fn worktree_changes_count_a_rename_once() {
+        assert_eq!(porcelain_entry_count(""), 0);
+        assert_eq!(
+            porcelain_entry_count(" M src/a.rs\0?? notes.txt\0R  new.rs\0old.rs\0"),
+            3
+        );
+        // Unstaged, after `git add -N new.rs`.
+        assert_eq!(porcelain_entry_count(" R new.rs\0old.rs\0 M src/a.rs\0"), 2);
+        assert_eq!(porcelain_entry_count("RM new.rs\0old.rs\0"), 1);
+    }
+
+    fn git(repo: &Path, args: &[&str]) -> String {
+        let repo = repo.to_string_lossy();
+        run_git_with_allowed_exit_codes(&repo, args, &[0])
+            .unwrap_or_else(|error| panic!("git {args:?} failed: {}", error.message))
+            .stdout
+            .trim()
+            .to_string()
+    }
+
+    fn repo_with_commit() -> (tempfile::TempDir, String) {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let repo = temp.path();
+        git(repo, &["init", "--quiet", "--initial-branch=main"]);
+        git(repo, &["config", "user.email", "ottam@example.invalid"]);
+        git(repo, &["config", "user.name", "Ottam"]);
+        git(repo, &["commit", "--quiet", "--allow-empty", "-m", "base"]);
+        let base = git(repo, &["rev-parse", "HEAD"]);
+        (temp, base)
+    }
+
+    #[test]
+    fn a_branch_is_claimed_once_and_another_writers_branch_is_left_alone() {
+        let (temp, base) = repo_with_commit();
+        let repo = temp.path();
+        let path = repo.to_string_lossy().into_owned();
+
+        assert_eq!(create_branch(&path, "ottam/claimed", &base).ok(), Some(true));
+        // Someone else's branch at the same name and base stays as it was.
+        git(repo, &["commit", "--quiet", "--allow-empty", "-m", "theirs"]);
+        let theirs = git(repo, &["rev-parse", "HEAD"]);
+        git(repo, &["branch", "ottam/theirs", &theirs]);
+        assert_eq!(create_branch(&path, "ottam/theirs", &base).ok(), Some(false));
+        assert_eq!(branch_commit(&path, "ottam/theirs").ok(), Some(Some(theirs)));
+        assert!(create_branch(&path, "not a valid ref", &base).is_err());
+    }
+
+    #[test]
+    fn a_detached_commit_is_kept_under_a_recovery_ref() {
+        let (temp, base) = repo_with_commit();
+        let repo = temp.path();
+        let path = repo.to_string_lossy().into_owned();
+
+        let commit = |message: &str| {
+            run_git_with_allowed_exit_codes(&path, &["commit", "--quiet", "--allow-empty", "-m", message], &[0])
+        };
+
+        // Every commit on a branch: nothing to keep.
+        let (lock, kept) = keep_unbranched_head(&path, "ottam/quiet-fox-1a2b").expect("keep");
+        assert_eq!(kept, None);
+        drop(lock);
+
+        git(repo, &["checkout", "--quiet", "--detach", &base]);
+        git(repo, &["commit", "--quiet", "--allow-empty", "-m", "detached"]);
+        let detached = git(repo, &["rev-parse", "HEAD"]);
+        let (lock, kept) = keep_unbranched_head(&path, "ottam/quiet-fox-1a2b").expect("keep");
+        assert_eq!(kept.as_deref(), Some("refs/ottam/removed/quiet-fox-1a2b"));
+        assert_eq!(git(repo, &["rev-parse", "refs/ottam/removed/quiet-fox-1a2b"]), detached);
+
+        // A straggler committing between the read and the removal fails, so
+        // the ref still holds everything HEAD has.
+        assert!(commit("straggler").is_err());
+        assert_eq!(git(repo, &["rev-parse", "HEAD"]), detached);
+        drop(lock);
+        assert!(commit("after").is_ok());
+
+        let head_lock = repo.join(".git").join("HEAD.lock");
+        let busy = || keep_unbranched_head(&path, "ottam/quiet-fox-1a2b").err().map(|error| error.kind);
+
+        // An overlapping removal in this process waits; its failure leaves
+        // the first removal's lock in place.
+        let (first, _) = keep_unbranched_head(&path, "ottam/quiet-fox-1a2b").expect("first");
+        assert_eq!(busy(), Some("gitBusy"));
+        assert!(head_lock.exists());
+        assert!(commit("overlap").is_err());
+        drop(first);
+        assert!(!head_lock.exists());
+
+        // A running git command's lock is not taken, nor a live removal's
+        // in another process; a crashed removal's is.
+        std::fs::write(&head_lock, "0123abcd\n").unwrap();
+        assert_eq!(busy(), Some("gitBusy"));
+        std::fs::write(&head_lock, head_lock_marker(1)).unwrap();
+        assert_eq!(busy(), Some("gitBusy"));
+        let mut exited = std::process::Command::new("true").spawn().expect("spawn");
+        let dead = exited.id();
+        exited.wait().expect("wait");
+        std::fs::write(&head_lock, head_lock_marker(dead)).unwrap();
+        let (lock, _) = keep_unbranched_head(&path, "ottam/quiet-fox-1a2b").expect("take over");
+        assert_eq!(std::fs::read_to_string(&head_lock).unwrap(), head_lock_marker(std::process::id()));
+        drop(lock);
+        assert!(!head_lock.exists());
+    }
+
+    #[test]
+    fn an_unchanged_branch_is_deleted_and_a_moved_or_checked_out_one_kept() {
+        let (temp, base) = repo_with_commit();
+        let repo = temp.path();
+        let path = repo.to_string_lossy().into_owned();
+
+        git(repo, &["branch", "ottam/unchanged", &base]);
+        assert_eq!(delete_branch_if_unchanged(&path, "ottam/unchanged", &base).ok(), Some(false));
+        assert_eq!(branch_commit(&path, "ottam/unchanged").ok(), Some(None));
+
+        // A commit after the worktree was cut keeps the branch.
+        git(repo, &["commit", "--quiet", "--allow-empty", "-m", "later"]);
+        let later = git(repo, &["rev-parse", "HEAD"]);
+        git(repo, &["branch", "ottam/moved", &later]);
+        assert_eq!(delete_branch_if_unchanged(&path, "ottam/moved", &base).ok(), Some(true));
+
+        // A checkout that reused the name keeps it, even at the base commit.
+        git(repo, &["branch", "ottam/reused", &base]);
+        let reuse = temp.path().join("reuse");
+        git(repo, &["worktree", "add", "--quiet", &reuse.to_string_lossy(), "ottam/reused"]);
+        assert_eq!(delete_branch_if_unchanged(&path, "ottam/reused", &base).ok(), Some(true));
+        assert!(branch_commit(&path, "ottam/reused").ok().flatten().is_some());
+
+        assert_eq!(delete_branch_if_unchanged(&path, "ottam/missing", &base).ok(), Some(false));
+    }
 }

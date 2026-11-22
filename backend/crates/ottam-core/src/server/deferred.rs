@@ -136,9 +136,19 @@ pub(super) struct DeferredResponses {
 
 impl DeferredResponses {
     pub(super) fn new(outbound: OutboundSink) -> Self {
+        Self::with_lane(outbound, DEFERRED_SLOTS, "deferred handler response")
+    }
+
+    /// A separate lane, for work that must not compete with the shared one:
+    /// a worktree checkout can hold its slot for a minute.
+    pub(super) fn with_lane(
+        outbound: OutboundSink,
+        capacity: usize,
+        failure_context: &'static str,
+    ) -> Self {
         Self {
-            lane: DeferredLane::new(DEFERRED_SLOTS),
-            tasks: DeferredResponseTasks::new(outbound, "deferred handler response"),
+            lane: DeferredLane::new(capacity),
+            tasks: DeferredResponseTasks::new(outbound, failure_context),
         }
     }
 

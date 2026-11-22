@@ -49,6 +49,7 @@ mod storage_cache;
 mod text;
 mod transport;
 mod workspaces;
+mod worktrees;
 
 use agents::AgentRuntimeBridge;
 use client_link::ClientLink;
@@ -149,6 +150,9 @@ async fn serve_stdio_async() -> Result<(), ottam_protocol::CoreExitError> {
             chat::sweep_attachments(&sweep_database, &workspace.id).await;
         }
     });
+    // Detached for the same reason: a removal git has to redo can take
+    // seconds, and nothing waits on it.
+    tokio::spawn(worktrees::retry_owed_removals(database.clone()));
 
     tracing::info!("ottam-core serving JSONL over stdio");
     AgentServer::new(database, primary_sources)
@@ -168,6 +172,8 @@ pub struct AgentServer {
     client_link: Option<ClientLink>,
     agent_bridge: Option<std::sync::Arc<AgentRuntimeBridge>>,
     deferred: Option<DeferredResponses>,
+    /// Worktree checkouts and removals, apart from `deferred`.
+    worktree_lane: Option<DeferredResponses>,
     attachment_sweeps: AttachmentSweeps,
     mcp_servers: crate::mcp::McpServers,
     /// Servers, upstream connections, and proxy paths; set once `serve` has
@@ -245,6 +251,7 @@ impl AgentServer {
             client_link: None,
             agent_bridge: None,
             deferred: None,
+            worktree_lane: None,
             attachment_sweeps: AttachmentSweeps::default(),
         }
     }
@@ -276,6 +283,11 @@ impl AgentServer {
         let pending_client_requests = client_link.pending_requests();
         self.client_link = Some(client_link);
         self.deferred = Some(DeferredResponses::new(outbound.clone()));
+        self.worktree_lane = Some(DeferredResponses::with_lane(
+            outbound.clone(),
+            worktrees::WORKTREE_SLOTS,
+            "worktree response",
+        ));
         self.agent_bridge = Some(AgentRuntimeBridge::new(
             outbound.clone(),
             self.client_link
@@ -479,6 +491,11 @@ impl AgentServer {
         }
         if let Some(deferred) = self.deferred.take() {
             deferred.shutdown().await;
+        }
+        // An aborted removal leaves its archived row owing it; the next
+        // launch retries. An aborted checkout may leave an unrecorded folder.
+        if let Some(worktree_lane) = self.worktree_lane.take() {
+            worktree_lane.shutdown().await;
         }
         self.client_link = None;
         let _ = tokio::time::timeout(
@@ -713,6 +730,18 @@ impl AgentServer {
         if request.method == METHOD_GIT_DIFF_SNAPSHOT {
             return self.handle_git_diff_snapshot(origin, request).await;
         }
+        if request.method == METHOD_CONVERSATION_CREATE {
+            return self.handle_conversation_create(origin, request).await;
+        }
+        if request.method == METHOD_CONVERSATION_DELETE {
+            return self.handle_conversation_delete(origin, request).await;
+        }
+        if request.method == ottam_protocol::METHOD_WORKTREE_STATUS {
+            return self.handle_worktree_status(origin, request).await;
+        }
+        if request.method == ottam_protocol::METHOD_WORKTREE_REMOVE {
+            return self.handle_worktree_remove(origin, request).await;
+        }
         let response = match request.method.as_str() {
             METHOD_INITIALIZE => self.handle_initialize(origin, request),
             METHOD_PROJECT_OPEN_PATH => self.handle_project_open_path(request).await,
@@ -725,8 +754,6 @@ impl AgentServer {
             METHOD_WORKSPACE_RESTORE => self.handle_workspace_restore(request).await,
             METHOD_WORKSPACE_ADD_PROJECT => self.handle_workspace_add_project(request).await,
             METHOD_WORKSPACE_REMOVE_PROJECT => self.handle_workspace_remove_project(request).await,
-            METHOD_CONVERSATION_CREATE => self.handle_conversation_create(request).await,
-            METHOD_CONVERSATION_DELETE => self.handle_conversation_delete(request).await,
             METHOD_CONVERSATION_LIST => self.handle_conversation_list(request).await,
             METHOD_CONVERSATION_GET => self.handle_conversation_get(request).await,
             METHOD_CONVERSATION_LIST_EVENTS => self.handle_conversation_list_events(request).await,

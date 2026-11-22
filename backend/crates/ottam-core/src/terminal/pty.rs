@@ -1283,6 +1283,7 @@ mod tests {
                     project_id: None,
                     source_id: None,
                     availability: WorkingRootAvailability::Available,
+                    worktree: None,
                 },
             }),
             cwd: root.to_path_buf(),

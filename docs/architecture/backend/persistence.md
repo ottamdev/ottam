@@ -206,6 +206,60 @@ submissions; restart finishes an interrupted deletion. Process cleanup and
 filesystem deletion cannot join a transaction, so they are idempotent and
 leave recoverable orphan state, never half-valid relational state.
 
+### Worktree Sources
+
+A conversation's worktree is a non-primary `localGit` ProjectSource with
+`worktree_branch` and `worktree_base_commit` set (2026-11-18), so
+availability, terminals and Review follow the source model instead of a
+parallel one. Core cuts it on a new branch off the primary checkout's HEAD,
+under `$OTTAM_HOME/worktrees` (2026-11-18), so Ottam owns its lifetime and
+never writes beside the user's checkout.
+
+- Nothing under `$OTTAM_HOME/worktrees` opens as a project, recorded or not,
+  and Core never adopts a worktree it did not make. Create and removal check
+  the same resolved root, so Core never records a checkout it would refuse
+  to remove.
+- A worktree folder is never handed out twice while any row holds it, nor a
+  branch while a row of its project does, archived or not. Create claims
+  the folder (`create_dir`) and then the branch (`git branch`, which fails
+  on an existing name) before the checkout, so cleanup only ever touches
+  what it made. A project's folder under the root is never removed, so no
+  removal takes it out from under a create. The one gap left: Core exiting between deleting an
+  unchanged branch and recording the settled removal, with the same
+  `ottam/…` branch remade by hand in between.
+- Create runs git first. A failed `git worktree add` (a failing
+  `post-checkout` hook, the timeout) or a failed insert takes down the
+  checkout, its registration and its branch.
+- Removal archives the row first. An archived row owes its folder, and the
+  branch left after it, until a removal settles both and sets
+  `worktree_cleaned_at`; startup retries only unsettled rows, so it never
+  acts on a branch made later under the same name. A second removal of an
+  archived row answers `worktreeUnavailable` and repeats nothing. Runs,
+  background tasks, terminals and cached roots on the source stop in every
+  workspace; a subagent that outlives its run has no ACP stop and keeps
+  going.
+- The branch goes only while its tip is still the base commit and no
+  worktree has it checked out, as one compare-and-delete. `worktree.status`
+  reports the branch's fate by the same rule (`git::branch_fate`), and counts
+  the commits at HEAD that no branch, tag or remote holds.
+- Right before the folder goes, removal keeps those commits under
+  `refs/ottam/removed/<name>` (2026-11-20), so a commit made after the
+  confirmation is kept too. It holds the worktree's `HEAD.lock` from that
+  read until the folder is gone, so a straggler's commit fails rather than
+  landing unkept. A failed check, or a lock held by a git command or a live
+  removal, keeps the folder, owed; only a crashed removal's lock (its pid
+  gone) is taken over. With the
+  project's checkout gone there is no repository to keep them in.
+- Deleting the last conversation on a worktree removes it, in that
+  deletion's transaction (2026-11-18, revised 2026-11-20); `worktree.remove`
+  leaves the conversations, which read as detached. Each confirmation says
+  what goes and what is kept, with counts left unknown when Core cannot
+  read them.
+- A failed removal's message is the only place a retry is promised; the app
+  adds none.
+
+Owner: `backend/crates/ottam-core/src/server/worktrees.rs`.
+
 ## Enforcement
 
 Never log SQL bind values, message bodies, agent output, authentication data,

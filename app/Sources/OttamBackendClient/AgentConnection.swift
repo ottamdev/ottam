@@ -395,15 +395,31 @@ public final class OttamCoreProcessClient: @unchecked Sendable {
         workingRoot: WorkingRootSelection,
         contextProjectIDs: [ProjectID] = [],
         title: String? = nil,
-        message: ConversationInitialMessage? = nil
+        message: ConversationInitialMessage? = nil,
+        createWorktree: Bool = false
     ) async throws -> ConversationCreateResult {
         try await connection.createConversation(
             workspaceID: workspaceID,
             workingRoot: workingRoot,
             contextProjectIDs: contextProjectIDs,
             title: title,
-            message: message
+            message: message,
+            createWorktree: createWorktree
         )
+    }
+
+    public func worktreeStatus(
+        workspaceID: WorkspaceID,
+        projectSourceID: ProjectSourceID
+    ) async throws -> WorktreeStatusResult {
+        try await connection.worktreeStatus(workspaceID: workspaceID, projectSourceID: projectSourceID)
+    }
+
+    public func removeWorktree(
+        workspaceID: WorkspaceID,
+        projectSourceID: ProjectSourceID
+    ) async throws -> WorktreeRemoveResult {
+        try await connection.removeWorktree(workspaceID: workspaceID, projectSourceID: projectSourceID)
     }
 
     public func listConversations(workspaceID: WorkspaceID) async throws -> ConversationListResult {
@@ -931,7 +947,8 @@ public extension AgentConnection {
         workingRoot: WorkingRootSelection,
         contextProjectIDs: [ProjectID] = [],
         title: String? = nil,
-        message: ConversationInitialMessage? = nil
+        message: ConversationInitialMessage? = nil,
+        createWorktree: Bool = false
     ) async throws -> ConversationCreateResult {
         try await request(
             method: "conversation.create",
@@ -940,8 +957,29 @@ public extension AgentConnection {
                 workingRoot: workingRoot,
                 contextProjectIDs: contextProjectIDs,
                 title: title,
-                message: message
+                message: message,
+                createWorktree: createWorktree
             )
+        )
+    }
+
+    func worktreeStatus(
+        workspaceID: WorkspaceID,
+        projectSourceID: ProjectSourceID
+    ) async throws -> WorktreeStatusResult {
+        try await request(
+            method: "worktree.status",
+            params: WorktreeSourceParams(workspaceID: workspaceID, projectSourceID: projectSourceID)
+        )
+    }
+
+    func removeWorktree(
+        workspaceID: WorkspaceID,
+        projectSourceID: ProjectSourceID
+    ) async throws -> WorktreeRemoveResult {
+        try await request(
+            method: "worktree.remove",
+            params: WorktreeSourceParams(workspaceID: workspaceID, projectSourceID: projectSourceID)
         )
     }
 

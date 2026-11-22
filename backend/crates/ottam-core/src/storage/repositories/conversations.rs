@@ -6,10 +6,11 @@ use crate::storage::models::{
     ConversationRunId, ConversationRunInput, ConversationRunInputId, ConversationRunInputRow,
     MessageRole, MessageSource, NewConversationMessageRow, NewConversationProjectRow,
     NewConversationRow, NewConversationRunInputRow, Project, ProjectId, ProjectRow, ProjectSource,
-    ProjectSourceRow, RunInputKind, RunStatus, WorkingRootKind, WorkspaceId, WorkspaceProject,
-    WorkspaceProjectRow,
+    ProjectSourceId, ProjectSourceRow, RunInputKind, RunStatus, WorkingRootKind, WorkspaceId,
+    WorkspaceProject, WorkspaceProjectRow,
 };
 use crate::storage::repositories::attachments::AttachmentRepository;
+use crate::storage::repositories::{ProjectRepository, ReleasedWorktree};
 use crate::storage::repositories::core_settings::{
     CoreSettingsRepository, ALWAYS_ALLOW_TOOL_ACTIONS_DEFAULT,
 };
@@ -33,7 +34,9 @@ pub struct ConversationRepository;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ConversationRootSelection<'a> {
     WorkspaceFiles,
-    Project(&'a ProjectId),
+    /// A member project, on the source named when it is one of the project's
+    /// managed worktrees, and otherwise on the workspace's default source.
+    Project(&'a ProjectId, Option<&'a ProjectSourceId>),
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -106,7 +109,7 @@ impl ConversationRepository {
                 .unwrap_or(false);
         let root_kind = match params.root {
             ConversationRootSelection::WorkspaceFiles => WorkingRootKind::WorkspaceFiles,
-            ConversationRootSelection::Project(_) => WorkingRootKind::Project,
+            ConversationRootSelection::Project(..) => WorkingRootKind::Project,
         };
         diesel::insert_into(conversations::table)
             .values(NewConversationRow {
@@ -129,12 +132,13 @@ impl ConversationRepository {
             .execute(connection)?;
 
         let mut projects = Vec::new();
-        if let ConversationRootSelection::Project(project_id) = params.root {
+        if let ConversationRootSelection::Project(project_id, source_id) = params.root {
             projects.push(Self::link_project(
                 connection,
                 &conversation_id,
                 params.workspace_id,
                 project_id,
+                source_id,
                 "primary",
                 now,
             )?);
@@ -145,6 +149,7 @@ impl ConversationRepository {
                 &conversation_id,
                 params.workspace_id,
                 project_id,
+                None,
                 "context",
                 now,
             )?);
@@ -181,6 +186,7 @@ impl ConversationRepository {
         conversation_id: &ConversationId,
         workspace_id: &WorkspaceId,
         project_id: &ProjectId,
+        requested_source: Option<&ProjectSourceId>,
         role: &'static str,
         now: DateTime<Utc>,
     ) -> Result<ConversationProject, StorageError> {
@@ -193,13 +199,39 @@ impl ConversationRepository {
             .select(workspace_projects::default_source_id)
             .first::<String>(connection)
             .optional()?;
-        let source_id = membership_source.ok_or_else(|| {
+        let default_source = membership_source.ok_or_else(|| {
             StorageError::new(
                 "storageConstraint",
                 "the selected Project is not an active member of the Workspace",
             )
             .recoverable(true)
         })?;
+        // Only a managed worktree overrides the default. Any other source a
+        // client names (a stale draft, say) keeps the default, as before
+        // sources were honored.
+        let requested = requested_source
+            .map(|source_id| {
+                project_sources::table
+                    .find(source_id.to_string())
+                    .filter(project_sources::project_id.eq(&project_id_value))
+                    .select(ProjectSourceRow::as_select())
+                    .first::<ProjectSourceRow>(connection)
+                    .optional()
+            })
+            .transpose()?
+            .flatten()
+            .filter(|source| source.worktree_branch.is_some());
+        let source_id = match requested {
+            Some(source) if source.archived_at.is_some() => {
+                return Err(StorageError::new(
+                    "workingRootUnavailable",
+                    "the selected worktree has been removed",
+                )
+                .recoverable(true));
+            }
+            Some(source) => source.id,
+            None => default_source,
+        };
         let conversation_id_value = conversation_id.to_string();
         diesel::insert_into(conversation_projects::table)
             .values(NewConversationProjectRow {
@@ -791,15 +823,16 @@ impl ConversationRepository {
     /// one transaction. Callers stop active work and close external sessions
     /// first.
     ///
-    /// Returns the attachment file names the caller must unlink once the
-    /// transaction commits — filesystem work inside the transaction would not
-    /// roll back with it.
+    /// Returns the filesystem work the caller does once the transaction
+    /// commits — attachment files and released worktrees — since work inside
+    /// the transaction would not roll back with it.
     pub fn delete(
         connection: &mut SqliteConnection,
         workspace_id: &WorkspaceId,
         conversation_id: &ConversationId,
-    ) -> Result<Vec<String>, StorageError> {
+    ) -> Result<ConversationDeletion, StorageError> {
         recorded_transaction(connection, "conversation.delete", |connection| {
+            let now = Utc::now();
             let _ = Self::get(connection, workspace_id, conversation_id)?;
             let conversation_id_value = conversation_id.to_string();
             // Attachments reference Messages with ON DELETE RESTRICT, so they
@@ -856,11 +889,45 @@ impl ConversationRepository {
                     .filter(agent_sessions::conversation_id.eq(&conversation_id_value)),
             )
             .execute(connection)?;
+            let linked_sources = conversation_projects::table
+                .filter(conversation_projects::conversation_id.eq(&conversation_id_value))
+                .select(conversation_projects::source_id)
+                .load::<String>(connection)?;
             diesel::delete(
                 conversation_projects::table
                     .filter(conversation_projects::conversation_id.eq(&conversation_id_value)),
             )
             .execute(connection)?;
+            // The last conversation on a managed worktree takes it along: its
+            // source is archived here, so the caller owes the directory's
+            // removal once this commits.
+            let mut released_worktrees = Vec::new();
+            for source_id in linked_sources {
+                let managed = project_sources::table
+                    .find(&source_id)
+                    .filter(project_sources::worktree_branch.is_not_null())
+                    .filter(project_sources::archived_at.is_null())
+                    .select(project_sources::id)
+                    .first::<String>(connection)
+                    .optional()?;
+                let Some(source_id) = managed else { continue };
+                let still_linked = conversation_projects::table
+                    .filter(conversation_projects::source_id.eq(&source_id))
+                    .count()
+                    .get_result::<i64>(connection)?
+                    > 0;
+                if still_linked {
+                    continue;
+                }
+                let source_id = ProjectSourceId::try_from(source_id)?;
+                let (released, archived) =
+                    ProjectRepository::archive_worktree_source_in_transaction(
+                        connection, &source_id, now,
+                    )?;
+                if archived {
+                    released_worktrees.push(released);
+                }
+            }
             // Its delegated children stay, as top-level conversations.
             diesel::update(
                 conversations::table
@@ -870,9 +937,22 @@ impl ConversationRepository {
             .execute(connection)?;
             diesel::delete(conversations::table.find(&conversation_id_value))
                 .execute(connection)?;
-            Ok(attachment_paths)
+            Ok(ConversationDeletion {
+                attachment_paths,
+                released_worktrees,
+            })
         })
     }
+}
+
+/// What a committed delete leaves the caller to do outside the database.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ConversationDeletion {
+    /// Attachment file names to unlink.
+    pub attachment_paths: Vec<String>,
+    /// Managed worktrees this delete archived, whose directories the caller
+    /// removes.
+    pub released_worktrees: Vec<ReleasedWorktree>,
 }
 
 /// What links a delegated child to the parent that started it.

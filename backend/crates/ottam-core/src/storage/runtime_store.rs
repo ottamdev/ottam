@@ -71,6 +71,7 @@ impl WorkspaceRuntimeStore {
                         project_id: None,
                         source_id: None,
                         availability: WorkingRootAvailability::Available,
+                        worktree: None,
                     },
                 })
             }
@@ -94,6 +95,7 @@ impl WorkspaceRuntimeStore {
                 Ok(ResolvedWorkingRoot {
                     summary: WorkingRootSummary {
                         kind: WorkingRootKind::Project,
+                        worktree: crate::storage::worktree_summary(&root.source),
                         display_name: root.project.display_name,
                         canonical_path: root.source.canonical_path,
                         project_id: Some(ProjectID(root.project.id.to_string())),

@@ -1,7 +1,24 @@
 use crate::storage::error::StorageError;
-use crate::storage::models::WorkspaceId;
+use crate::storage::models::{ProjectSource, WorkspaceId};
 use std::fs;
 use std::path::{Path, PathBuf};
+
+/// The worktree a project working root names, for every summary built from a
+/// source — conversations and terminals alike — so the two always agree.
+pub fn worktree_summary(source: &ProjectSource) -> Option<ottam_protocol::WorktreeSummary> {
+    source
+        .worktree
+        .as_ref()
+        .map(|worktree| ottam_protocol::WorktreeSummary {
+            branch: worktree.branch.clone(),
+            base_commit: worktree.base_commit.clone(),
+        })
+}
+
+/// Where Core makes worktrees: `$OTTAM_HOME/worktrees`.
+pub fn worktrees_root(ottam_home: &Path) -> PathBuf {
+    ottam_home.join("worktrees")
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WorkspacePaths {

@@ -51,15 +51,22 @@ impl WorkspaceRepository {
         }
         let project_id_value = project_id.to_string();
         let source_id_value = source_id.to_string();
+        // The member's default source, or one of the project's managed
+        // worktrees, which conversations work in.
         workspace_projects::table
             .inner_join(projects::table.on(projects::id.eq(workspace_projects::project_id)))
             .inner_join(
-                project_sources::table
-                    .on(project_sources::id.eq(workspace_projects::default_source_id)),
+                project_sources::table.on(project_sources::project_id
+                    .eq(workspace_projects::project_id)
+                    .and(project_sources::id.eq(&source_id_value))),
             )
             .filter(workspace_projects::workspace_id.eq(workspace_id.to_string()))
             .filter(workspace_projects::project_id.eq(&project_id_value))
-            .filter(workspace_projects::default_source_id.eq(&source_id_value))
+            .filter(
+                workspace_projects::default_source_id
+                    .eq(&source_id_value)
+                    .or(project_sources::worktree_branch.is_not_null()),
+            )
             .filter(workspace_projects::removed_at.is_null())
             .filter(projects::archived_at.is_null())
             .filter(project_sources::archived_at.is_null())

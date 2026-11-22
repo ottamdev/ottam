@@ -331,6 +331,29 @@ impl TerminalManager {
         }
     }
 
+    /// Close every terminal working in one project source: a worktree being
+    /// removed takes its shells with it.
+    pub fn close_source_terminals(&mut self, source_id: &ottam_protocol::ProjectSourceID) {
+        let session_ids = self
+            .sessions
+            .lock()
+            .map(|sessions| {
+                sessions
+                    .iter()
+                    .filter(|(_, session)| {
+                        session.workspace.as_ref().is_some_and(|workspace| {
+                            workspace.working_root.source_id.as_ref() == Some(source_id)
+                        })
+                    })
+                    .map(|(session_id, _)| session_id.clone())
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+        for session_id in session_ids {
+            let _ = self.close(TerminalCloseParams { session_id });
+        }
+    }
+
     /// Tear down every terminal on server shutdown: kill + cancel each session,
     /// close the event sender (so trailing `terminal.exited` notifications are
     /// suppressed, matching the previous synchronous shutdown), then wait —

@@ -61,6 +61,27 @@ enum Fixture {
         )
     }
 
+    /// A conversation working in a worktree Core made of `member`'s project.
+    static func worktreeConversation(
+        _ title: String,
+        in member: WorkspaceProjectSummary,
+        branch: String = "ottam/fix-login-3f2a",
+        availability: WorkingRootAvailability = .available
+    ) -> ConversationSummary {
+        conversation(
+            title,
+            root: WorkingRootSummary(
+                kind: .project,
+                displayName: member.project.displayName,
+                canonicalPath: "/tmp/worktrees/\(member.project.displayName)/\(title)",
+                projectID: member.project.projectID,
+                sourceID: ProjectSourceID("source-worktree-\(title)"),
+                availability: availability,
+                worktree: WorktreeSummary(branch: branch, baseCommit: "abc123")
+            )
+        )
+    }
+
     /// A conversation rooted at the managed Workspace files directory.
     static func workspaceFilesConversation(_ title: String) -> ConversationSummary {
         conversation(

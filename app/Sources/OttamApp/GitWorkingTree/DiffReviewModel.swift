@@ -132,15 +132,31 @@ final class DiffReviewModel {
         workingRoot: WorkingRootSelection,
         contextProjectIDs: [ProjectID] = [],
         title: String? = nil,
-        message: ConversationInitialMessage? = nil
+        message: ConversationInitialMessage? = nil,
+        createWorktree: Bool = false
     ) async throws -> ConversationCreateResult {
         try await client.createConversation(
             workspaceID: workspaceID,
             workingRoot: workingRoot,
             contextProjectIDs: contextProjectIDs,
             title: title,
-            message: message
+            message: message,
+            createWorktree: createWorktree
         )
+    }
+
+    func worktreeStatus(
+        workspaceID: WorkspaceID,
+        projectSourceID: ProjectSourceID
+    ) async throws -> WorktreeStatusResult {
+        try await client.worktreeStatus(workspaceID: workspaceID, projectSourceID: projectSourceID)
+    }
+
+    func removeWorktree(
+        workspaceID: WorkspaceID,
+        projectSourceID: ProjectSourceID
+    ) async throws -> WorktreeRemoveResult {
+        try await client.removeWorktree(workspaceID: workspaceID, projectSourceID: projectSourceID)
     }
 
     func listConversations(workspaceID: WorkspaceID) async throws -> ConversationListResult {

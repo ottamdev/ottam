@@ -372,6 +372,22 @@ fn generated_conversation_fixtures_match_types() {
         &tool_permissions_set_response_fixture(),
     );
     assert_fixture_matches(
+        "fixtures/worktree-status-request.json",
+        &worktree_status_request_fixture(),
+    );
+    assert_fixture_matches(
+        "fixtures/worktree-status-response.json",
+        &worktree_status_response_fixture(),
+    );
+    assert_fixture_matches(
+        "fixtures/worktree-remove-request.json",
+        &worktree_remove_request_fixture(),
+    );
+    assert_fixture_matches(
+        "fixtures/worktree-remove-response.json",
+        &worktree_remove_response_fixture(),
+    );
+    assert_fixture_matches(
         "fixtures/conversation-resolve-run-input-delivery-request.json",
         &conversation_resolve_run_input_delivery_request_fixture(),
     );

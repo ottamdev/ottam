@@ -87,6 +87,9 @@ impl AgentServer {
             Ok(root) => root,
             Err(error) => return core_error_response(request.id, -32000, error),
         };
+        if let Err(error) = super::worktrees::refuse_managed_project_path(self.database.home(), &canonical_root) {
+            return core_error_response(request.id, -32000, error);
+        }
         let display_name = Path::new(&canonical_root)
             .file_name()
             .and_then(|name| name.to_str())
@@ -209,11 +212,24 @@ impl AgentServer {
                     })
                     .await
                 {
+                    // A removed worktree's folder may still be going away;
+                    // it is never cached as a root again.
+                    Ok(opened) if opened.source.archived_at.is_some() => {
+                        return Some(core_error_response(
+                            request.id,
+                            -32000,
+                            CoreError::new("worktreeUnavailable", "the worktree has been removed")
+                                .recoverable(true),
+                        ));
+                    }
                     Ok(opened) => {
-                        self.project_roots.insert(
-                            ProjectID(opened.project.id.to_string()),
-                            opened.source.canonical_path.clone(),
-                        );
+                        // A worktree is not its project's root.
+                        if opened.source.is_primary {
+                            self.project_roots.insert(
+                                ProjectID(opened.project.id.to_string()),
+                                opened.source.canonical_path.clone(),
+                            );
+                        }
                         self.source_roots
                             .insert(source_id, opened.source.canonical_path.clone());
                         opened.source.canonical_path
@@ -404,47 +420,63 @@ impl AgentServer {
 
     pub(super) async fn handle_conversation_create(
         &mut self,
+        origin: super::ConnectionId,
         request: ProtocolRequest<Value>,
-    ) -> Value {
+    ) -> Option<Value> {
         let params =
             match decode_params::<ConversationCreateParams>(&request, InvalidParamsLog::Warn) {
                 Ok(params) => params,
-                Err(response) => return response,
+                Err(response) => return Some(response),
             };
-        let chat = self.chat_service(&params.workspace_id);
-        match chat
-            .create_conversation(
-                params.working_root,
-                params.context_project_ids,
-                params.title,
-                params.message,
-            )
-            .await
-        {
-            Ok(result) => {
-                tracing::info!(
-                    workspace_id = %params.workspace_id.0,
-                    conversation_id = %result.conversation.conversation.conversation_id.0,
-                    "conversation created"
-                );
-                success_response(request.id, result)
-            }
-            Err(error) => core_error_response(request.id, -32000, error),
+        if params.create_worktree {
+            return self
+                .handle_worktree_conversation_create(origin, request.id, params)
+                .await;
         }
+        let chat = self.chat_service(&params.workspace_id);
+        Some(
+            match chat
+                .create_conversation(
+                    params.working_root,
+                    params.context_project_ids,
+                    params.title,
+                    params.message,
+                    None,
+                )
+                .await
+            {
+                Ok(result) => {
+                    tracing::info!(
+                        workspace_id = %params.workspace_id.0,
+                        conversation_id = %result.conversation.conversation.conversation_id.0,
+                        "conversation created"
+                    );
+                    success_response(request.id, result)
+                }
+                Err(error) => core_error_response(request.id, -32000, error),
+            },
+        )
     }
 
+    /// Deletes inline; a worktree released with its last conversation is
+    /// removed off the dispatcher, and the answer waits for that.
     pub(super) async fn handle_conversation_delete(
         &mut self,
+        origin: super::ConnectionId,
         request: ProtocolRequest<Value>,
-    ) -> Value {
+    ) -> Option<Value> {
         let params =
             match decode_params::<ConversationDeleteParams>(&request, InvalidParamsLog::Warn) {
                 Ok(params) => params,
-                Err(response) => return response,
+                Err(response) => return Some(response),
             };
         let chat = self.chat_service(&params.workspace_id);
         let Some(bridge) = self.agent_bridge.as_ref() else {
-            return error_response(request.id, -32000, "agent runtime is unavailable");
+            return Some(error_response(
+                request.id,
+                -32000,
+                "agent runtime is unavailable",
+            ));
         };
         match bridge
             .delete_conversation_with_children(
@@ -455,16 +487,30 @@ impl AgentServer {
             )
             .await
         {
-            Ok(result) => {
+            Ok((result, released)) => {
                 tracing::info!(
                     workspace_id = %params.workspace_id.0,
                     conversation_id = %params.conversation_id.0,
                     harness_sessions = result.harness_session_cleanup.len(),
+                    released_worktrees = released.len(),
                     "conversation deleted"
                 );
-                success_response(request.id, result)
+                self.finish_worktree_release(
+                    origin,
+                    request.id,
+                    released,
+                    move |id, worktree| {
+                        success_response(
+                            id,
+                            ConversationDeleteResult {
+                                worktree,
+                                ..result
+                            },
+                        )
+                    },
+                )
             }
-            Err(error) => core_error_response(request.id, -32000, error),
+            Err(error) => Some(core_error_response(request.id, -32000, error)),
         }
     }
 
