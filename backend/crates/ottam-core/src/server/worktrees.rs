@@ -218,12 +218,17 @@ pub(super) fn remove_checkout(home: &Path, released: &ReleasedWorktree) -> (Work
             return (removal, false);
         }
         // Right before the folder goes, so a commit made after the user
-        // confirmed is kept too. With the project's checkout gone there is
-        // no repository left to keep it in. A folder a failed removal already
+        // confirmed is kept too; the HEAD lock, held until this block ends,
+        // fails any commit a straggler (a subagent outliving its run) tries
+        // after the read. With the project's checkout gone there is no
+        // repository left to keep it in. A folder a failed removal already
         // emptied of its `.git` has no HEAD left to keep.
-        if primary.is_some() && path.join(".git").exists() {
+        let _head_lock = if primary.is_some() && path.join(".git").exists() {
             match git::keep_unbranched_head(&released.source.canonical_path, &released.worktree.branch) {
-                Ok(kept) => kept_ref = kept,
+                Ok((lock, kept)) => {
+                    kept_ref = kept;
+                    Some(lock)
+                }
                 Err(error) => {
                     tracing::warn!(kind = error.kind, "a worktree's unbranched commits were not checked");
                     removal.message = Some(
@@ -234,7 +239,9 @@ pub(super) fn remove_checkout(home: &Path, released: &ReleasedWorktree) -> (Work
                     return (removal, false);
                 }
             }
-        }
+        } else {
+            None
+        };
         let removed_by_git = primary.is_some_and(|primary| {
             git::worktree_remove(primary, &path)
                 .inspect_err(|error| {

@@ -1,7 +1,7 @@
 use crate::core_error::CoreError;
 use std::env;
-use std::io::Read;
-use std::path::Path;
+use std::io::{Read, Write};
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, Receiver};
@@ -385,19 +385,60 @@ pub fn recovery_ref(branch: &str) -> String {
     format!("refs/ottam/removed/{}", branch.strip_prefix("ottam/").unwrap_or(branch))
 }
 
-/// Point [`recovery_ref`] at the worktree's `HEAD` when commits there are
-/// held by no branch, tag or remote, so removing the folder loses none,
-/// whatever was committed after the confirmation. Returns the ref written.
-pub fn keep_unbranched_head(worktree_path: &str, branch: &str) -> Result<Option<String>, CoreError> {
+/// A worktree's `HEAD.lock`, git's own lock on its HEAD: while held, no
+/// commit or checkout in that worktree moves HEAD. Dropping it releases the
+/// lock; after `git worktree remove` it is already gone with the admin dir.
+pub struct HeadLock(PathBuf);
+
+impl Drop for HeadLock {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.0);
+    }
+}
+
+/// What a removal writes into `HEAD.lock`, so a later launch can tell the
+/// lock of a removal that crashed from a git command still running.
+const HEAD_LOCK_MARKER: &str = "ottam: removing this worktree\n";
+
+fn lock_head(worktree_path: &str) -> Result<HeadLock, CoreError> {
+    let admin = run_git_with_allowed_exit_codes(worktree_path, &["rev-parse", "--absolute-git-dir"], &[0])?;
+    let path = Path::new(admin.stdout.trim()).join("HEAD.lock");
+    let created = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&path)
+        .and_then(|mut file| file.write_all(HEAD_LOCK_MARKER.as_bytes()));
+    match created {
+        Ok(()) => Ok(HeadLock(path)),
+        Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
+            if std::fs::read_to_string(&path).is_ok_and(|held| held == HEAD_LOCK_MARKER) {
+                return Ok(HeadLock(path));
+            }
+            Err(CoreError::new("gitBusy", "a git command is running in the worktree").recoverable(true))
+        }
+        Err(error) => Err(CoreError::new("gitLockFailed", error.to_string()).recoverable(true)),
+    }
+}
+
+/// Lock the worktree's HEAD, then point [`recovery_ref`] at it when commits
+/// there are held by no branch, tag or remote. Hold the lock until the
+/// folder is gone, so no commit lands after the read, and removing the
+/// folder loses none, whatever was committed after the confirmation.
+/// Returns the lock and the ref written.
+pub fn keep_unbranched_head(
+    worktree_path: &str,
+    branch: &str,
+) -> Result<(HeadLock, Option<String>), CoreError> {
+    let lock = lock_head(worktree_path)?;
     let Some(head) = head_commit(worktree_path)? else {
-        return Ok(None);
+        return Ok((lock, None));
     };
     if commit_count(worktree_path, &[&head, "--not", "--branches", "--tags", "--remotes"])? == 0 {
-        return Ok(None);
+        return Ok((lock, None));
     }
     let reference = recovery_ref(branch);
     run_git_with_allowed_exit_codes(worktree_path, &["update-ref", &reference, &head], &[0])?;
-    Ok(Some(reference))
+    Ok((lock, Some(reference)))
 }
 
 fn commit_count(repo_path: &str, revisions: &[&str]) -> Result<u32, CoreError> {
@@ -583,7 +624,7 @@ fn git_output_max_bytes() -> usize {
 mod tests {
     use super::{
         branch_commit, create_branch, delete_branch_if_unchanged, keep_unbranched_head,
-        porcelain_entry_count, run_git_with_allowed_exit_codes,
+        porcelain_entry_count, run_git_with_allowed_exit_codes, HEAD_LOCK_MARKER,
     };
     use std::path::Path;
 
@@ -641,17 +682,40 @@ mod tests {
         let repo = temp.path();
         let path = repo.to_string_lossy().into_owned();
 
+        let commit = |message: &str| {
+            run_git_with_allowed_exit_codes(&path, &["commit", "--quiet", "--allow-empty", "-m", message], &[0])
+        };
+
         // Every commit on a branch: nothing to keep.
-        assert_eq!(keep_unbranched_head(&path, "ottam/quiet-fox-1a2b").ok(), Some(None));
+        let (lock, kept) = keep_unbranched_head(&path, "ottam/quiet-fox-1a2b").expect("keep");
+        assert_eq!(kept, None);
+        drop(lock);
 
         git(repo, &["checkout", "--quiet", "--detach", &base]);
         git(repo, &["commit", "--quiet", "--allow-empty", "-m", "detached"]);
         let detached = git(repo, &["rev-parse", "HEAD"]);
-        assert_eq!(
-            keep_unbranched_head(&path, "ottam/quiet-fox-1a2b").ok(),
-            Some(Some("refs/ottam/removed/quiet-fox-1a2b".to_string()))
-        );
+        let (lock, kept) = keep_unbranched_head(&path, "ottam/quiet-fox-1a2b").expect("keep");
+        assert_eq!(kept.as_deref(), Some("refs/ottam/removed/quiet-fox-1a2b"));
         assert_eq!(git(repo, &["rev-parse", "refs/ottam/removed/quiet-fox-1a2b"]), detached);
+
+        // A straggler committing between the read and the removal fails, so
+        // the ref still holds everything HEAD has.
+        assert!(commit("straggler").is_err());
+        assert_eq!(git(repo, &["rev-parse", "HEAD"]), detached);
+        drop(lock);
+        assert!(commit("after").is_ok());
+
+        // A running git command's lock is not taken; a crashed removal's is.
+        let head_lock = repo.join(".git").join("HEAD.lock");
+        std::fs::write(&head_lock, "0123abcd\n").unwrap();
+        assert_eq!(
+            keep_unbranched_head(&path, "ottam/quiet-fox-1a2b").err().map(|error| error.kind),
+            Some("gitBusy")
+        );
+        std::fs::write(&head_lock, HEAD_LOCK_MARKER).unwrap();
+        let (lock, _) = keep_unbranched_head(&path, "ottam/quiet-fox-1a2b").expect("take over");
+        drop(lock);
+        assert!(!head_lock.exists());
     }
 
     #[test]

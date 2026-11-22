@@ -244,7 +244,10 @@ never writes beside the user's checkout.
   the commits at HEAD that no branch, tag or remote holds.
 - Right before the folder goes, removal keeps those commits under
   `refs/ottam/removed/<name>` (2026-11-20), so a commit made after the
-  confirmation is kept too. A failed check keeps the folder, owed. With the
+  confirmation is kept too. It holds the worktree's `HEAD.lock` from that
+  read until the folder is gone, so a straggler's commit fails rather than
+  landing unkept. A failed check, or another git command holding the lock,
+  keeps the folder, owed. With the
   project's checkout gone there is no repository to keep them in.
 - Deleting the last conversation on a worktree removes it, in that
   deletion's transaction (2026-11-18, revised 2026-11-20); `worktree.remove`
