@@ -9,7 +9,8 @@ status: active
 
 M1–M9 are shipped; their behavior is in
 [acp.md](../../../architecture/backend/acp.md). M10 (context compaction) is
-next and its Try it awaits approval. Three shipped milestones still owe one
+next and its Try it awaits approval. M11 (Antigravity) waits on its own
+Try it approval. Three shipped milestones still owe one
 real-window check each, listed under Active.
 
 ## How Milestones Work
@@ -40,6 +41,7 @@ Item ids are `<spec>:<n>`, where `<n>` is the item number in that spec:
 | `inst` | [agent-instances.md](agent-instances.md) |
 | `usage` | [usage-and-cost.md](usage-and-cost.md) |
 | `cmp` | [context-compaction.md](context-compaction.md) |
+| `agy` | [antigravity.md](antigravity.md) |
 
 ## Active
 
@@ -75,6 +77,44 @@ Try it (draft, awaiting approval):
    spinning.
 6. Quit and relaunch. The rows and their summaries are still there. A chat
    from before M10 still shows its old "Compact conversation" card.
+
+### M11. Chat with Antigravity
+
+Needs nothing. Scope and wire evidence are in
+[antigravity](antigravity.md).
+
+| Item | What |
+|---|---|
+| `agy:1` | Managed profiles share the Keychain Google login: no sign-out, and a note saying so. |
+| `agy:2` | Core: a home passed as a launch argument (`--gemini-dir`). |
+| `agy:3` | The pinned binary definition, brand, and terminal login. |
+| `agy:4` | `AGY_CLI_DISABLE_AUTO_UPDATE` keeps the pinned binary in place. |
+| `agy:5` | Detect and use the user's `~/.gemini` setup. |
+| `agy:6`–`agy:10` | Fixtures, model picker shape, the system-prompt guardrail, MCP over stdio, resume on relaunch. |
+
+Try it (draft, awaiting approval):
+
+1. Settings › Add agent › Antigravity. The install row shows 1.5.13, a
+   download of about 90 MB, and the Google icon. It finishes only after the
+   handshake. Cancel mid-download, then retry. Nothing stays half-installed.
+2. Managed profile, on a Mac where `agy` is already signed in. The profile
+   reads as signed in right away, and a note says it uses this Mac's
+   Google sign-in. There is no Sign out. On a Mac with no login, Sign in
+   opens the terminal login, which prints a Google URL and waits for a
+   code. After pasting it, the profile and the user's own `agy` are both
+   signed in.
+3. New conversation. The model picker lists Gemini 4 Neon, Argon, and
+   Hydrogen, with their effort levels. Ask for a small edit. A permission
+   prompt appears. Allow it, and the diff renders in the tool card.
+4. Send a prompt that runs a long shell command, then press Stop. The turn
+   ends as stopped, and the command and any subagent stop too.
+5. Quit and relaunch. The conversation reopens with its history and
+   continues on the next prompt.
+6. Settings › Add agent › Antigravity › Use my CLI setup, on a Mac with a
+   signed-in `agy`. Ottam detects `~/.gemini`, warns about the version
+   skew, and chats without a new login. Ottam's conversation shows up in
+   `agy`'s own resume list.
+7. After steps 1–6, the managed `agy --version` still reads 1.5.13.
 
 ### Open checks on shipped milestones
 
