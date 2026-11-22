@@ -5,7 +5,8 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, Receiver};
-use std::sync::Arc;
+use std::collections::HashSet;
+use std::sync::{Arc, Mutex, OnceLock};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -393,31 +394,79 @@ pub struct HeadLock(PathBuf);
 impl Drop for HeadLock {
     fn drop(&mut self) {
         let _ = std::fs::remove_file(&self.0);
+        held_head_locks().remove(&self.0);
     }
 }
 
-/// What a removal writes into `HEAD.lock`, so a later launch can tell the
-/// lock of a removal that crashed from a git command still running.
-const HEAD_LOCK_MARKER: &str = "ottam: removing this worktree\n";
+/// The `HEAD.lock`s this process holds. A startup retry can overlap a
+/// request's removal of the same worktree; the second waits its turn rather
+/// than sharing a lock the first would drop under it.
+fn held_head_locks() -> std::sync::MutexGuard<'static, HashSet<PathBuf>> {
+    static HELD: OnceLock<Mutex<HashSet<PathBuf>>> = OnceLock::new();
+    HELD.get_or_init(Default::default)
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
+/// What a removal writes into `HEAD.lock`, with its process id, so a later
+/// launch can tell a crashed removal's lock from a running git command's or
+/// a live removal's.
+const HEAD_LOCK_MARKER: &str = "ottam: removing this worktree, pid ";
+
+fn head_lock_marker(pid: u32) -> String {
+    format!("{HEAD_LOCK_MARKER}{pid}\n")
+}
+
+/// A marked lock is free to take over only when its owner is gone: this
+/// process holds no lock there (checked by the caller), and the pid it names
+/// is this process or one no longer running.
+fn is_abandoned_head_lock(contents: &str) -> bool {
+    let Some(pid) = contents
+        .strip_prefix(HEAD_LOCK_MARKER)
+        .and_then(|rest| rest.trim_end().parse::<u32>().ok())
+    else {
+        return false;
+    };
+    if pid == std::process::id() {
+        return true;
+    }
+    let Ok(pid) = libc::pid_t::try_from(pid) else {
+        return false;
+    };
+    // SAFETY: signal 0 only checks whether the process exists.
+    let alive = unsafe { libc::kill(pid, 0) } == 0
+        || std::io::Error::last_os_error().raw_os_error() != Some(libc::ESRCH);
+    !alive
+}
 
 fn lock_head(worktree_path: &str) -> Result<HeadLock, CoreError> {
     let admin = run_git_with_allowed_exit_codes(worktree_path, &["rev-parse", "--absolute-git-dir"], &[0])?;
     let path = Path::new(admin.stdout.trim()).join("HEAD.lock");
+    let busy = || CoreError::new("gitBusy", "a git command is running in the worktree").recoverable(true);
+    let mut held = held_head_locks();
+    if held.contains(&path) {
+        return Err(busy());
+    }
+    let marker = head_lock_marker(std::process::id());
     let created = std::fs::OpenOptions::new()
         .write(true)
         .create_new(true)
         .open(&path)
-        .and_then(|mut file| file.write_all(HEAD_LOCK_MARKER.as_bytes()));
+        .and_then(|mut file| file.write_all(marker.as_bytes()));
     match created {
-        Ok(()) => Ok(HeadLock(path)),
+        Ok(()) => {}
         Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
-            if std::fs::read_to_string(&path).is_ok_and(|held| held == HEAD_LOCK_MARKER) {
-                return Ok(HeadLock(path));
+            let abandoned = std::fs::read_to_string(&path).is_ok_and(|contents| is_abandoned_head_lock(&contents));
+            if !abandoned {
+                return Err(busy());
             }
-            Err(CoreError::new("gitBusy", "a git command is running in the worktree").recoverable(true))
+            std::fs::write(&path, &marker)
+                .map_err(|error| CoreError::new("gitLockFailed", error.to_string()).recoverable(true))?;
         }
-        Err(error) => Err(CoreError::new("gitLockFailed", error.to_string()).recoverable(true)),
+        Err(error) => return Err(CoreError::new("gitLockFailed", error.to_string()).recoverable(true)),
     }
+    held.insert(path.clone());
+    Ok(HeadLock(path))
 }
 
 /// Lock the worktree's HEAD, then point [`recovery_ref`] at it when commits
@@ -624,7 +673,7 @@ fn git_output_max_bytes() -> usize {
 mod tests {
     use super::{
         branch_commit, create_branch, delete_branch_if_unchanged, keep_unbranched_head,
-        porcelain_entry_count, run_git_with_allowed_exit_codes, HEAD_LOCK_MARKER,
+        head_lock_marker, porcelain_entry_count, run_git_with_allowed_exit_codes,
     };
     use std::path::Path;
 
@@ -705,15 +754,30 @@ mod tests {
         drop(lock);
         assert!(commit("after").is_ok());
 
-        // A running git command's lock is not taken; a crashed removal's is.
         let head_lock = repo.join(".git").join("HEAD.lock");
+        let busy = || keep_unbranched_head(&path, "ottam/quiet-fox-1a2b").err().map(|error| error.kind);
+
+        // An overlapping removal in this process waits; its failure leaves
+        // the first removal's lock in place.
+        let (first, _) = keep_unbranched_head(&path, "ottam/quiet-fox-1a2b").expect("first");
+        assert_eq!(busy(), Some("gitBusy"));
+        assert!(head_lock.exists());
+        assert!(commit("overlap").is_err());
+        drop(first);
+        assert!(!head_lock.exists());
+
+        // A running git command's lock is not taken, nor a live removal's
+        // in another process; a crashed removal's is.
         std::fs::write(&head_lock, "0123abcd\n").unwrap();
-        assert_eq!(
-            keep_unbranched_head(&path, "ottam/quiet-fox-1a2b").err().map(|error| error.kind),
-            Some("gitBusy")
-        );
-        std::fs::write(&head_lock, HEAD_LOCK_MARKER).unwrap();
+        assert_eq!(busy(), Some("gitBusy"));
+        std::fs::write(&head_lock, head_lock_marker(1)).unwrap();
+        assert_eq!(busy(), Some("gitBusy"));
+        let mut exited = std::process::Command::new("true").spawn().expect("spawn");
+        let dead = exited.id();
+        exited.wait().expect("wait");
+        std::fs::write(&head_lock, head_lock_marker(dead)).unwrap();
         let (lock, _) = keep_unbranched_head(&path, "ottam/quiet-fox-1a2b").expect("take over");
+        assert_eq!(std::fs::read_to_string(&head_lock).unwrap(), head_lock_marker(std::process::id()));
         drop(lock);
         assert!(!head_lock.exists());
     }
