@@ -166,4 +166,4 @@ Xcode use. Edit `project.yml`, regenerate with XcodeGen, and never inspect or
 hand-edit generated project internals. CI regenerates and rejects drift.
 
 Current testing policy and agent expectations live in `AGENTS.md`; deferred
-system follow-ups live in `docs/specs/operations/macos-ui-validation.md`.
+system follow-ups are tracked as GitHub issues.

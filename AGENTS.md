@@ -28,7 +28,7 @@ Adapter pins live in `backend/crates/ottam-core/src/agent/registry.rs`.
 |---|---|
 | How the system works now | `docs/architecture/README.md` |
 | Contracts | `docs/architecture/backend/persistence.md`, `docs/architecture/terminal/README.md`, `docs/architecture/app/macos-ui.md`, `docs/architecture/backend/acp.md` |
-| Unfinished work and status | `docs/specs/README.md` (one line per spec) |
+| Unfinished work and status | GitHub issues (`gh issue list`, `gh issue view <n>`) |
 
 - Code is the truth for how things work. Architecture holds only what code
   can't show: decisions and deliberate absences, invariants that cross modules
@@ -36,20 +36,23 @@ Adapter pins live in `backend/crates/ottam-core/src/agent/registry.rs`.
   with one code pointer. Never add pin tables, file inventories, constant
   tables, or behavior walkthroughs. Edit architecture when a rule changes, not
   to narrate a feature.
-- Specs hold unfinished work only: when an item ships, delete it, moving any
-  new rule it set into architecture; delete a spec once nothing is left. Code
-  and config cite architecture docs, never specs.
+- Unfinished work lives in GitHub issues, not in docs. A body of work is one
+  parent issue holding its goal, Try it, and lasting findings; its items are
+  sub-issues, ordered with blocked-by. Status is only open or closed: a pull
+  request closes its item with `Fixes #n`, and moves any new rule the item
+  set into architecture in the same change. Code, config, and docs cite
+  architecture, never an issue.
 - Docs carry no PR numbers, commit hashes, or test-run evidence; git history
   holds that.
-- Front matter is `kind` and `status`. Keep specs under about 300 lines and
-  split by milestone past that. Decisions record the choice, date, and a
-  one-sentence reason.
+- Front matter is `kind` and `status`. Decisions record the choice, date, and
+  a one-sentence reason.
 - Terminal work keeps live delivery caps, durable transcript retention, replay
   budgets, Ghostty scrollback, and PTY lifetime as separate policies.
 - Maintainers may have a gitignored `private/` checkout. If
-  `private/AGENTS.md` exists, read it before work that depends on it.
-  Never link to `private/`, or copy or summarize its contents into tracked
-  files, commit messages, PRs, or issues.
+  `private/AGENTS.md` exists, read it before work that depends on it, or
+  when work you were asked about has no issue. Never link to `private/`, or
+  copy or summarize its contents into tracked files, commit messages, PRs, or
+  issues, except what `private/AGENTS.md` itself clears for publication.
 
 ## Working Agreements
 
@@ -68,18 +71,17 @@ Adapter pins live in `backend/crates/ottam-core/src/agent/registry.rs`.
   After a rejected tool call, explain the changed approach before retrying.
 - Support success claims with actual results. UI claims need inspected rendered
   evidence with the app in the foreground. Report limitations.
-- Keep specs and status aligned with accepted decisions; remove superseded
-  guidance.
+- Keep issues aligned with accepted decisions; remove superseded guidance.
 
 ## Milestones
 
 Plan user-facing work as milestones the user can try in the app; PRs are review
-units inside one. The [ACP work plan](docs/specs/backend/acp/README.md) is the
-model.
+units inside one. A milestone is a parent issue.
 
 - Before code, write the milestone's Try it walkthrough (app actions, expected
-  results, restart and cancel behavior); the user approves it with the plan,
-  and later PRs in the milestone reuse it without another planning round.
+  results, restart and cancel behavior) in its issue; the user approves it
+  there with the plan, and later PRs in the milestone reuse it without another
+  planning round.
 - Every milestone ends in behavior reachable in the app. Unreachable foundation
   work ships with the milestone that makes it reachable, behind a rough UI or a
   development flag if needed.
@@ -112,8 +114,8 @@ model.
 |---|---|
 | Backend state | `core-inspect` skill / `scripts/inspect-core.sh`, not raw SQLite. Attach mode talks to the running app's real data: prefer read-only methods there and use `--spawn` for mutations |
 | UI evidence | `ottam-ui-screenshots` skill; pair pixels with AX evidence |
-| Status update | `now` skill (from commits and specs; no status file) |
-| New or updated spec | `track` skill |
+| Status update | `now` skill (from commits and issues; no status file) |
+| New or updated tracked work | `track` skill |
 | Release, or an update walkthrough on the test feed | `release` skill |
 
 Skills live under `.claude/skills/`.

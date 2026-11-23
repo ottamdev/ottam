@@ -7,7 +7,7 @@ user-invocable: true
 # Release
 
 Drive the release scripts; never reimplement a step they own. Rules and their
-reasons live in `docs/specs/app/distribution.md` (Decisions, Failure
+reasons live in `docs/operations/release.md` (Decisions, Failure
 recovery). Script refusals (`Release refused:`, `Publish refused:`) are the
 contract: fix the cause and rerun, never work around one.
 
@@ -59,8 +59,8 @@ marked **ask**. Never enter, export, or print a credential.
    the user's check unless they ask for it.
 
 On a failed run, read the failing step's log
-(`gh run view <id> --log-failed`) and follow Failure recovery in the
-distribution spec. Before the appcast push no client saw anything: delete a
+(`gh run view <id> --log-failed`) and follow Failure recovery in
+`docs/operations/release.md`. Before the appcast push no client saw anything: delete a
 release the run created (**ask**) and rerun the same tag. After it, ship a
 higher version; never replace bytes under an old tag or URL.
 

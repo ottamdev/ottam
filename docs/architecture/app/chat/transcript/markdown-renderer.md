@@ -162,6 +162,4 @@ Selection, copy and accessibility:
 
 Renderer telemetry times each transaction phase separately; aggregate CPU
 does not prove ordering or frame pacing. The measurement procedure is in
-[Transcript Renderer Measurement Protocol](../../../../operations/performance/transcript-renderer.md);
-open work is in the
-[Markdown Renderer Improvements spec](../../../../specs/app/chat/markdown-renderer-improvements.md).
+[Transcript Renderer Measurement Protocol](../../../../operations/performance/transcript-renderer.md).

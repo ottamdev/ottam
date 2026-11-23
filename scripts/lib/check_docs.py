@@ -16,7 +16,7 @@ ROOT = Path.cwd()
 DOCS = ROOT / "docs"
 SELF = b"scripts/lib/check_docs.py"
 REQUIRED_KEYS = ("kind", "status")
-KINDS = ("index", "architecture", "spec", "operations", "reference")
+KINDS = ("index", "architecture", "operations", "reference")
 STATUSES = ("active", "proposed", "deferred", "exploratory")
 URI_SCHEME = re.compile(r"[A-Za-z][A-Za-z0-9+.-]*:")
 # A relative RFC 3986 reference: path and query characters or %XX escapes, then
@@ -37,7 +37,6 @@ PRIVATE_DIR = str(ROOT / "private")
 PRIVATE_MARKER = ("ottam" + "-internal").encode()
 ORGANIZATION_REPOSITORY = re.compile(rb"ottamdev/[A-Za-z0-9_-]+")
 PRIVATE_REPOSITORY_DIGEST = "3f4793d5e1f321cd6055733fee43087700b0046b8837e817418512049bc48896"
-SPEC_CITATION = re.compile(r"docs/specs/[A-Za-z0-9_./-]+\.md")
 # Build output that can appear inside an export; private/ is deliberately not
 # here, because an export must never contain it.
 EXPORT_SKIPPED_DIRECTORIES = {".git", ".build", "target", "DerivedData"}
@@ -235,18 +234,6 @@ def check_repository_files(errors: list[str]) -> None:
             for found in ORGANIZATION_REPOSITORY.findall(content)
         ):
             errors.append(f"{name}: names the private repository")
-        # Specs are deleted when they ship, so code and config cite architecture
-        # docs instead. Markdown may link specs; test fixtures may name them.
-        # Only a named spec file is a citation; bare directories and globs pass.
-        if name.endswith(".md") or name.startswith("app/Tests/"):
-            continue
-        try:
-            text = content.decode("utf-8")
-        except UnicodeDecodeError:
-            continue
-        cited = SPEC_CITATION.search(text)
-        if cited:
-            errors.append(f"{name}: cites {cited.group(0)}; cite docs/architecture/ or nothing")
 
 
 def main() -> int:

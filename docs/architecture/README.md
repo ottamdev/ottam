@@ -13,8 +13,8 @@ multiplexes every open Workspace window onto the same Core process and
 
 This directory records only what code can't show: decisions, cross-module
 invariants, external adapter behavior, ownership and current limits. Read the
-code for how things work. Work status lives in the
-[spec index](../specs/README.md).
+code for how things work. Unfinished work and its status live in the
+repository's GitHub issues.
 
 ## Runtime Shape
 
