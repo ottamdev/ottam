@@ -46,8 +46,7 @@ and dev builds do not fall back to the release one. `font-family` is inert in
 the embedded surface. `font-size` must also feed
 `ghostty_surface_config_s.font_size` from the finalized config, because that
 field overrides every config layer. A reload that cannot build a config keeps
-the old one (`lastReloadError`); see the
-[config reload spec](../../specs/app/terminal/ghostty-config-reload.md).
+the old one (`lastReloadError`).
 
 ## Ownership Model
 

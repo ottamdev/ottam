@@ -5,8 +5,7 @@ status: active
 
 # Transcript Renderer Measurement Protocol
 
-This is the comparison protocol for
-[Markdown Renderer Improvements](../../specs/app/chat/markdown-renderer-improvements.md).
+This is the comparison protocol for transcript renderer changes.
 It makes a number recorded on a feature branch and a number recorded on
 `main` mean the same thing. The repository-wide capture, validity, pairing,
 evidence, and reporting rules are in the

@@ -11,9 +11,7 @@ each session reaches all of them through one loopback proxy in core
 (Streamable HTTP, per-session bearer token), so sign-in, secrets, process
 ownership and failure state live in one place for every harness, profile and
 agent. Ottam's own tools ([Delegation](#delegation)) are served from the same
-proxy on its reserved `ottam` route. Open work:
-[managed servers](../../specs/backend/mcp/managed-servers.md),
-[Ottam tools](../../specs/backend/mcp/ottam-tools.md).
+proxy on its reserved `ottam` route.
 
 Code: `ottam-core/src/mcp/` (`McpService` keeps config, runtime and proxy
 paths in step); types in `ottam-protocol/src/mcp.rs`. Swift presents state and

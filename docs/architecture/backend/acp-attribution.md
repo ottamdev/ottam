@@ -180,8 +180,7 @@ number, so keep the headings and numbering stable. Paths are under
 10. **Replay keeps nothing.** Lifecycle updates inside a `session/load`
     replay are discarded with the rest, including codex-acp's background
     terminal reconcile and the subagents a replay announces. Threads
-    persisted live stay authoritative
-    ([subagent sessions](../../specs/backend/acp/subagent-sessions.md#decisions)).
+    persisted live stay authoritative.
     Core loads only sessions the adapter lost, usually along with their
     terminals.
 11. **Accepted gaps.**

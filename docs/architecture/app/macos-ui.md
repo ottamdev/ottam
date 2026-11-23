@@ -13,10 +13,9 @@ hold UI state only; durable domain authority stays behind the Core protocol
 
 ## Shell Rules
 
-- One Workspace is one AppKit-owned window with SwiftUI column content
-  ([Workspace Shell](../../specs/app/workspace-shell.md)). Chat is the
-  workspace window's only page; Review, Terminal, Plan, file and Subagent views
-  are tabs in its tools pane.
+- One Workspace is one AppKit-owned window with SwiftUI column content. Chat
+  is the workspace window's only page; Review, Terminal, Plan, file and
+  Subagent views are tabs in its tools pane.
 - Settings is a separate app window for app and machine plumbing (harnesses,
   auth, named agents, terminal and machine-local preferences). It is never a
   workspace page. Its `Search Settings` field is the only search; there is no

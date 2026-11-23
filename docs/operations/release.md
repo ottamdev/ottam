@@ -1,100 +1,15 @@
 ---
-kind: spec
+kind: operations
 status: active
 ---
 
-# App Update & Distribution
+# Release
 
-Goal: ship notarized Ottam builds that update themselves through Sparkle, with
-GitHub Releases hosting archives and a signed static appcast on a
-project-owned domain as the feed. The first public binary already contains
-the updater. The bundled `ottam-core`, GhosttyKit, adapter pins, resources,
-and schema migrations move with the `.app`; there is no separate backend
-updater. Repository policy (license, notices, community files) belongs to the
-[open source release spec](../operations/open-source-release.md).
+The rules behind an Ottam release, their reasons, and how to recover from a
+failed one. The `release` skill is the procedure and the release scripts own
+each step; this page is what both assume.
 
-## Current Status
-
-Ottam builds notarized archives that install and run on a clean macOS 26
-account, and has a release workflow that has published to the test feed and
-updated a real install. 26.11.0 is the first production release; the second,
-which proves the public update path, is not out yet:
-
-- `scripts/release-app.sh` cuts versions locally, enforces the release
-  refusals, signs, notarizes, and staples the app, and packages it in a disk
-  image beside an Applications link, then signs, notarizes, and staples the
-  image;
-  `--rehearsal` builds with Apple Development. `scripts/verify-release-app.sh`
-  checks the build, then the image and the app mounted from it.
-- Sparkle is pinned and embedded in every bundle. Release assembly gives the
-  bundle its feed and public key (`--feed-url` points a test build at another
-  feed), and only then does the app start an updater and show **Check for
-  Updates…**. The Sparkle public key is `app/Signing/sparkle-public-key`.
-- `.github/workflows/release.yml` runs on a dispatched `v*` tag after the
-  maintainer approves the `release` environment: it builds through
-  `release-app.sh`, then `scripts/publish-release.sh` signs the archive and
-  appcast, creates the GitHub Release, and pushes the appcast to
-  `ottamdev/updates`, which a Cloudflare static-assets Worker serves at
-  `updates.ottam.dev` (`public/appcast.xml`, walkthroughs under
-  `public/test/`). The feeds are named in `scripts/lib/release-feed.sh`.
-  The `release` skill drives a release and the throwaway test-feed update
-  walkthrough.
-- `scripts/smoke-app-bundle.sh` validates development bundles; `--release`
-  also checks a release build for test seams, which the release verifier
-  repeats on the shipped bundle.
-
-Development builds must stay cheap and local: no Apple credentials,
-notarization, GitHub access, or Sparkle key.
-
-## Active
-
-### Milestone 3 — first public release
-
-- [~] **First stable releases.** X is 26.11.0, published; Try it 1 on a
-  clean account and X+1 remain. For each release, commit
-  `release-notes/<version>.md`, cut, push the release commit and tag, wait
-  for `full-tests` to pass on that commit, then
-  `gh workflow run release.yml --ref v<version> -f feed=production`.
-  Publish two releases before announcing downloads, so the public update
-  path is proven from a build that actually shipped.
-
-Try it:
-
-1. Publish X and download its disk image from the GitHub Release in a browser
-   on a clean macOS 26 account. The image opens to its background, with an
-   arrow from Ottam to Applications; dragged across and opened, Ottam shows
-   only the standard downloaded-app dialog, About shows X, onboarding
-   installs an agent that completes a turn, and chats survive a quit.
-2. Start publishing X+1 and cancel the run before the appcast push: the
-   public feed is unchanged and X finds no update. Delete the release if one
-   was created, and rerun to completion.
-3. In the installed X, Check for Updates… offers X+1 with its notes, installs
-   it, and relaunches into it over unauthenticated HTTPS only.
-4. On a clean account, install X from its disk image and leave it open.
-   `curl -fsSL https://ottam.dev/install.sh | sh` asks you to quit it first.
-   Quit it and rerun: it installs X+1 into Applications, which opens
-   without a Gatekeeper dialog. A third run reports it is already installed.
-
-### Acceptance
-
-Package checks: strict signature verification of every nested executable,
-the app, and the disk image; `spctl` assessment; `stapler validate` on the
-image and the app; and a re-inventory of the app as mounted from it. Update matrix, with real independently signed builds:
-
-| Case | Expected |
-|---|---|
-| Same / lower bundle version | Not offered. |
-| Higher bundle version | Offered with correct version and notes. |
-| Tampered archive or appcast | Rejected. |
-| Missing archive | Candidate publication fails; feed unchanged. |
-| Wrong Developer ID identity | Rejected. |
-| Core running | App and core replaced together; clean relaunch. |
-| Agent mid-turn or terminal running | Install asks first, then takes the normal quit path. |
-| Existing database | Startup migrations run; durable state remains. |
-| Adapter pin moved | Old adapter keeps launching until the new pin lands. |
-| Read-only or relocated install | Sparkle's authorization path or a recoverable error. |
-
-### Failure recovery
+## Failure recovery
 
 - Bad asset before feed publication: delete the draft or publish a new
   version; no client saw it.
@@ -108,18 +23,6 @@ image and the app; and a re-inventory of the app as mounted from it. Update matr
 - Host outage: repoint the feed domain at another HTTPS host and move the
   archives; the appcast names the new archive URLs, so no shipped build
   changes.
-
-## Backlog
-
-- Beta channel through a Sparkle channel with in-app opt-in (not GitHub's
-  `latest`): `generate_appcast --channel beta` into the same production
-  appcast, plus an `allowedChannels(for:)` delegate behind a Settings
-  checkbox. Never through the test feed, which only walkthrough builds read.
-- Phased rollouts and critical-update policy.
-- Deltas, once several releases exist and the release script can retrieve
-  the exact previous archives (`generate_appcast` needs them).
-- An Updates settings section, if Sparkle's standard UI proves insufficient.
-- A Homebrew cask marked `auto_updates`, once releases are regular.
 
 ## Decisions
 
@@ -140,8 +43,8 @@ image and the app; and a re-inventory of the app as mounted from it. Update matr
   until `macos-27` is generally available. Ottam is developed with Xcode 27,
   and a build linked against the 26 SDK behaves differently on macOS 27, so
   tests and releases share the developer toolchain. The deployment target
-  stays macOS 26; nothing in CI runs on 26, so the clean-account check in
-  milestone 3's Try it covers it.
+  stays macOS 26; nothing in CI runs on 26, so a clean-account check on
+  macOS 26 covers it.
 - **The feed lives on a project-owned domain** (2026-11-09). `SUFeedURL` is
   the one address baked into every shipped build, and a `github.io` URL
   breaks on a repository rename or transfer.
@@ -154,11 +57,11 @@ image and the app; and a re-inventory of the app as mounted from it. Update matr
 - **ottam.dev offers a `curl | sh` installer** (2026-11-15).
   `scripts/install.sh` lives here, where it is reviewed and tested; the
   website repository, a separate Cloudflare static-assets Worker, redirects
-  `/install.sh` to it on `main`. It reads the stable appcast rather than the GitHub API, which has rate limits and no stable
-  filter; with no release in the feed it points to building from source. A
-  curl download carries no quarantine flag, so Gatekeeper never assesses the
-  app; the script checks the image and app signatures, team, and
-  notarization itself before copying.
+  `/install.sh` to it on `main`. It reads the stable appcast rather than the
+  GitHub API, which has rate limits and no stable filter; with no release in
+  the feed it points to building from source. A curl download carries no
+  quarantine flag, so Gatekeeper never assesses the app; the script checks
+  the image and app signatures, team, and notarization itself before copying.
 - **Release notes are embedded in the appcast** (2026-11-09), so the archive
   and the appcast are the only signed artifacts. They are a reviewed
   Markdown file per version, `release-notes/<version>.md`, which also
@@ -221,7 +124,7 @@ image and the app; and a re-inventory of the app as mounted from it. Update matr
 - **An update replaces code only.** It never moves `~/.ottam`, workspace
   registration, agent homes, managed runtimes, logs, or the database;
   migrations run at normal startup
-  ([persistence](../../architecture/backend/persistence.md)). Installed
+  ([persistence](../architecture/backend/persistence.md)). Installed
   adapters follow a moved pin through core's background reinstall
   (`backend/crates/ottam-core/src/agent/agent_install_service.rs`).
 - **Non-goals:** per-component updates; installs from branches, PR or
