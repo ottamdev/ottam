@@ -27,7 +27,7 @@ issues; use the `track` skill to change one.
 4. Report briefly, lead with the answer:
    - **Shipped**: merged in the window, grouped by parent issue.
    - **In flight**: open PRs and recently active branches, with what each
-     waits on (review, CI, a walkthrough, a decision).
+     waits on (review, CI, its verification steps, a decision).
    - **Next**: open sub-issues with nothing blocking them, under the parents
      that moved, plus anything blocked on the user.
    - **Stale**: issues that contradict the commits (work merged but the
@@ -35,4 +35,4 @@ issues; use the `track` skill to change one.
      that describes a plan since replaced). Offer to fix them with `track`;
      don't edit.
 
-Never claim CI passed or a walkthrough ran without seeing it.
+Never claim CI passed or verification steps ran without seeing it.

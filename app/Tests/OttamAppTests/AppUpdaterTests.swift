@@ -5,7 +5,7 @@ import Testing
 
 /// Development, `run-app.sh` and UI-test bundles carry no feed, so they must
 /// never start Sparkle. The positive case starts a real updater and is
-/// covered by the release build's Try it instead.
+/// covered by the test-feed update walkthrough instead.
 @Suite("App updater")
 @MainActor
 struct AppUpdaterTests {

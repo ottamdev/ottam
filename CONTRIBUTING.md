@@ -51,6 +51,16 @@ gates:
   Recording access; [ui-testing/README.md](ui-testing/README.md) has the setup.
   If you can't run them, say so in the pull request so a maintainer can.
 
+## Issues and pull requests
+
+Issues start from a template in
+[.github/ISSUE_TEMPLATE](.github/ISSUE_TEMPLATE): a milestone, a work item
+under it, or a bug report. Pull requests start from
+[the pull request template](.github/PULL_REQUEST_TEMPLATE.md). Keep the
+headings. A pull request closes its issue with `Fixes #n`, lists the checks
+you ran under Verification, and shows before and after under Visual proof, or
+`N/A` with a reason when nothing visible changed.
+
 ## Contributor terms
 
 Ottam is licensed under [Apache 2.0](LICENSE), and contributions are accepted
