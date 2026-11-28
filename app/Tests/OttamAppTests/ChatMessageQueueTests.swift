@@ -1,4 +1,5 @@
 import OttamBackendClient
+import OttamPresentationLogic
 import Foundation
 import Testing
 @testable import OttamApp
@@ -183,5 +184,106 @@ struct ChatMessageQueueTests {
     )
     func onlyCompletedDrains(status: ConversationRunStatus, drains: Bool) {
         #expect(ChatMessageQueue.drains(after: status) == drains)
+    }
+
+    @Test("quotes and attachments round-trip with structured preview metadata")
+    func quotesAndAttachmentsRoundTrip() {
+        let store = defaults()
+        let quote = QuoteReply.Comment(quote: "first line\nsecond line", comment: "why?")
+        let queued = QueuedMessage(
+            body: QuoteReply.messageBody(comments: [quote], text: "also check this") ?? "",
+            attachmentIDs: [ConversationAttachmentID("att-1"), ConversationAttachmentID("att-2")],
+            quotes: [quote],
+            draft: "also check this",
+            engineID: EngineID("claude")
+        )
+        var queue = ChatMessageQueue()
+        queue.append(queued, to: Self.conversation)
+        queue.persist(to: store, workspaceID: Self.workspace)
+
+        let restored = ChatMessageQueue.restored(from: store, workspaceID: Self.workspace)
+        let message = restored[Self.conversation].first
+        #expect(message == queued)
+        #expect(message?.quoteCount == 1)
+        #expect(message?.imageCount == 2)
+        #expect(message?.previewText == "also check this")
+    }
+
+    @Test("previewText avoids raw blockquote markdown and handles attachment-only messages")
+    func previewTextDerivation() {
+        let quote = QuoteReply.Comment(quote: "long quoted passage", comment: "looks wrong")
+
+        let quoteOnly = QueuedMessage(
+            body: QuoteReply.messageBody(comments: [quote], text: "") ?? "",
+            quotes: [quote],
+            draft: "",
+            engineID: EngineID("claude")
+        )
+        #expect(quoteOnly.previewText == "looks wrong")
+        #expect(quoteOnly.quoteCount == 1)
+
+        let imageOnly = QueuedMessage(
+            body: "",
+            attachmentIDs: [ConversationAttachmentID("att-1"), ConversationAttachmentID("att-2")],
+            quotes: [],
+            draft: "",
+            engineID: EngineID("claude")
+        )
+        #expect(imageOnly.previewText == nil)
+        #expect(imageOnly.imageCount == 2)
+    }
+
+    @Test("legacy persisted entries without quotes or draft still decode")
+    func legacyPayloadDecodes() throws {
+        let store = defaults()
+        let legacyID = UUID()
+        let payload: [String: [[String: Any]]] = [
+            Self.conversation.rawValue: [[
+                "id": legacyID.uuidString,
+                "body": "legacy text",
+                "attachmentIDs": ["att-legacy"],
+                "engineID": "claude"
+            ]]
+        ]
+        let data = try JSONSerialization.data(withJSONObject: payload)
+        store.set(data, forKey: ChatMessageQueue.storageKey(for: Self.workspace))
+
+        let restored = ChatMessageQueue.restored(from: store, workspaceID: Self.workspace)
+        let message = restored[Self.conversation].first
+        #expect(message?.id == legacyID)
+        #expect(message?.previewText == "legacy text")
+        #expect(message?.quoteCount == 0)
+        #expect(message?.imageCount == 1)
+    }
+
+    @Test("fromComposer preserves formatted wire body alongside quote and attachment counts")
+    func fromComposerPreservesWireBodyAndQuotes() throws {
+        let routing = SubmissionRouting(engine: TranscriptFixture.engine(), modelID: nil, modeID: nil, thoughtLevelID: nil)
+        let quote = QuoteReply.Comment(quote: "selected text", comment: "fix this")
+        let emptyQuote = QuoteReply.Comment(quote: "ignored", comment: "   ")
+        let attachment = ConversationAttachment(
+            attachmentID: ConversationAttachmentID("att-1"),
+            kind: .image,
+            mimeType: "image/png",
+            byteCount: 128,
+            width: 100,
+            height: 100,
+            path: "/tmp/att-1.png",
+            sourceKind: .pasted,
+            createdAt: "2026-11-27T00:00:00Z"
+        )
+        let queued = try #require(
+            QueuedMessage.fromComposer(
+                draft: "  and check tests  ",
+                quotes: [quote, emptyQuote],
+                attachments: [attachment],
+                routing: routing
+            )
+        )
+        #expect(queued.body == "> selected text\n\nfix this\n\nand check tests")
+        #expect(queued.previewText == "and check tests")
+        #expect(queued.quoteCount == 1)
+        #expect(queued.imageCount == 1)
+        #expect(QueuedMessage.fromComposer(draft: "   ", quotes: [emptyQuote], attachments: [], routing: routing) == nil)
     }
 }

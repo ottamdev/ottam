@@ -685,7 +685,11 @@ private struct ChatRoundedComposer: View {
             // caller as a failed press. Accessibility clients see that failure
             // even though the message was queued.
             Task { @MainActor in
-                guard model.enqueue(messageText, attachments: attachments) else { return }
+                guard model.enqueue(
+                    draft,
+                    quotes: quotes.wrappedValue,
+                    attachments: attachments
+                ) else { return }
                 draft = ""
                 quotes.wrappedValue.removeAll()
                 // The queued message owns these now — cleared from the composer,
@@ -1859,41 +1863,93 @@ private struct ChatQueuedMessagesButton: View {
     }
 
     private func row(_ message: QueuedMessage) -> some View {
-        HStack(alignment: .top, spacing: 6) {
-            // An attachment-only message has no body to show, so name it rather
-            // than rendering an empty row the reader cannot tell apart.
-            Text(message.body.isEmpty ? "Image" : message.body)
-                .appFont(.callout)
-                .lineLimit(3)
-                .fixedSize(horizontal: false, vertical: true)
-                .frame(maxWidth: .infinity, alignment: .leading)
+        let previewText = message.previewText
+        return HStack(alignment: previewText == nil ? .center : .top, spacing: 6) {
+            VStack(alignment: .leading, spacing: 5) {
+                if let previewText {
+                    Text(previewText)
+                        .appFont(.callout)
+                        .lineLimit(3)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
 
-            Button {
-                sendNow(message)
-            } label: {
-                Image(systemName: "arrow.up.circle")
-                    .font(.system(size: 13))
+                if message.quoteCount > 0 || message.imageCount > 0 {
+                    HStack(spacing: 5) {
+                        if message.quoteCount > 0 {
+                            attachmentBadge(
+                                systemImage: "quote.opening",
+                                count: message.quoteCount,
+                                label: message.quoteCount == 1
+                                    ? "1 quoted reply"
+                                    : "\(message.quoteCount) quoted replies"
+                            )
+                        }
+                        if message.imageCount > 0 {
+                            attachmentBadge(
+                                systemImage: "photo",
+                                count: message.imageCount,
+                                label: message.imageCount == 1
+                                    ? "1 attached image"
+                                    : "\(message.imageCount) attached images"
+                            )
+                        }
+                    }
+                }
             }
-            .buttonStyle(.borderless)
-            .foregroundStyle(.secondary)
-            .help("Send Now")
-            .accessibilityLabel("Send Now")
-            .accessibilityIdentifier(AccessibilityID.chatQueuedMessageSendNow)
+            .frame(maxWidth: .infinity, alignment: .leading)
 
-            Button {
-                remove(message)
-            } label: {
-                Image(systemName: "trash")
-                    .font(.system(size: 12))
+            HStack(spacing: 4) {
+                Button {
+                    sendNow(message)
+                } label: {
+                    Image(systemName: "arrow.up.circle")
+                        .font(.system(size: 13))
+                        .frame(width: 18, height: 18)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.borderless)
+                .foregroundStyle(.secondary)
+                .help("Send Now")
+                .accessibilityLabel("Send Now")
+                .accessibilityIdentifier(AccessibilityID.chatQueuedMessageSendNow)
+
+                Button {
+                    remove(message)
+                } label: {
+                    Image(systemName: "trash")
+                        .font(.system(size: 12))
+                        .frame(width: 18, height: 18)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.borderless)
+                .foregroundStyle(.secondary)
+                .help("Remove")
+                .accessibilityLabel("Remove")
+                .accessibilityIdentifier(AccessibilityID.chatQueuedMessageRemove)
             }
-            .buttonStyle(.borderless)
-            .foregroundStyle(.secondary)
-            .help("Remove")
-            .accessibilityLabel("Remove")
-            .accessibilityIdentifier(AccessibilityID.chatQueuedMessageRemove)
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 7)
+    }
+
+    private func attachmentBadge(
+        systemImage: String,
+        count: Int,
+        label: String
+    ) -> some View {
+        HStack(spacing: 3) {
+            Image(systemName: systemImage)
+                .font(.system(size: 10, weight: .medium))
+            Text("\(count)")
+                .font(.caption.monospacedDigit().weight(.medium))
+        }
+        .foregroundStyle(.secondary)
+        .padding(.horizontal, 6)
+        .padding(.vertical, 2)
+        .background(.quaternary, in: Capsule())
+        .help(label)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(label)
     }
 
     /// Promotes one message past the rest. It leaves by the ordinary send path,
