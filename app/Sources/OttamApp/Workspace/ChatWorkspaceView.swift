@@ -1108,6 +1108,7 @@ private struct ChatLandingComposer: View {
                 HStack(alignment: .firstTextBaseline, spacing: 16) {
                     if offersRootChoice {
                         ChatWorkingRootMenu(model: model, addProject: addProject)
+                            .layoutPriority(1)
                     }
                     if model.canDraftWorktree {
                         HStack(alignment: .firstTextBaseline, spacing: 4) {
@@ -1116,6 +1117,7 @@ private struct ChatLandingComposer: View {
                                 .disabled(model.isSubmitting)
                                 .help("Work in a new git worktree on its own branch, apart from the project's checkout")
                                 .accessibilityIdentifier(AccessibilityID.chatWorktreeToggle)
+                                .layoutPriority(1)
                             if model.draftCreatesWorktree {
                                 ChatWorktreeBaseBranchPicker(model: model, backend: backend)
                             }
@@ -1173,6 +1175,7 @@ private struct ChatWorktreeBaseBranchPicker: View {
         case current
         case branch(String)
         case navigate(Page)
+        case retry
     }
 
     @State private var isPresented = false
@@ -1209,11 +1212,12 @@ private struct ChatWorktreeBaseBranchPicker: View {
                             Image(systemName: "chevron.up.chevron.down")
                                 .font(.system(size: 9, weight: .semibold))
                                 .foregroundStyle(.secondary)
+                                .accessibilityHidden(true)
                         }
                         .contentShape(.rect)
                     }
                     .buttonStyle(.plain)
-                    .disabled(model.isSubmitting || menuState.isLoading)
+                    .disabled(model.isSubmitting || menuState.isTriggerDisabled)
                     .help(menuState.helpText)
                     .accessibilityLabel("Base branch")
                     .accessibilityValue(menuState.selectedTitle)
@@ -1258,20 +1262,21 @@ private struct ChatWorktreeBaseBranchPicker: View {
             menuHeader("Base branch")
             primaryBranchRow(
                 title: menuState.currentHeadTitle,
-                subtitle: "Current",
+                subtitle: menuState.isCurrentHeadAvailable ? "Current" : "No commits yet",
                 id: .current,
-                isSelected: menuState.isCurrentSelected
+                isSelected: menuState.isCurrentSelected,
+                disabled: !menuState.isCurrentHeadAvailable
             ) {
-                model.selectDraftWorktreeBaseRef(nil)
+                model.selectDraftWorktreeBase(.current)
             }
             if let defaultBranch = menuState.defaultBranch {
                 primaryBranchRow(
                     title: defaultBranch.name,
                     subtitle: "Default",
                     id: .branch(defaultBranch.refName),
-                    isSelected: menuState.effectiveBaseRef == defaultBranch.refName
+                    isSelected: menuState.isDefaultSelected
                 ) {
-                    model.selectDraftWorktreeBaseRef(defaultBranch.refName)
+                    model.selectDraftWorktreeBase(.defaultBranch)
                 }
             }
             if let custom = menuState.selectedCustomBranch {
@@ -1281,8 +1286,35 @@ private struct ChatWorktreeBaseBranchPicker: View {
                     id: .branch(custom.refName),
                     isSelected: true
                 ) {
-                    model.selectDraftWorktreeBaseRef(custom.refName)
+                    model.selectDraftWorktreeBase(.branch(custom.refName))
                 }
+            } else if let missingRef = menuState.missingSelectedRef {
+                primaryBranchRow(
+                    title: WorktreeBaseBranchMenuState.shortDisplayName(for: missingRef),
+                    subtitle: "Not found in repository",
+                    id: .branch(missingRef),
+                    isSelected: true
+                ) {
+                    model.selectDraftWorktreeBase(.branch(missingRef))
+                }
+            }
+            if menuState.loadError != nil, menuState.result == nil {
+                Divider()
+                    .padding(.vertical, 5)
+                HStack(spacing: 8) {
+                    Text("Could not list branches")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Spacer(minLength: 0)
+                    Button("Retry") {
+                        Task { await model.loadDraftWorktreeBranches(backend: backend) }
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .disabled(menuState.isLoading)
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 3)
             }
             if menuState.hasLocalBranchesDrilldown || menuState.hasRemoteBranchesDrilldown {
                 Divider()
@@ -1325,7 +1357,7 @@ private struct ChatWorktreeBaseBranchPicker: View {
                         )
                         guard let top = matches.first else { return }
                         isPresented = false
-                        model.selectDraftWorktreeBaseRef(menuState.selectionRef(for: top))
+                        model.selectDraftWorktreeBase(.branch(top.refName))
                     }
                     .padding(.horizontal, 4)
                     .padding(.top, 6)
@@ -1362,15 +1394,17 @@ private struct ChatWorktreeBaseBranchPicker: View {
     ) -> some View {
         VStack(alignment: .leading, spacing: 1) {
             ForEach(branches, id: \.refName) { branch in
+                let isSelected = menuState.isBranchSelected(branch)
                 Button {
                     isPresented = false
-                    model.selectDraftWorktreeBaseRef(menuState.selectionRef(for: branch))
+                    model.selectDraftWorktreeBase(.branch(branch.refName))
                 } label: {
                     HStack(spacing: 6) {
                         Image(systemName: "checkmark")
                             .font(.system(size: 11, weight: .semibold))
-                            .opacity(menuState.isBranchSelected(branch) ? 1 : 0)
+                            .opacity(isSelected ? 1 : 0)
                             .frame(width: 13)
+                            .accessibilityHidden(true)
                         Text(branch.name)
                             .lineLimit(1)
                             .truncationMode(.tail)
@@ -1380,6 +1414,7 @@ private struct ChatWorktreeBaseBranchPicker: View {
                 }
                 .buttonStyle(.plain)
                 .help(branch.name)
+                .accessibilityAddTraits(isSelected ? .isSelected : [])
                 .id(RowID.branch(branch.refName))
             }
         }
@@ -1390,6 +1425,7 @@ private struct ChatWorktreeBaseBranchPicker: View {
         subtitle: String,
         id: RowID,
         isSelected: Bool,
+        disabled: Bool = false,
         action: @escaping () -> Void
     ) -> some View {
         Button {
@@ -1401,6 +1437,7 @@ private struct ChatWorktreeBaseBranchPicker: View {
                     .font(.system(size: 11, weight: .semibold))
                     .opacity(isSelected ? 1 : 0)
                     .frame(width: 13)
+                    .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 1) {
                     Text(title)
                         .lineLimit(1)
@@ -1411,10 +1448,12 @@ private struct ChatWorktreeBaseBranchPicker: View {
                 }
                 Spacer(minLength: 0)
             }
-            .rowHover(id, in: $hoveredRow)
+            .rowHover(id, in: $hoveredRow, highlighted: !disabled)
         }
         .buttonStyle(.plain)
+        .disabled(disabled)
         .help(title)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 
     private func menuHeader(_ title: String) -> some View {

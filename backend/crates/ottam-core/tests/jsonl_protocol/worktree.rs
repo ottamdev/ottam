@@ -781,7 +781,10 @@ fn worktree_base_branches_and_explicit_base_ref() {
     assert!(!path.join("auth.txt").exists(), "feature branch commit should not be in main worktree");
     assert!(!path.join("dirty.txt").exists(), "uncommitted file should not be copied into worktree");
 
-    // Missing and flag-shaped base refs fail cleanly without leaving worktrees behind.
+    let worktrees_before = run_git(repo.path(), ["worktree", "list", "--porcelain"]);
+    let branches_before = run_git(repo.path(), ["branch", "--list", "ottam/*"]);
+
+    // Missing and invalid base refs fail cleanly without leaving worktrees or branches behind.
     let missing = core.send(json!({
         "id": 82,
         "method": "conversation.create",
@@ -811,10 +814,56 @@ fn worktree_base_branches_and_explicit_base_ref() {
             },
             "message": {"body": "Invalid base", "idempotencyKey": "worktree-invalid-base"},
             "createWorktree": true,
-            "worktreeBaseRef": "--all"
+            "worktreeBaseRef": "HEAD~1"
         }
     }));
     assert_error_data_kind(&invalid, "worktreeInvalidBaseRef");
+
+    assert_eq!(run_git(repo.path(), ["worktree", "list", "--porcelain"]), worktrees_before);
+    assert_eq!(run_git(repo.path(), ["branch", "--list", "ottam/*"]), branches_before);
+
+    // Passing worktreeBaseRef without createWorktree is rejected.
+    let misplaced = core.send(json!({
+        "id": 84,
+        "method": "conversation.create",
+        "params": {
+            "workspaceID": workspace_id,
+            "workingRoot": {
+                "kind": "project",
+                "projectID": project_id,
+                "sourceID": source_id
+            },
+            "message": {"body": "No worktree", "idempotencyKey": "worktree-misplaced-base"},
+            "createWorktree": false,
+            "worktreeBaseRef": "refs/heads/main"
+        }
+    }));
+    assert_error_data_kind(&misplaced, "invalidParams");
+
+    // Cutting from a remote-tracking ref works cleanly.
+    repo.git(["update-ref", "refs/remotes/origin/release", &main_commit]);
+    let from_remote = core.send(json!({
+        "id": 85,
+        "method": "conversation.create",
+        "params": {
+            "workspaceID": workspace_id,
+            "workingRoot": {
+                "kind": "project",
+                "projectID": project_id,
+                "sourceID": source_id
+            },
+            "message": {"body": "Release hotfix", "idempotencyKey": "worktree-remote-base"},
+            "createWorktree": true,
+            "worktreeBaseRef": "refs/remotes/origin/release"
+        }
+    }));
+    assert_success_response(&from_remote, &json!(85));
+    let remote_conv = &from_remote["result"]["conversation"];
+    assert_eq!(
+        remote_conv["conversation"]["workingRoot"]["worktree"]["baseCommit"].as_str(),
+        Some(main_commit.as_str())
+    );
+    assert_eq!(run_git(&worktree_path(remote_conv), ["rev-parse", "HEAD"]).trim(), main_commit);
 
     core.shutdown();
 }

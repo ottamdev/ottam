@@ -8,8 +8,8 @@ public extension UIScenarioDefinition {
     static let chatWorktreeConversation = UIScenarioDefinition(
         descriptor: ScenarioDescriptor(
             id: "chat.worktree-conversation",
-            description: "Tick Worktree under a new chat's composer and send: the conversation opens in its "
-                + "own worktree, a terminal opens there, and the next new chat keeps the checkbox.",
+            description: "Tick Worktree under a new chat's composer, open the base-branch popover, and send: "
+                + "the conversation opens in its own worktree, a terminal opens there, and the next new chat resets Worktree to off.",
             tags: ["chat", "worktree", "focused"],
             requirements: ["Accessibility", "Screen Recording", "ottam-test-acp"]
         ),
@@ -27,6 +27,7 @@ public extension UIScenarioDefinition {
         let submit = context.element(id: AccessibilityID.chatSubmit)
         let worktree = context.element(id: AccessibilityID.chatWorktreeToggle)
         let worktreeBaseBranch = context.element(id: AccessibilityID.chatWorktreeBaseBranchMenu)
+        let worktreePopover = context.element(id: AccessibilityID.chatWorktreeBaseBranchPopover)
         let pickTerminal = context.element(id: AccessibilityID.conversationToolsPickTerminal)
         let terminal = context.element(id: AccessibilityID.terminalSurface)
 
@@ -38,6 +39,7 @@ public extension UIScenarioDefinition {
         try await context.press(worktree)
         try await context.waitFor(.valueEquals(worktree, "1"), timeout: 5)
         try await context.waitFor(.exists(worktreeBaseBranch), timeout: 5)
+        try await context.waitFor(.valueEquals(worktreeBaseBranch, "main"), timeout: 5)
         try await context.capture(routeCapture(
             id: "chat-worktree-draft",
             required: [
@@ -46,6 +48,16 @@ public extension UIScenarioDefinition {
                 AccessibilityID.chatWorktreeBaseBranchMenu,
             ]
         ))
+
+        // Open the base-branch popover, capture it, and pick Current to dismiss.
+        try await context.press(worktreeBaseBranch)
+        try await context.waitFor(.exists(worktreePopover), timeout: 5)
+        try await context.capture(routeCapture(
+            id: "chat-worktree-popover",
+            required: [AccessibilityID.chatWorktreeBaseBranchPopover]
+        ))
+        try await context.pressControl(named: "main, Current", waitForText: "main")
+        try await context.waitFor(.notExists(worktreePopover), timeout: 5)
 
         try context.armACP(.complete, reply: "Working in the worktree.")
         try await context.setValue("Worktree A", on: composer)
@@ -70,9 +82,10 @@ public extension UIScenarioDefinition {
             required: [AccessibilityID.conversationTools, AccessibilityID.terminalSurface]
         ))
 
-        // The checkbox is remembered for the next draft.
+        // New Chat resets Worktree to off and hides the base-branch picker.
         try await context.pressControl(named: "New Chat", waitForText: "New Chat")
         try await waitForChat(context)
-        try await context.waitFor(.valueEquals(worktree, "1"), timeout: 10)
+        try await context.waitFor(.valueEquals(worktree, "0"), timeout: 10)
+        try await context.assert(.notExists(worktreeBaseBranch))
     }
 }

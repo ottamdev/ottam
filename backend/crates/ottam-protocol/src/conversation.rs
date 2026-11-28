@@ -645,9 +645,9 @@ pub struct ConversationCreateParams {
     /// conversation to it. Needs a project working root.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub create_worktree: bool,
-    /// Optional git branch or ref on the primary checkout to cut the worktree
-    /// from when `createWorktree` is true. Defaults to the primary checkout's
-    /// current HEAD when omitted.
+    /// Optional full branch ref (`refs/heads/…` or `refs/remotes/…`) on the
+    /// primary checkout to cut the worktree from when `createWorktree` is true.
+    /// Defaults to the primary checkout's current HEAD when omitted.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub worktree_base_ref: Option<String>,
 }

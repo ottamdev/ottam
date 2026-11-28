@@ -3695,7 +3695,7 @@ public struct ConversationCreateParams: Codable, Equatable, Sendable {
     public var message: ConversationInitialMessage?
     /// Work in a new git worktree: Core cuts a branch off `worktreeBaseRef` (or the project's primary checkout HEAD when omitted) and links the conversation to it. Needs a project working root.
     public var createWorktree: Bool
-    /// Optional git branch or ref on the primary checkout to cut the worktree from when `createWorktree` is true. Defaults to the primary checkout's current HEAD when omitted.
+    /// Optional full branch ref (`refs/heads/…` or `refs/remotes/…`) on the primary checkout to cut the worktree from when `createWorktree` is true. Defaults to the primary checkout's current HEAD when omitted.
     public var worktreeBaseRef: String?
 
     public init(
@@ -5469,7 +5469,7 @@ public struct WorktreeBaseBranchesResult: Codable, Equatable, Sendable {
     public var currentBranch: String?
     /// Short commit hash of HEAD when the primary checkout has a detached HEAD.
     public var detachedHead: String?
-    /// Detected default branch's `refName` (`refs/remotes/origin/HEAD`, or local `main`/`master`), when present in `branches`.
+    /// Detected default branch's `refName` (prefers the local branch that `refs/remotes/origin/HEAD` points to, else its remote target, else local `main`/`master`, else `origin/main`/`origin/master`), when present in `branches`.
     public var defaultBranchRef: String?
     /// Whether the primary checkout has staged, unstaged, or untracked changes.
     public var primaryHasUncommittedChanges: Bool

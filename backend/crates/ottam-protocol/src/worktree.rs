@@ -56,8 +56,10 @@ pub struct WorktreeBaseBranchesResult {
     /// Short commit hash of HEAD when the primary checkout has a detached HEAD.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub detached_head: Option<String>,
-    /// Detected default branch's `refName` (`refs/remotes/origin/HEAD`, or local
-    /// `main`/`master`), when present in `branches`.
+    /// Detected default branch's `refName` (prefers the local branch that
+    /// `refs/remotes/origin/HEAD` points to, else its remote target, else local
+    /// `main`/`master`, else `origin/main`/`origin/master`), when present in
+    /// `branches`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub default_branch_ref: Option<String>,
     /// Whether the primary checkout has staged, unstaged, or untracked changes.

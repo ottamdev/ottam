@@ -412,10 +412,7 @@ final class ChatWorkspaceModel {
     private static func selectedThoughtLevelStorageKey(for engineID: EngineID) -> String {
         "chat.selectedThoughtLevelID.\(engineID.rawValue)"
     }
-    private static let worktreeEnabledStorageKey = "chat.worktreeEnabled"
-    private static func worktreeBaseRefStorageKey(for projectID: ProjectID) -> String {
-        "chat.worktreeBaseRef.\(projectID.rawValue)"
-    }
+    private static let worktreeBasePreferenceStorageKey = "chat.worktreeBasePreference"
     nonisolated private static let logger = Logger(
         subsystem: Bundle.main.bundleIdentifier ?? "dev.ottam.Ottam",
         category: "Chat"
@@ -428,30 +425,30 @@ final class ChatWorkspaceModel {
     var draftWorkingRoot: WorkingRootSelection = .workspaceFiles {
         didSet {
             if draftWorkingRoot != oldValue {
-                draftWorktreeBranches = nil
-                draftWorktreeBranchesSourceID = nil
-                restoreDraftWorktreeBaseRef()
+                invalidateDraftWorktreeBranches()
+                if case .branch = draftWorktreeBaseSelection {
+                    draftWorktreeBaseSelection = restoredWorktreeBasePreference()
+                }
             }
         }
     }
-    /// The composer's Worktree checkbox. Persisted in `UserDefaults` as a
-    /// new-chat default, and read only where `canDraftWorktree` offers it.
+    /// The composer's Worktree checkbox. Always starts off for a new chat so
+    /// worktree creation is an explicit choice rather than a sticky default.
     var draftCreatesWorktree = false {
         // A send error was about the draft as it was.
-        didSet {
-            if draftCreatesWorktree != oldValue {
-                errorText = nil
-                defaults.set(draftCreatesWorktree, forKey: Self.worktreeEnabledStorageKey)
-            }
-        }
+        didSet { if draftCreatesWorktree != oldValue { errorText = nil } }
     }
-    /// Selected base ref for the next worktree chat (`nil` = primary checkout's
-    /// current HEAD). Persisted per project in `UserDefaults`.
-    var draftWorktreeBaseRef: String? = nil {
-        didSet { if draftWorktreeBaseRef != oldValue { errorText = nil } }
+    /// Active base-branch selection for the current draft worktree. Only
+    /// `.current` vs. `.defaultBranch` persists in `UserDefaults`; one-off
+    /// `.branch(ref)` picks stay scoped to the current draft.
+    var draftWorktreeBaseSelection: WorktreeBaseSelection = .current {
+        didSet { if draftWorktreeBaseSelection != oldValue { errorText = nil } }
     }
     private(set) var draftWorktreeBranches: WorktreeBaseBranchesResult?
     private(set) var draftWorktreeBranchesSourceID: ProjectSourceID?
+    private(set) var draftWorktreeBranchesLoading = false
+    private(set) var draftWorktreeBranchesError: String?
+    @ObservationIgnored private var worktreeBranchesLoadGeneration: UInt64 = 0
     /// Advances whenever the composer-first landing starts a logically new
     /// draft without necessarily leaving the Chat route.
     private(set) var draftGeneration = 0
@@ -1298,7 +1295,7 @@ final class ChatWorkspaceModel {
         self.defaults = defaults
         self.transcriptCache = transcriptCache ?? ConversationTranscriptCache()
         draftEngineID = defaults.string(forKey: Self.selectedEngineStorageKey).map(EngineID.init)
-        draftCreatesWorktree = defaults.bool(forKey: Self.worktreeEnabledStorageKey)
+        draftWorktreeBaseSelection = restoredWorktreeBasePreference()
         restoreDraftSelections()
         let pressure = DispatchSource.makeMemoryPressureSource(eventMask: [.warning, .critical], queue: .main)
         pressure.setEventHandler { [weak self] in
@@ -2327,35 +2324,64 @@ final class ChatWorkspaceModel {
         if case .project = draftWorkingRoot { true } else { false }
     }
 
-    var draftProjectID: ProjectID? {
-        if case .project(let projectID, _) = draftWorkingRoot { projectID } else { nil }
-    }
-
     var draftProjectSourceID: ProjectSourceID? {
         if case .project(_, let sourceID) = draftWorkingRoot { sourceID } else { nil }
     }
 
     var draftWorktreeBaseBranchMenu: WorktreeBaseBranchMenuState {
         let loaded = draftWorktreeBranchesSourceID == draftProjectSourceID ? draftWorktreeBranches : nil
-        return WorktreeBaseBranchMenuState(result: loaded, selectedBaseRef: draftWorktreeBaseRef)
+        return WorktreeBaseBranchMenuState(
+            result: loaded,
+            isLoading: draftWorktreeBranchesLoading,
+            loadError: draftWorktreeBranchesError,
+            selection: draftWorktreeBaseSelection
+        )
     }
 
-    func selectDraftWorktreeBaseRef(_ refName: String?) {
-        draftWorktreeBaseRef = refName
-        if let projectID = draftProjectID {
-            persistDraft(refName, forKey: Self.worktreeBaseRefStorageKey(for: projectID))
+    func selectDraftWorktreeBase(_ selection: WorktreeBaseSelection) {
+        draftWorktreeBaseSelection = selection
+        switch selection {
+        case .current:
+            defaults.set(WorktreeBasePreference.current.rawValue, forKey: Self.worktreeBasePreferenceStorageKey)
+        case .defaultBranch:
+            defaults.set(WorktreeBasePreference.defaultBranch.rawValue, forKey: Self.worktreeBasePreferenceStorageKey)
+        case .branch:
+            // One-off named branch picks never overwrite the saved Current/Default preference.
+            break
         }
     }
 
-    private func restoreDraftWorktreeBaseRef() {
-        guard let projectID = draftProjectID else {
-            draftWorktreeBaseRef = nil
-            return
+    private func restoredWorktreeBasePreference() -> WorktreeBaseSelection {
+        switch defaults.string(forKey: Self.worktreeBasePreferenceStorageKey)
+            .flatMap(WorktreeBasePreference.init(rawValue:))
+        {
+        case .defaultBranch: .defaultBranch
+        case .current, nil: .current
         }
-        draftWorktreeBaseRef = defaults.string(forKey: Self.worktreeBaseRefStorageKey(for: projectID))
+    }
+
+    private func resetDraftWorktreeForNewChat() {
+        draftCreatesWorktree = false
+        draftWorktreeBaseSelection = restoredWorktreeBasePreference()
+    }
+
+    private func invalidateDraftWorktreeBranches() {
+        worktreeBranchesLoadGeneration &+= 1
+        draftWorktreeBranches = nil
+        draftWorktreeBranchesSourceID = nil
+        draftWorktreeBranchesLoading = false
+        draftWorktreeBranchesError = nil
     }
 
     func loadDraftWorktreeBranches(backend: DiffReviewModel) async {
+        await loadDraftWorktreeBranches { workspaceID, sourceID in
+            try await backend.worktreeBaseBranches(workspaceID: workspaceID, projectSourceID: sourceID)
+        }
+    }
+
+    func loadDraftWorktreeBranches(
+        fetch: @MainActor (WorkspaceID, ProjectSourceID) async throws -> WorktreeBaseBranchesResult
+    ) async {
         guard canDraftWorktree,
               draftCreatesWorktree,
               let workspaceID,
@@ -2363,12 +2389,14 @@ final class ChatWorkspaceModel {
         else {
             return
         }
+        worktreeBranchesLoadGeneration &+= 1
+        let generation = worktreeBranchesLoadGeneration
+        draftWorktreeBranchesLoading = true
+        draftWorktreeBranchesError = nil
         do {
-            let result = try await backend.worktreeBaseBranches(
-                workspaceID: workspaceID,
-                projectSourceID: sourceID
-            )
+            let result = try await fetch(workspaceID, sourceID)
             guard !Task.isCancelled,
+                  worktreeBranchesLoadGeneration == generation,
                   self.workspaceID == workspaceID,
                   self.draftProjectSourceID == sourceID
             else {
@@ -2376,13 +2404,18 @@ final class ChatWorkspaceModel {
             }
             draftWorktreeBranches = result
             draftWorktreeBranchesSourceID = sourceID
-            if let selected = draftWorktreeBaseRef,
-               !result.branches.contains(where: { $0.refName == selected })
-            {
-                selectDraftWorktreeBaseRef(nil)
-            }
+            draftWorktreeBranchesLoading = false
+            draftWorktreeBranchesError = nil
         } catch {
-            guard !Task.isCancelled else { return }
+            guard !Task.isCancelled,
+                  worktreeBranchesLoadGeneration == generation,
+                  self.workspaceID == workspaceID,
+                  self.draftProjectSourceID == sourceID
+            else {
+                return
+            }
+            draftWorktreeBranchesLoading = false
+            draftWorktreeBranchesError = error.localizedDescription
             Self.logger.debug("worktree base branches load failed: \(error.localizedDescription, privacy: .public)")
         }
     }
@@ -2490,9 +2523,8 @@ final class ChatWorkspaceModel {
             selectedConversationID = nil
             errorText = nil
             noticeText = nil
-            draftWorktreeBranches = nil
-            draftWorktreeBranchesSourceID = nil
-            restoreDraftWorktreeBaseRef()
+            invalidateDraftWorktreeBranches()
+            resetDraftWorktreeForNewChat()
             liveRuns = [:]
             terminalRunIDs = []
             pendingStartConversationID = nil
@@ -2715,6 +2747,7 @@ final class ChatWorkspaceModel {
         showDraftTranscript()
         cancelDetailLoad()
         draftGeneration &+= 1
+        resetDraftWorktreeForNewChat()
         selectedConversationID = nil
         selectedDetail = nil
         selectReadyLandingEngineIfNeeded()
@@ -3078,7 +3111,7 @@ final class ChatWorkspaceModel {
             let targetConversationID = selectedConversationID
             let workingRoot = draftWorkingRoot
             let createWorktree = canDraftWorktree && draftCreatesWorktree
-            let worktreeBaseRef = createWorktree ? draftWorktreeBaseBranchMenu.effectiveBaseRef : nil
+            let worktreeBaseRef = createWorktree ? draftWorktreeBaseBranchMenu.wireBaseRef : nil
             // A new chat copies the switch's default, and a run reads its value.
             await settleAlwaysAllowToolActions()
             let conversationID: ConversationID
@@ -3110,6 +3143,7 @@ final class ChatWorkspaceModel {
                     worktreeBaseRef: worktreeBaseRef
                 )
                 conversationID = created.conversation.summary.conversationID
+                resetDraftWorktreeForNewChat()
                 guard let initialInput = created.initialInput else {
                     throw ChatSubmitError.missingInitialInput
                 }
