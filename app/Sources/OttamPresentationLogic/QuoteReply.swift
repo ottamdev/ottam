@@ -19,7 +19,7 @@ public enum QuoteReply {
     }
 
     /// A reply waiting in the composer: a quoted passage and what was said about it.
-    public struct Comment: Identifiable, Equatable, Sendable {
+    public struct Comment: Identifiable, Equatable, Codable, Sendable {
         public let id: UUID
         public let quote: String
         public let comment: String

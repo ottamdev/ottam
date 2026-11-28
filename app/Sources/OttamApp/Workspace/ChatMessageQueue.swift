@@ -1,4 +1,5 @@
 import OttamBackendClient
+import OttamPresentationLogic
 import Foundation
 
 /// Where a Message is about to run: an Engine and the session options that go
@@ -32,6 +33,12 @@ struct QueuedMessage: Equatable, Identifiable, Codable, Sendable {
     let id: UUID
     let body: String
     let attachmentIDs: [ConversationAttachmentID]
+    /// Structured quote replies carried by this message for queue-popover
+    /// display; `body` holds the formatted markdown that goes on the wire.
+    let quotes: [QuoteReply.Comment]
+    /// Composer text without the formatted `quotes` prefix, or `nil` for
+    /// legacy persisted entries where `body` is displayed directly.
+    let draft: String?
     let engineID: EngineID
     let modelID: String?
     let modeID: String?
@@ -41,6 +48,8 @@ struct QueuedMessage: Equatable, Identifiable, Codable, Sendable {
         id: UUID = UUID(),
         body: String,
         attachmentIDs: [ConversationAttachmentID] = [],
+        quotes: [QuoteReply.Comment] = [],
+        draft: String? = nil,
         engineID: EngineID,
         modelID: String? = nil,
         modeID: String? = nil,
@@ -49,6 +58,8 @@ struct QueuedMessage: Equatable, Identifiable, Codable, Sendable {
         self.id = id
         self.body = body
         self.attachmentIDs = attachmentIDs
+        self.quotes = quotes
+        self.draft = draft
         self.engineID = engineID
         self.modelID = modelID
         self.modeID = modeID
@@ -59,16 +70,77 @@ struct QueuedMessage: Equatable, Identifiable, Codable, Sendable {
         id: UUID = UUID(),
         body: String,
         attachmentIDs: [ConversationAttachmentID] = [],
+        quotes: [QuoteReply.Comment] = [],
+        draft: String? = nil,
         routing: SubmissionRouting
     ) {
         self.init(
             id: id,
             body: body,
             attachmentIDs: attachmentIDs,
+            quotes: quotes,
+            draft: draft,
             engineID: routing.engine.engineID,
             modelID: routing.modelID,
             modeID: routing.modeID,
             thoughtLevelID: routing.thoughtLevelID
+        )
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        body = try container.decode(String.self, forKey: .body)
+        attachmentIDs = try container.decodeIfPresent([ConversationAttachmentID].self, forKey: .attachmentIDs) ?? []
+        quotes = try container.decodeIfPresent([QuoteReply.Comment].self, forKey: .quotes) ?? []
+        draft = try container.decodeIfPresent(String.self, forKey: .draft)
+        engineID = try container.decode(EngineID.self, forKey: .engineID)
+        modelID = try container.decodeIfPresent(String.self, forKey: .modelID)
+        modeID = try container.decodeIfPresent(String.self, forKey: .modeID)
+        thoughtLevelID = try container.decodeIfPresent(String.self, forKey: .thoughtLevelID)
+    }
+
+    var quoteCount: Int { quotes.count }
+    var imageCount: Int { attachmentIDs.count }
+
+    /// Concise text for the queue popover row, keeping raw `> quote` markdown
+    /// out of the preview when structured `quotes` are present.
+    var previewText: String? {
+        if let draft {
+            let trimmed = draft.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmed.isEmpty {
+                return trimmed
+            }
+            let comments = quotes
+                .map { $0.comment.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty }
+            return comments.isEmpty ? nil : comments.joined(separator: " ")
+        }
+        let trimmedBody = body.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmedBody.isEmpty ? nil : trimmedBody
+    }
+
+    /// Builds a queued message from composer inputs, preserving structured
+    /// quote metadata alongside the formatted wire `body`. Returns `nil` when
+    /// there is nothing sendable.
+    static func fromComposer(
+        draft: String,
+        quotes: [QuoteReply.Comment] = [],
+        attachments: [ConversationAttachment] = [],
+        routing: SubmissionRouting
+    ) -> QueuedMessage? {
+        let trimmedDraft = draft.trimmingCharacters(in: .whitespacesAndNewlines)
+        let activeQuotes = quotes.filter {
+            QuoteReply.messageBody(quote: $0.quote, comment: $0.comment) != nil
+        }
+        let body = QuoteReply.messageBody(comments: activeQuotes, text: trimmedDraft) ?? ""
+        guard !body.isEmpty || !attachments.isEmpty else { return nil }
+        return QueuedMessage(
+            body: body,
+            attachmentIDs: attachments.map(\.attachmentID),
+            quotes: activeQuotes,
+            draft: trimmedDraft,
+            routing: routing
         )
     }
 }

@@ -3094,20 +3094,21 @@ final class ChatWorkspaceModel {
     /// the message belongs to that run's Engine and that run's options, and the
     /// picker may have moved to a different Engine since the turn started.
     @discardableResult
-    func enqueue(_ draft: String, attachments: [ConversationAttachment] = []) -> Bool {
-        let body = draft.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !body.isEmpty || !attachments.isEmpty,
-              let conversationID = selectedConversationID,
-              let routing = submissionRouting
+    func enqueue(
+        _ draft: String,
+        quotes: [QuoteReply.Comment] = [],
+        attachments: [ConversationAttachment] = []
+    ) -> Bool {
+        guard let conversationID = selectedConversationID,
+              let routing = submissionRouting,
+              let queued = QueuedMessage.fromComposer(
+                  draft: draft,
+                  quotes: quotes,
+                  attachments: attachments,
+                  routing: routing
+              )
         else { return false }
-        messageQueue.append(
-            QueuedMessage(
-                body: body,
-                attachmentIDs: attachments.map(\.attachmentID),
-                routing: routing
-            ),
-            to: conversationID
-        )
+        messageQueue.append(queued, to: conversationID)
         persistQueue()
         return true
     }
