@@ -212,7 +212,7 @@ struct AgentsSettingsSection: View {
         .navigationTitle(providerName(harnessID))
         .task { try? await model.detectSetups() }
         .sheet(isPresented: Binding(get: { creatingHarness != nil }, set: { if !$0 { creatingHarness = nil } })) {
-            AgentProfileLabelSheet(title: "Create \(providerName(harnessID)) Profile", actionTitle: "Create", initialLabel: "", existingLabels: instances(harnessID).compactMap(\.label)) { label in
+            AgentProfileLabelSheet(title: "Create \(providerName(harnessID)) Profile", actionTitle: "Create", initialLabel: "", existingLabels: instances(harnessID).compactMap(\.label), note: AgentSettingsPresentation.profileCreationNote(instances(harnessID).first)) { label in
                 let id = try await model.createProfile(harnessID: harnessID, label: label)
                 navigationPath.append(id)
             }
@@ -385,7 +385,7 @@ private struct AgentsSettingsListRow: View {
                 VStack(alignment: .leading, spacing: 1) {
                     let label = agent.label ?? agent.displayName
                     Text(label == agent.displayName ? (agent.homeKind == .existing ? "Your CLI setup" : "Ottam profile") : label)
-                    Text(agent.homeKind == .existing ? "Shares sign-in and sessions with your CLI" : "Separate sign-in and sessions")
+                    Text(AgentSettingsPresentation.profileRowSubtitle(agent))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -622,9 +622,21 @@ struct AgentSettingsDetail: View {
                     Text("Account")
                 } footer: {
                     if agent.homeKind == .existing {
-                        Text("This is your CLI’s account. Signing in here signs in the CLI in Terminal too.")
-                    } else if let footnote = presentation.accountFootnote {
-                        Text(footnote)
+                        // A Mac-wide login is every profile's too, so its
+                        // replacement warning applies to the CLI's home as well.
+                        let shared = agent.signInScope == .mac ? presentation.accountFootnote : nil
+                        Text(["This is your CLI’s account. Signing in here signs in the CLI in Terminal too.", shared]
+                            .compactMap { $0 }.joined(separator: " "))
+                    } else {
+                        // A login kept in this Mac's Keychain is the CLI's and
+                        // every profile's, so the home is not an account.
+                        let notes = [
+                            AgentSettingsPresentation.sharedSignInNote(agent),
+                            presentation.accountFootnote,
+                        ].compactMap { $0 }
+                        if !notes.isEmpty {
+                            Text(notes.joined(separator: " "))
+                        }
                     }
                 }
 
@@ -729,7 +741,7 @@ struct AgentSettingsDetail: View {
             }
         }
         .sheet(isPresented: $isDeleting) {
-            AgentProfileDeleteSheet(label: agent?.label ?? "this profile", managed: agent?.homeKind == .managed) { purge in
+            AgentProfileDeleteSheet(label: agent?.label ?? "this profile", managed: agent?.homeKind == .managed, purgeNote: AgentSettingsPresentation.purgeNote(agent)) { purge in
                 isRemoving = true
                 isDeletingProfile = true
                 removalTask = Task {

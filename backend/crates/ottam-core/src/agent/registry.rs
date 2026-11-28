@@ -10,8 +10,8 @@ use super::types::{
     BinaryArtifact, CancelPermissionBroker, ChildSessionTags, ClientPlugin, FormSkip,
     HarnessAdapter, HarnessAuthState, HarnessError, HarnessErrorKind, HarnessPermissionBroker,
     HomeArgument, HomeSetting, HomeTarget, HomeVariable, McpConnections, RuntimeAvailability,
-    RuntimeSource, SignInProof, SubagentFollowUpTool, SubagentHandbackTool, SubagentMessageTools,
-    TerminalLoginReveal,
+    RuntimeSource, SignInProof, SignInScope, SubagentFollowUpTool, SubagentHandbackTool,
+    SubagentMessageTools, TerminalLoginReveal,
 };
 use std::collections::BTreeMap;
 use std::io;
@@ -383,6 +383,32 @@ type SessionCatalog = (
     BTreeMap<String, AgentModelSelects>,
 );
 
+/// Record a profile's verdict on its Mac-wide login. A session that opens
+/// proves only that the Keychain item exists, so its `Ready` never clears a
+/// failure; only a completed sign-in does (`AgentRegistry::note_signed_in`).
+fn note_shared_auth(
+    shared_auth: &StdMutex<BTreeMap<String, HarnessAuthState>>,
+    definition: &AgentDefinition,
+    auth_state: HarnessAuthState,
+) {
+    if definition.presentation.sign_in_scope != SignInScope::Mac {
+        return;
+    }
+    let mut shared = shared_auth
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let harness = definition.harness_id().to_owned();
+    match auth_state {
+        HarnessAuthState::Missing => {
+            shared.insert(harness, auth_state);
+        }
+        HarnessAuthState::Ready => {
+            shared.entry(harness).or_insert(auth_state);
+        }
+        HarnessAuthState::Unknown | HarnessAuthState::Authenticating => {}
+    }
+}
+
 fn session_catalog(status: &AdapterStatus) -> SessionCatalog {
     (
         status.models.clone(),
@@ -454,8 +480,15 @@ pub struct AgentRegistry {
     /// per agent. The probe runs before any managed adapter exists — right
     /// after install, and on every cold launch — which is exactly when the
     /// managed status has nothing to say. Consulted only while no managed
-    /// adapter exists; once one starts, its own verdict wins.
-    probed_auth: StdMutex<BTreeMap<AgentId, HarnessAuthState>>,
+    /// adapter exists; once one starts, its own verdict wins. A managed
+    /// adapter's own verdict replaces it here too, so it outlives that
+    /// adapter: a probe's "signed in" (agy proving only that a Keychain login
+    /// exists) must not come back after a session found the login refused.
+    probed_auth: Arc<StdMutex<BTreeMap<AgentId, HarnessAuthState>>>,
+    /// The newest verdict any profile of a `SignInScope::Mac` agent saw, by
+    /// harness: one Keychain login backs them all, so a later failure or a
+    /// later confirmed login outranks every earlier verdict.
+    shared_auth: Arc<StdMutex<BTreeMap<String, HarnessAuthState>>>,
     auth_changes: Arc<OnceLock<AuthChangeSink>>,
     session_catalogs: Arc<OnceLock<SessionCatalogSink>>,
     refresh_homes: StdMutex<BTreeMap<AgentId, super::refresh_lock::HomeUse>>,
@@ -587,7 +620,8 @@ impl AgentRegistry {
             resolver,
             home_policy: None,
             adapter_installs: None,
-            probed_auth: StdMutex::new(BTreeMap::new()),
+            probed_auth: Arc::new(StdMutex::new(BTreeMap::new())),
+            shared_auth: Arc::new(StdMutex::new(BTreeMap::new())),
             auth_changes: Arc::new(OnceLock::new()),
             session_catalogs: Arc::new(OnceLock::new()),
             refresh_homes: StdMutex::new(BTreeMap::new()),
@@ -613,6 +647,8 @@ impl AgentRegistry {
         let definition = adapter.definition().clone();
         let auth_changes = Arc::clone(&self.auth_changes);
         let session_catalogs = Arc::clone(&self.session_catalogs);
+        let probed_auth = Arc::clone(&self.probed_auth);
+        let shared_auth = Arc::clone(&self.shared_auth);
         let status_watch = tokio::spawn(async move {
             while status.changed().await.is_ok() {
                 // Cloned so the sinks never run under the watch lock: a
@@ -620,6 +656,13 @@ impl AgentRegistry {
                 let current = status.borrow_and_update().clone();
                 if current.auth_state != auth {
                     auth = current.auth_state;
+                    if matches!(auth, HarnessAuthState::Ready | HarnessAuthState::Missing) {
+                        probed_auth
+                            .lock()
+                            .unwrap_or_else(|poisoned| poisoned.into_inner())
+                            .insert(definition.agent_id.clone(), auth);
+                        note_shared_auth(&shared_auth, &definition, auth);
+                    }
                     if let Some(sink) = auth_changes.get() {
                         sink(&definition.agent_id);
                     }
@@ -669,6 +712,33 @@ impl AgentRegistry {
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
             .insert(agent_id.clone(), auth_state);
+        if let Ok(definition) = self.definition(agent_id) {
+            note_shared_auth(&self.shared_auth, &definition, auth_state);
+        }
+    }
+
+    /// A login completed for this agent: on a `SignInScope::Mac` login it is
+    /// what proves the shared login works again after a failure.
+    pub(crate) fn note_signed_in(&self, agent_id: &AgentId) {
+        if let Ok(definition) = self.definition(agent_id) {
+            if definition.presentation.sign_in_scope == SignInScope::Mac {
+                self.shared_auth
+                    .lock()
+                    .unwrap_or_else(|poisoned| poisoned.into_inner())
+                    .insert(definition.harness_id().to_owned(), HarnessAuthState::Ready);
+            }
+        }
+    }
+
+    /// Whether the shared `SignInScope::Mac` login reads as working: some
+    /// profile saw it, and no session failed since the last completed
+    /// sign-in. None yet means a sign-in may run.
+    pub(crate) fn shared_login_works(&self, definition: &AgentDefinition) -> bool {
+        self.shared_auth
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .get(definition.harness_id())
+            == Some(&HarnessAuthState::Ready)
     }
 
     /// Forget the probed verdict — the adapter is gone, so it says nothing.
@@ -2518,6 +2588,7 @@ pub(super) fn built_in_definitions() -> Vec<AgentDefinition> {
                 vendor_home: Some("~/.claude"),
                 brand: Some("anthropic"),
                 account_label: "Claude account",
+                sign_in_scope: SignInScope::Home,
                 account_kind: AccountKind::Subscription,
             },
             // Claude's login prints a browser URL and exits on its own; the
@@ -2576,6 +2647,7 @@ pub(super) fn built_in_definitions() -> Vec<AgentDefinition> {
                 vendor_home: Some("~/.codex"),
                 brand: Some("openai"),
                 account_label: "ChatGPT account",
+                sign_in_scope: SignInScope::Home,
                 account_kind: AccountKind::Subscription,
             },
             terminal_login_reveal: TerminalLoginReveal::Immediate,
@@ -2627,6 +2699,7 @@ fn push_test_definitions(definitions: &mut Vec<AgentDefinition>) {
                 vendor_home: None,
                 brand: None,
                 account_label: "Provider API key",
+                sign_in_scope: SignInScope::Home,
                 account_kind: AccountKind::ApiKey,
             },
             terminal_login_reveal: TerminalLoginReveal::Immediate,
@@ -2678,6 +2751,7 @@ fn test_binary_definition() -> Option<AgentDefinition> {
             vendor_home: None,
             brand: None,
             account_label: "Provider API key",
+            sign_in_scope: SignInScope::Home,
             account_kind: AccountKind::ApiKey,
         },
         terminal_login_reveal: TerminalLoginReveal::Immediate,
@@ -2751,6 +2825,7 @@ fn opencode_definition() -> AgentDefinition {
             vendor_home: Some("~/.config/opencode"),
             brand: Some("anomaly"),
             account_label: "Model providers",
+            sign_in_scope: SignInScope::Home,
             // With no connection OpenCode lists Zen's free `opencode/*` models
             // (`plugin/provider/opencode.ts:332-350` at 2.0.27). A Zen key
             // shares the prefix, so a Zen-only setup also reads as none.
@@ -2894,6 +2969,7 @@ fn omp_definition() -> AgentDefinition {
             vendor_home: Some("~/.omp"),
             brand: Some("omp"),
             account_label: "Model providers",
+            sign_in_scope: SignInScope::Home,
             // omp lists Apple's on-device model whenever the Mac has one
             // (`apple-foundation-models`), credentials or not.
             account_kind: AccountKind::MultiProvider {
@@ -2988,6 +3064,7 @@ fn agy_definition() -> AgentDefinition {
             vendor_home: Some("~/.gemini"),
             brand: Some("google"),
             account_label: "Google account",
+            sign_in_scope: SignInScope::Mac,
             account_kind: AccountKind::Subscription,
         },
         // `agy acp --login` prints a Google URL and waits for a pasted code.
@@ -3260,6 +3337,7 @@ mod tests {
                 vendor_home: Some("~/.codex"),
                 brand: Some("openai"),
                 account_label: "ChatGPT account",
+                sign_in_scope: SignInScope::Home,
                 account_kind: AccountKind::Subscription,
             }
         );
@@ -3292,6 +3370,7 @@ mod tests {
                 vendor_home: Some("~/.claude"),
                 brand: Some("anthropic"),
                 account_label: "Claude account",
+                sign_in_scope: SignInScope::Home,
                 account_kind: AccountKind::Subscription,
             }
         );
@@ -4305,6 +4384,18 @@ mod tests {
                 }));
         let launch = format!("{:?}", definition.launch);
         assert!(!launch.contains("systemPrompt"), "{launch}");
+    }
+
+    /// agy's Google login lives in this Mac's Keychain, shared by every
+    /// managed profile and the user's own CLI. agy advertises `auth.logout`,
+    /// but Ottam never sends it: signing a profile out would sign the CLI out.
+    #[test]
+    fn agy_shares_this_macs_sign_in_and_is_never_signed_out() {
+        assert_eq!(agy_definition().presentation.sign_in_scope, SignInScope::Mac);
+        assert!(super::super::CLIENT_FEATURES.contains(&(
+            super::super::AcpFeature::AuthLogout,
+            super::super::ClientSupport::Unsupported
+        )));
     }
 
     #[tokio::test]

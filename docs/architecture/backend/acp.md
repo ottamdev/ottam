@@ -128,9 +128,10 @@ agent shells, and first wherever npm or npx re-resolve it from their shebang
   `CLAUDE_*`.
 - Deletion tombstones the instance (survives restart, no fallback to a
   sibling). Purge removes only an unredirected managed home, never vendor state
-  (Claude keychain entries, `~/.omp`). Existing-setup homes: Ottam never
-  creates, purges, signs out, cleans locks in, or queries credentials of them;
-  detection (`agent/setup_detection.rs`) never launches or writes.
+  (Claude keychain entries, agy's Keychain login, `~/.omp`). Existing-setup
+  homes: Ottam never creates, purges, signs out, cleans locks in, or queries
+  credentials of them; detection (`agent/setup_detection.rs`) never launches
+  or writes.
 - Sign-in: `_auth/status_update` `none` means missing credentials, a
   recognized kind means ready, anything else leaves the verdict alone. Claude
   creates and loads sessions while signed out, so those never prove sign-in.
@@ -140,6 +141,17 @@ agent shells, and first wherever npm or npx re-resolve it from their shebang
   as unhandled traffic, since core does not read its verdict.
   Adapters read API keys only at launch, so secret-only auth methods are
   hidden. Under `SignInProof::ModelSelector` a clean login exit proves nothing.
+  A managed adapter's own verdict replaces the catalog probe's and outlives
+  the adapter, so a probe's "signed in" never returns after a session was
+  refused (`AgentRegistry::manage`).
+- `SignInScope::Mac`: the login lives in this Mac's Keychain, shared by every
+  profile and the user's CLI, so a home isolates state only. Ottam never signs
+  it out (`auth.logout` stays unsupported), and `agent.signIn` is refused
+  while it reads as signed in, since a new login replaces the CLI's
+  (`AgentSignInService::sign_in`). One login backs every profile, so it reads
+  as working once any profile saw it work, until a session fails; after that
+  only a completed sign-in restores it, since an opened session proves only
+  that the login exists (`AgentRegistry::shared_login_works`).
 - Claude OAuth refresh: `<home>/.oauth_refresh.lock` or legacy
   `<realpath(home)>.lock` means a refresh is running unless
   `.oauth_refresh.lock.owner` proves the holder gone (same host, matching birth
@@ -188,7 +200,15 @@ agent shells, and first wherever npm or npx re-resolve it from their shebang
   (`-32003`, `session_busy`) instead of queueing, so the runner resends.
 - Antigravity (`agy acp`) has no home variable: `--gemini-dir` moves its
   state, and its Google sign-in stays in the Keychain for every home, so
-  managed profiles share the Mac's login. Core never sends
+  managed profiles share the Mac's login (`SignInScope::Mac`). Sessions read
+  the Keychain item (service `gemini`, account `antigravity`) directly, and
+  the catalog probe's session is what shows it exists; only a session's
+  `-32000` "Authentication required" shows it stopped working. The 1.5.16
+  binary reads as saving a login to a file token in the managed home while a
+  keyring-timeout marker is under an hour old, and to the Keychain otherwise,
+  replacing the CLI's token; no completed login has confirmed which. Ottam
+  cannot choose, so Sign in warns it may replace this Mac's sign-in and asks
+  for the CLI's account. Core never sends
   `_meta.antigravity.systemPrompt`, though agy advertises
   `systemPrompt.append`. A forum answer, not confirmed as Google's, says a
   harness that injects system prompts on a consumer sign-in risks the

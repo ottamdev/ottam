@@ -45,6 +45,20 @@ pub enum AccountKind {
     },
 }
 
+/// Where an agent keeps its login, which decides what a home isolates.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum SignInScope {
+    /// In the home, so each managed profile has its own account.
+    #[default]
+    Home,
+    /// In this Mac's Keychain, outside any home: every profile and the
+    /// user's own CLI share one login (agy keeps its Google token there
+    /// whatever `--gemini-dir` says). Core never signs it out, and a sign-in
+    /// runs only once no working login exists, since it replaces the one the
+    /// CLI uses.
+    Mac,
+}
+
 /// Everything a client needs to show an agent, owned by its definition so a
 /// new agent renders without per-id switches anywhere downstream.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -60,6 +74,7 @@ pub struct AgentPresentation {
     /// What signing in connects ("ChatGPT account").
     pub account_label: &'static str,
     pub account_kind: AccountKind,
+    pub sign_in_scope: SignInScope,
 }
 
 /// The pinned coordinate an agent's adapter ships as. Carried explicitly
@@ -390,6 +405,7 @@ impl AgentDefinition {
                 brand: None,
                 account_label: "Test account",
                 account_kind: AccountKind::Subscription,
+                sign_in_scope: SignInScope::Home,
             },
             terminal_login_reveal: TerminalLoginReveal::Immediate,
             adapter: None,

@@ -94,6 +94,7 @@ fn agent_summary_ships_the_definitions_presentation() {
         vendor_home: Some("~/.newcomer"),
         brand: Some("newcomer"),
         account_label: "Newcomer providers",
+        sign_in_scope: crate::agent::SignInScope::Home,
         account_kind: crate::agent::AccountKind::MultiProvider {
             keyless_providers: &[],
         },

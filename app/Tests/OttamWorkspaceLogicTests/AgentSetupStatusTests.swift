@@ -18,6 +18,7 @@ private func agent(
         vendorName: "Anthropic",
         accountLabel: "Claude account",
         accountKind: modelProviders == nil ? .subscription : .multiProvider,
+        signInScope: .home,
         modelProviders: modelProviders,
         runtime: AgentRuntimeStatus(
             availability: runtime,

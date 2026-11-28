@@ -14,6 +14,7 @@
         "brand": "openai",
         "accountLabel": "ChatGPT account",
         "accountKind": "subscription",
+        "signInScope": "home",
         "runtime": {
           "availability": "ready",
           "source": "system",

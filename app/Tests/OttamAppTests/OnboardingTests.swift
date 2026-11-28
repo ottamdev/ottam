@@ -21,6 +21,7 @@ private func agent(
         vendorName: "Vendor",
         accountLabel: "Account",
         accountKind: .subscription,
+        signInScope: .home,
         runtime: AgentRuntimeStatus(
             availability: .ready, component: nil, foundMajor: nil, minimumMajor: nil,
             nodeVersion: nil, npxVersion: nil

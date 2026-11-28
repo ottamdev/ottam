@@ -7,6 +7,8 @@ struct AgentProfileLabelSheet: View {
     let actionTitle: String
     let initialLabel: String
     let existingLabels: [String]
+    /// What the sheet creates, shown under the name; nil shows nothing.
+    var note: String? = nil
     let submit: (String) async throws -> Void
     @Environment(\.dismiss) private var dismiss
     @State private var label = ""
@@ -27,9 +29,10 @@ struct AgentProfileLabelSheet: View {
             TextField("Profile name", text: $label).focused($focused)
                 .accessibilityIdentifier("agent.profile.label")
             if let error { Text(error).foregroundStyle(.red).fixedSize(horizontal: false, vertical: true) }
-            if actionTitle == "Create" {
-                Text("Creates an empty Ottam profile with its own sign-in. Configuration and credentials are not copied from another profile.")
+            if let note {
+                Text(note)
                     .font(.callout).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             HStack {
                 if submitting { ProgressView().controlSize(.small) }
@@ -54,6 +57,7 @@ struct AgentProfileLabelSheet: View {
 struct AgentProfileDeleteSheet: View {
     let label: String
     let managed: Bool
+    let purgeNote: String
     let submit: (Bool) -> Void
     @Environment(\.dismiss) private var dismiss
     @State private var purge = false
@@ -64,7 +68,7 @@ struct AgentProfileDeleteSheet: View {
             Text("Conversations remain readable, but this profile can no longer continue them. Other profiles and the shared provider installation are preserved.")
             if managed {
                 Toggle("Also remove this profile’s home", isOn: $purge)
-                Text("Removes this profile’s credentials, configuration and vendor sessions. Vendor keychain entries are preserved.")
+                Text(purgeNote)
                     .font(.callout).foregroundStyle(.secondary)
             } else {
                 Text("Your CLI home will be preserved.").foregroundStyle(.secondary)
