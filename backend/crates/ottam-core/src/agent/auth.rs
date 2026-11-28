@@ -240,6 +240,34 @@ impl AgentSignInService {
         }
     }
 
+    /// Whether the login every profile of this agent shares still works. The
+    /// profile's own verdict decides, since one failed session proves the
+    /// shared login stopped working; with none, any sibling's does.
+    async fn shared_login_works(&self, definition: &AgentDefinition) -> Result<bool, HarnessError> {
+        let own = self
+            .registry
+            .cached_status(&definition.agent_id)
+            .await?
+            .auth_state;
+        if own != HarnessAuthState::Unknown {
+            return Ok(own == HarnessAuthState::Ready);
+        }
+        for sibling in self.registry.definitions() {
+            if sibling.agent_id != definition.agent_id
+                && sibling.harness_id() == definition.harness_id()
+                && self
+                    .registry
+                    .cached_status(&sibling.agent_id)
+                    .await?
+                    .auth_state
+                    == HarnessAuthState::Ready
+            {
+                return Ok(true);
+            }
+        }
+        Ok(false)
+    }
+
     /// Begin a sign-in, or re-join the one already running for this agent.
     ///
     /// Returning the live session rather than starting a second one is what
@@ -269,7 +297,7 @@ impl AgentSignInService {
         // A login kept outside the home is the CLI's and every profile's: a new
         // one replaces it, so it runs only once that login stopped working.
         if definition.presentation.sign_in_scope == SignInScope::Mac
-            && self.registry.cached_status(&agent_id).await?.auth_state == HarnessAuthState::Ready
+            && self.shared_login_works(&definition).await?
         {
             return Err(HarnessError::new(
                 HarnessErrorKind::Internal,
@@ -1801,6 +1829,42 @@ mod tests {
         let refused = harness.sign_in_with(None).await.expect_err("refused");
         assert!(refused.message.contains("replace"), "{refused:?}");
         assert!(harness.terminals.roots().is_empty(), "no login started");
+    }
+
+    /// Every profile shares one Mac-wide login, so a profile with no verdict
+    /// of its own is refused while a sibling's works. Its own failed session
+    /// outranks the sibling's older "signed in".
+    #[tokio::test(start_paused = true)]
+    async fn a_new_profile_never_replaces_the_login_a_sibling_uses() {
+        let mut definition = definition();
+        definition.presentation.sign_in_scope = SignInScope::Mac;
+        let harness = Harness::with_definition(claude_methods(), brisk_policy(), definition);
+        let registry = &harness.service.registry;
+        let first = registry.definitions()[0].agent_id.clone();
+        let second = crate::agent::AgentId(format!("{}.second", first.0));
+        registry.publish_instance(crate::agent::AgentInstance {
+            id: second.clone(),
+            harness_id: crate::agent::HarnessId(first.0.clone()),
+            label: "Second".into(),
+            home: crate::agent::HomeLayout::Managed,
+            claimed: true,
+        });
+        registry.note_probed_auth(&first, HarnessAuthState::Ready);
+        let sign_in_second = || {
+            harness.service.sign_in(AgentSignInParams {
+                agent_id: AgentID(second.0.clone()),
+                workspace_id: None,
+                method_id: None,
+            })
+        };
+
+        let refused = sign_in_second().await.expect_err("refused");
+        assert!(refused.message.contains("replace"), "{refused:?}");
+        assert!(harness.terminals.roots().is_empty(), "no login started");
+
+        registry.note_probed_auth(&second, HarnessAuthState::Missing);
+        let started = sign_in_second().await.expect("a sign-in");
+        assert_eq!(started.delivery, AgentAuthDelivery::ClientTerminal);
     }
 
     /// The Keychain item proves only that a login exists. A session the agent

@@ -622,7 +622,11 @@ struct AgentSettingsDetail: View {
                     Text("Account")
                 } footer: {
                     if agent.homeKind == .existing {
-                        Text("This is your CLI’s account. Signing in here signs in the CLI in Terminal too.")
+                        // A Mac-wide login is every profile's too, so its
+                        // replacement warning applies to the CLI's home as well.
+                        let shared = agent.signInScope == .mac ? presentation.accountFootnote : nil
+                        Text(["This is your CLI’s account. Signing in here signs in the CLI in Terminal too.", shared]
+                            .compactMap { $0 }.joined(separator: " "))
                     } else {
                         // A login kept in this Mac's Keychain is the CLI's and
                         // every profile's, so the home is not an account.
