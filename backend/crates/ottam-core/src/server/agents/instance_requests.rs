@@ -101,7 +101,7 @@ impl AgentServer {
                         return response;
                     }
                     let detected = tokio::task::spawn_blocking(|| {
-                        ["codex", "claude", "opencode", "omp"]
+                        crate::agent::EXISTING_SETUP_HARNESSES
                             .into_iter()
                             .map(setup_detection::summary)
                             .collect::<Vec<_>>()

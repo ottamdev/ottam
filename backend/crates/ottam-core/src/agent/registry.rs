@@ -3040,7 +3040,7 @@ fn omp_definition() -> AgentDefinition {
 /// Antigravity ships one Go executable per platform as a GitHub release
 /// tarball. The digests are GitHub's asset digests, matched against fresh
 /// downloads; Google publishes none of its own.
-const AGY_VERSION: &str = "1.5.16";
+pub(crate) const AGY_VERSION: &str = "1.5.16";
 const AGY_ARTIFACTS: [(&str, &str, &str); 2] = [
     (
         "aarch64",

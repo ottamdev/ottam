@@ -286,6 +286,15 @@ private struct OnboardingChooseAgents: View {
                     .padding(.leading, 38)
                     .accessibilityLabel("\(provider.displayName) profile")
                     .accessibilityIdentifier("onboarding.profile.\(harnessID)")
+                    // Core's warning about sharing the setup, too long for
+                    // the picker's caption.
+                    if model.usesCLISetup(harnessID), let warning = detected.detail {
+                        Text(warning)
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                            .padding(.leading, 38)
+                            .accessibilityIdentifier("onboarding.profileNote.\(harnessID)")
+                    }
                 }
             }
         } footer: {
