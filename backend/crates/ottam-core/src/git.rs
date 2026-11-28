@@ -254,6 +254,173 @@ pub fn head_commit(repo_path: &str) -> Result<Option<String>, CoreError> {
     Ok((result.status_code == Some(0) && !commit.is_empty()).then(|| commit.to_string()))
 }
 
+/// The commit a branch or ref names, or `None` when no such ref exists.
+pub fn resolve_commit(repo_path: &str, reference: &str) -> Result<Option<String>, CoreError> {
+    if reference.is_empty()
+        || reference.starts_with('-')
+        || reference.chars().any(|ch| ch.is_control() || ch.is_whitespace())
+    {
+        return Err(CoreError::new(
+            "worktreeInvalidBaseRef",
+            "The selected base branch is not a valid git reference.",
+        )
+        .with_path(repo_path)
+        .recoverable(true));
+    }
+    let spec = format!("{reference}^{{commit}}");
+    let result = run_git_with_allowed_exit_codes(
+        repo_path,
+        &["rev-parse", "--verify", "--quiet", &spec],
+        &[0, 1],
+    )?;
+    let commit = result.stdout.trim();
+    Ok((result.status_code == Some(0) && !commit.is_empty()).then(|| commit.to_string()))
+}
+
+/// Branches on the primary checkout that a new worktree can cut from, plus
+/// HEAD and dirty-tree context for the composer picker.
+pub fn worktree_base_branches(
+    repo_path: &str,
+) -> Result<ottam_protocol::WorktreeBaseBranchesResult, CoreError> {
+    use ottam_protocol::{WorktreeBaseBranch, WorktreeBaseBranchKind, WorktreeBaseBranchesResult};
+
+    let status = run_git(
+        repo_path,
+        ["status", "--porcelain=v1", "-z", "--untracked-files=normal"],
+    )?;
+    let primary_has_uncommitted_changes = !status.is_empty();
+
+    let Some(head) = head_commit(repo_path)? else {
+        return Ok(WorktreeBaseBranchesResult {
+            current_branch: None,
+            detached_head: None,
+            default_branch_ref: None,
+            primary_has_uncommitted_changes,
+            branches: Vec::new(),
+        });
+    };
+
+    let symbolic = run_git_with_allowed_exit_codes(
+        repo_path,
+        &["symbolic-ref", "--quiet", "--short", "HEAD"],
+        &[0, 1],
+    )?;
+    let (current_branch, detached_head) = if symbolic.status_code == Some(0) {
+        let name = symbolic.stdout.trim();
+        if name.is_empty() {
+            (None, Some(head.chars().take(7).collect()))
+        } else {
+            (Some(name.to_string()), None)
+        }
+    } else {
+        (None, Some(head.chars().take(7).collect()))
+    };
+
+    let refs_output = run_git(
+        repo_path,
+        [
+            "for-each-ref",
+            "--sort=-committerdate",
+            "--format=%(refname)%09%(symref)",
+            "refs/heads",
+            "refs/remotes",
+        ],
+    )?;
+
+    let mut local = Vec::new();
+    let mut remote = Vec::new();
+    let mut origin_head_target = None;
+
+    for line in refs_output.lines() {
+        if line.is_empty() {
+            continue;
+        }
+        let (ref_name, symref) = line.split_once('\t').unwrap_or((line, ""));
+        if !symref.is_empty() {
+            if ref_name == "refs/remotes/origin/HEAD" {
+                origin_head_target = Some(symref.to_string());
+            }
+            continue;
+        }
+        if let Some(name) = ref_name.strip_prefix("refs/heads/") {
+            local.push(WorktreeBaseBranch {
+                name: name.to_string(),
+                ref_name: ref_name.to_string(),
+                kind: WorktreeBaseBranchKind::Local,
+            });
+        } else if let Some(name) = ref_name.strip_prefix("refs/remotes/") {
+            remote.push(WorktreeBaseBranch {
+                name: name.to_string(),
+                ref_name: ref_name.to_string(),
+                kind: WorktreeBaseBranchKind::Remote,
+            });
+        }
+    }
+
+    let default_branch_ref = detect_default_branch_ref(&local, &remote, origin_head_target.as_deref());
+    let current_ref = current_branch.as_deref().map(|name| format!("refs/heads/{name}"));
+
+    let mut ordered = Vec::with_capacity(local.len() + remote.len());
+    if let Some(ref current_ref) = current_ref {
+        if let Some(pos) = local.iter().position(|branch| &branch.ref_name == current_ref) {
+            ordered.push(local.remove(pos));
+        }
+    }
+    if let Some(ref default_ref) = default_branch_ref {
+        if let Some(pos) = local.iter().position(|branch| &branch.ref_name == default_ref) {
+            ordered.push(local.remove(pos));
+        }
+    }
+    let (managed, regular): (Vec<_>, Vec<_>) =
+        local.into_iter().partition(|branch| branch.name.starts_with("ottam/"));
+    ordered.extend(regular);
+    ordered.extend(managed);
+
+    if let Some(ref default_ref) = default_branch_ref {
+        if let Some(pos) = remote.iter().position(|branch| &branch.ref_name == default_ref) {
+            ordered.push(remote.remove(pos));
+        }
+    }
+    ordered.extend(remote);
+
+    Ok(WorktreeBaseBranchesResult {
+        current_branch,
+        detached_head,
+        default_branch_ref,
+        primary_has_uncommitted_changes,
+        branches: ordered,
+    })
+}
+
+fn detect_default_branch_ref(
+    local: &[ottam_protocol::WorktreeBaseBranch],
+    remote: &[ottam_protocol::WorktreeBaseBranch],
+    origin_head_target: Option<&str>,
+) -> Option<String> {
+    if let Some(target) = origin_head_target {
+        if let Some(name) = target.strip_prefix("refs/remotes/origin/") {
+            let local_ref = format!("refs/heads/{name}");
+            if local.iter().any(|branch| branch.ref_name == local_ref) {
+                return Some(local_ref);
+            }
+        }
+        if remote.iter().any(|branch| branch.ref_name == target) {
+            return Some(target.to_string());
+        }
+    }
+    for candidate in ["refs/heads/main", "refs/heads/master"] {
+        if local.iter().any(|branch| branch.ref_name == candidate) {
+            return Some(candidate.to_string());
+        }
+    }
+    for candidate in ["refs/remotes/origin/main", "refs/remotes/origin/master"] {
+        if remote.iter().any(|branch| branch.ref_name == candidate) {
+            return Some(candidate.to_string());
+        }
+    }
+    None
+}
+
 /// The commit a local branch points at, or `None` when there is no such branch.
 pub fn branch_commit(repo_path: &str, branch: &str) -> Result<Option<String>, CoreError> {
     let reference = format!("refs/heads/{branch}");

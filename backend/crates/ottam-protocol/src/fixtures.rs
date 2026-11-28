@@ -1385,6 +1385,7 @@ pub fn conversation_create_request_fixture() -> ConversationCreateRequest {
                 attachment_ids: Vec::new(),
             }),
             create_worktree: true,
+            worktree_base_ref: Some("refs/heads/main".to_string()),
         },
     )
 }
@@ -1787,6 +1788,43 @@ pub fn worktree_remove_response_fixture() -> WorktreeRemoveResponse {
         RequestID::Number(459),
         WorktreeRemoveResult {
             removal: worktree_removal_fixture(),
+        },
+    )
+}
+
+pub fn worktree_base_branches_request_fixture() -> WorktreeBaseBranchesRequest {
+    ProtocolRequest::new(
+        RequestID::Number(460),
+        METHOD_WORKTREE_BASE_BRANCHES,
+        worktree_source_params_fixture(),
+    )
+}
+
+pub fn worktree_base_branches_response_fixture() -> WorktreeBaseBranchesResponse {
+    ProtocolResponse::success(
+        RequestID::Number(460),
+        WorktreeBaseBranchesResult {
+            current_branch: Some("feat/auth".to_string()),
+            detached_head: None,
+            default_branch_ref: Some("refs/heads/main".to_string()),
+            primary_has_uncommitted_changes: true,
+            branches: vec![
+                WorktreeBaseBranch {
+                    name: "feat/auth".to_string(),
+                    ref_name: "refs/heads/feat/auth".to_string(),
+                    kind: WorktreeBaseBranchKind::Local,
+                },
+                WorktreeBaseBranch {
+                    name: "main".to_string(),
+                    ref_name: "refs/heads/main".to_string(),
+                    kind: WorktreeBaseBranchKind::Local,
+                },
+                WorktreeBaseBranch {
+                    name: "origin/main".to_string(),
+                    ref_name: "refs/remotes/origin/main".to_string(),
+                    kind: WorktreeBaseBranchKind::Remote,
+                },
+            ],
         },
     )
 }

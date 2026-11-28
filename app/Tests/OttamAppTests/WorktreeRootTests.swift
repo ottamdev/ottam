@@ -195,4 +195,74 @@ struct WorktreeRootTests {
         model.draftCreatesWorktree = true
         #expect(model.errorText == nil)
     }
+
+    @Test("Worktree checkbox and per-project base branch persist in UserDefaults across instances")
+    func draftWorktreePreferencesPersist() {
+        let suite = "worktree-defaults-\(UUID())"
+        let defaults = UserDefaults(suiteName: suite)!
+        let backend = DiffReviewModel(client: OttamCoreProcessClient(
+            executableURL: URL(fileURLWithPath: "/nonexistent/ottam-core")
+        ))
+        var beta = member
+        beta.project.projectID = ProjectID("project-beta")
+        beta.source.projectSourceID = ProjectSourceID("source-beta")
+        beta.source.projectID = beta.project.projectID
+
+        let alphaRoot = WorkingRootSelection.project(
+            projectID: member.project.projectID,
+            sourceID: member.source.projectSourceID
+        )
+        let betaRoot = WorkingRootSelection.project(
+            projectID: beta.project.projectID,
+            sourceID: beta.source.projectSourceID
+        )
+
+        func makeConfiguredModel() -> ChatWorkspaceModel {
+            let model = ChatWorkspaceModel(defaults: defaults)
+            model.configure(
+                workspaceID: WorkspaceID("worktrees"),
+                workspaceFiles: nil,
+                projects: [member, beta],
+                projectSummary: nil,
+                backend: backend
+            )
+            return model
+        }
+
+        let first = makeConfiguredModel()
+        #expect(!first.draftCreatesWorktree)
+        #expect(first.draftWorktreeBaseRef == nil)
+
+        first.selectDraftWorkingRoot(alphaRoot)
+        first.draftCreatesWorktree = true
+        first.selectDraftWorktreeBaseRef("refs/heads/main")
+
+        first.selectDraftWorkingRoot(betaRoot)
+        #expect(first.draftWorktreeBaseRef == nil)
+        first.selectDraftWorktreeBaseRef("refs/heads/develop")
+
+        first.selectDraftWorkingRoot(alphaRoot)
+        #expect(first.draftWorktreeBaseRef == "refs/heads/main")
+
+        // A fresh model on the same UserDefaults restores both the toggle and per-project base refs.
+        let restored = makeConfiguredModel()
+        #expect(restored.draftCreatesWorktree)
+        restored.selectDraftWorkingRoot(alphaRoot)
+        #expect(restored.draftWorktreeBaseRef == "refs/heads/main")
+        restored.selectDraftWorkingRoot(betaRoot)
+        #expect(restored.draftWorktreeBaseRef == "refs/heads/develop")
+
+        // Clearing alpha's selection back to Current HEAD and unticking Worktree persists too,
+        // without touching beta's saved base ref.
+        restored.selectDraftWorkingRoot(alphaRoot)
+        restored.selectDraftWorktreeBaseRef(nil)
+        restored.draftCreatesWorktree = false
+
+        let cleared = makeConfiguredModel()
+        #expect(!cleared.draftCreatesWorktree)
+        cleared.selectDraftWorkingRoot(alphaRoot)
+        #expect(cleared.draftWorktreeBaseRef == nil)
+        cleared.selectDraftWorkingRoot(betaRoot)
+        #expect(cleared.draftWorktreeBaseRef == "refs/heads/develop")
+    }
 }

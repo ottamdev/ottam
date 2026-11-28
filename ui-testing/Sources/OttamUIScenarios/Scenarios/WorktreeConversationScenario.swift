@@ -26,17 +26,25 @@ public extension UIScenarioDefinition {
         let composer = context.element(id: AccessibilityID.chatComposer)
         let submit = context.element(id: AccessibilityID.chatSubmit)
         let worktree = context.element(id: AccessibilityID.chatWorktreeToggle)
+        let worktreeBaseBranch = context.element(id: AccessibilityID.chatWorktreeBaseBranchMenu)
         let pickTerminal = context.element(id: AccessibilityID.conversationToolsPickTerminal)
         let terminal = context.element(id: AccessibilityID.terminalSurface)
 
-        // A project root offers the checkbox, unticked.
+        // A project root offers the checkbox, unticked; the base-branch picker
+        // stays hidden until Worktree is ticked.
         try await context.waitFor(.exists(worktree), timeout: 10)
         try await context.assert(.valueEquals(worktree, "0"))
+        try await context.assert(.notExists(worktreeBaseBranch))
         try await context.press(worktree)
         try await context.waitFor(.valueEquals(worktree, "1"), timeout: 5)
+        try await context.waitFor(.exists(worktreeBaseBranch), timeout: 5)
         try await context.capture(routeCapture(
             id: "chat-worktree-draft",
-            required: [AccessibilityID.chatComposer, AccessibilityID.chatWorktreeToggle]
+            required: [
+                AccessibilityID.chatComposer,
+                AccessibilityID.chatWorktreeToggle,
+                AccessibilityID.chatWorktreeBaseBranchMenu,
+            ]
         ))
 
         try context.armACP(.complete, reply: "Working in the worktree.")

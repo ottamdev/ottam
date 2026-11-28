@@ -1,0 +1,25 @@
+{
+  "id": 460,
+  "result": {
+    "currentBranch": "feat/auth",
+    "defaultBranchRef": "refs/heads/main",
+    "primaryHasUncommittedChanges": true,
+    "branches": [
+      {
+        "name": "feat/auth",
+        "refName": "refs/heads/feat/auth",
+        "kind": "local"
+      },
+      {
+        "name": "main",
+        "refName": "refs/heads/main",
+        "kind": "local"
+      },
+      {
+        "name": "origin/main",
+        "refName": "refs/remotes/origin/main",
+        "kind": "remote"
+      }
+    ]
+  }
+}

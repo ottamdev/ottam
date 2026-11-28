@@ -133,7 +133,8 @@ final class DiffReviewModel {
         contextProjectIDs: [ProjectID] = [],
         title: String? = nil,
         message: ConversationInitialMessage? = nil,
-        createWorktree: Bool = false
+        createWorktree: Bool = false,
+        worktreeBaseRef: String? = nil
     ) async throws -> ConversationCreateResult {
         try await client.createConversation(
             workspaceID: workspaceID,
@@ -141,7 +142,18 @@ final class DiffReviewModel {
             contextProjectIDs: contextProjectIDs,
             title: title,
             message: message,
-            createWorktree: createWorktree
+            createWorktree: createWorktree,
+            worktreeBaseRef: worktreeBaseRef
+        )
+    }
+
+    func worktreeBaseBranches(
+        workspaceID: WorkspaceID,
+        projectSourceID: ProjectSourceID
+    ) async throws -> WorktreeBaseBranchesResult {
+        try await client.worktreeBaseBranches(
+            workspaceID: workspaceID,
+            projectSourceID: projectSourceID
         )
     }
 

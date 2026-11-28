@@ -388,6 +388,14 @@ fn generated_conversation_fixtures_match_types() {
         &worktree_remove_response_fixture(),
     );
     assert_fixture_matches(
+        "fixtures/worktree-base-branches-request.json",
+        &worktree_base_branches_request_fixture(),
+    );
+    assert_fixture_matches(
+        "fixtures/worktree-base-branches-response.json",
+        &worktree_base_branches_response_fixture(),
+    );
+    assert_fixture_matches(
         "fixtures/conversation-resolve-run-input-delivery-request.json",
         &conversation_resolve_run_input_delivery_request_fixture(),
     );

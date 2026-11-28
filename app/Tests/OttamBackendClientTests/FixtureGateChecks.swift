@@ -297,6 +297,8 @@ struct FixtureGateChecks {
             response("worktree-status-response.json", WorktreeStatusResult.self),
             request("worktree-remove-request.json", WorktreeSourceParams.self),
             response("worktree-remove-response.json", WorktreeRemoveResult.self),
+            request("worktree-base-branches-request.json", WorktreeSourceParams.self),
+            response("worktree-base-branches-response.json", WorktreeBaseBranchesResult.self),
             request("conversation-list-request.json", ConversationListParams.self),
             response("conversation-list-response.json", ConversationListResult.self),
             request("conversation-get-request.json", ConversationGetParams.self),
