@@ -383,6 +383,25 @@ type SessionCatalog = (
     BTreeMap<String, AgentModelSelects>,
 );
 
+/// Record a profile's verdict as the newest on its Mac-wide login.
+fn note_shared_auth(
+    shared_auth: &StdMutex<BTreeMap<String, HarnessAuthState>>,
+    definition: &AgentDefinition,
+    auth_state: HarnessAuthState,
+) {
+    if definition.presentation.sign_in_scope == SignInScope::Mac
+        && matches!(
+            auth_state,
+            HarnessAuthState::Ready | HarnessAuthState::Missing
+        )
+    {
+        shared_auth
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .insert(definition.harness_id().to_owned(), auth_state);
+    }
+}
+
 fn session_catalog(status: &AdapterStatus) -> SessionCatalog {
     (
         status.models.clone(),
@@ -459,6 +478,10 @@ pub struct AgentRegistry {
     /// adapter: a probe's "signed in" (agy proving only that a Keychain login
     /// exists) must not come back after a session found the login refused.
     probed_auth: Arc<StdMutex<BTreeMap<AgentId, HarnessAuthState>>>,
+    /// The newest verdict any profile of a `SignInScope::Mac` agent saw, by
+    /// harness: one Keychain login backs them all, so a later failure or a
+    /// later confirmed login outranks every earlier verdict.
+    shared_auth: Arc<StdMutex<BTreeMap<String, HarnessAuthState>>>,
     auth_changes: Arc<OnceLock<AuthChangeSink>>,
     session_catalogs: Arc<OnceLock<SessionCatalogSink>>,
     refresh_homes: StdMutex<BTreeMap<AgentId, super::refresh_lock::HomeUse>>,
@@ -591,6 +614,7 @@ impl AgentRegistry {
             home_policy: None,
             adapter_installs: None,
             probed_auth: Arc::new(StdMutex::new(BTreeMap::new())),
+            shared_auth: Arc::new(StdMutex::new(BTreeMap::new())),
             auth_changes: Arc::new(OnceLock::new()),
             session_catalogs: Arc::new(OnceLock::new()),
             refresh_homes: StdMutex::new(BTreeMap::new()),
@@ -617,6 +641,7 @@ impl AgentRegistry {
         let auth_changes = Arc::clone(&self.auth_changes);
         let session_catalogs = Arc::clone(&self.session_catalogs);
         let probed_auth = Arc::clone(&self.probed_auth);
+        let shared_auth = Arc::clone(&self.shared_auth);
         let status_watch = tokio::spawn(async move {
             while status.changed().await.is_ok() {
                 // Cloned so the sinks never run under the watch lock: a
@@ -629,6 +654,7 @@ impl AgentRegistry {
                             .lock()
                             .unwrap_or_else(|poisoned| poisoned.into_inner())
                             .insert(definition.agent_id.clone(), auth);
+                        note_shared_auth(&shared_auth, &definition, auth);
                     }
                     if let Some(sink) = auth_changes.get() {
                         sink(&definition.agent_id);
@@ -679,6 +705,19 @@ impl AgentRegistry {
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
             .insert(agent_id.clone(), auth_state);
+        if let Ok(definition) = self.definition(agent_id) {
+            note_shared_auth(&self.shared_auth, &definition, auth_state);
+        }
+    }
+
+    /// Whether the newest verdict on a `SignInScope::Mac` login says it works.
+    /// None yet means no profile has seen it work, so a sign-in may run.
+    pub(crate) fn shared_login_works(&self, definition: &AgentDefinition) -> bool {
+        self.shared_auth
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .get(definition.harness_id())
+            == Some(&HarnessAuthState::Ready)
     }
 
     /// Forget the probed verdict — the adapter is gone, so it says nothing.
