@@ -29,6 +29,10 @@ status file, board, or index.
    body fills `.github/ISSUE_TEMPLATE/task.md`, one line per section
    where possible. Order items with `gh issue edit <n> --add-blocked-by <m>`,
    only where one really waits on another.
+   `gh issue create` files the issue before it sets `--type` and `--parent`,
+   so a failure there still leaves an issue, without printing its URL. Before
+   retrying, find it with step 1's search and finish it with `gh issue edit
+   <n> --type <type> --parent <parent>`.
 6. Keep the body current. When a finding or decision changes, edit the body
    (`gh issue edit <n> --body-file <file>`) so it always reads as the present
    state; comments are for discussion, not for the record.
