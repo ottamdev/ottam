@@ -21,8 +21,11 @@ status file, board, or index.
    The body fills `.github/ISSUE_TEMPLATE/milestone.md`, keeping its
    headings. No status section and no checklist: the sub-issues are the list.
 4. Issues are public. Show the user the title and body, then create it with
-   `gh issue create --title <title> --body-file <file>`.
-5. Create one sub-issue per item with `gh issue create --parent <n>`. Its
+   `gh issue create --title <title> --body-file <file> --label milestone`.
+   `gh` skips template labels, so pass them: add `app` and/or `core` for
+   the areas the work touches.
+5. Create one sub-issue per item with `gh issue create --parent <n>
+   --label enhancement` plus its area labels (`bug` instead for a defect). Its
    body fills `.github/ISSUE_TEMPLATE/work-item.md`, one line per section
    where possible. Order items with `gh issue edit <n> --add-blocked-by <m>`,
    only where one really waits on another.

@@ -1,6 +1,7 @@
 ---
 name: Work item
 about: One item of a milestone, filed as a sub-issue of its parent.
+labels: enhancement
 ---
 
 ## What
