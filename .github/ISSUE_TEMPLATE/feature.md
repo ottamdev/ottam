@@ -1,7 +1,7 @@
 ---
-name: Milestone
+name: Feature
 about: A body of user-facing work, as a parent issue. Its items are sub-issues.
-labels: milestone
+type: Feature
 ---
 
 ## Goal
@@ -13,7 +13,7 @@ labels: milestone
 <!--
 Numbered steps a person performs in the running app, each with its expected
 result. Cover restart and cancel. Write them before any code: they are the
-milestone's acceptance criteria. Open the section with "Draft, awaiting
+feature's acceptance criteria. Open the section with "Draft, awaiting
 approval." and remove that line once a maintainer approves them here.
 Leave the section out for work with nothing to try in the app.
 -->

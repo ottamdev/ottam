@@ -54,8 +54,8 @@ gates:
 ## Issues and pull requests
 
 Issues start from a template in
-[.github/ISSUE_TEMPLATE](.github/ISSUE_TEMPLATE): a milestone, a work item
-under it, or a bug report. Pull requests start from
+[.github/ISSUE_TEMPLATE](.github/ISSUE_TEMPLATE): a feature, a task under
+it, or a bug report. Pull requests start from
 [the pull request template](.github/PULL_REQUEST_TEMPLATE.md). Keep the
 headings. A pull request closes each issue it finishes with `Fixes #n` and
 lists the checks you ran under Verification. Under Visual proof it shows before and
