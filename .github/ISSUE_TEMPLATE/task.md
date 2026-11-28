@@ -1,7 +1,6 @@
 ---
-name: Work item
-about: One item of a milestone, filed as a sub-issue of its parent.
-labels: enhancement
+name: Task
+about: One item of a feature, filed as a sub-issue of its parent.
 type: Task
 ---
 
