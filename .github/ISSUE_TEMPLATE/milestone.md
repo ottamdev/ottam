@@ -2,6 +2,7 @@
 name: Milestone
 about: A body of user-facing work, as a parent issue. Its items are sub-issues.
 labels: milestone
+type: Feature
 ---
 
 ## Goal

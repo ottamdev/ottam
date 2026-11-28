@@ -2,6 +2,7 @@
 name: Bug report
 about: Something in Ottam is broken or behaves wrongly.
 labels: bug
+type: Bug
 ---
 
 ## What happened
