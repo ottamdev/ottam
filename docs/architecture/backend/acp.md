@@ -148,8 +148,10 @@ agent shells, and first wherever npm or npx re-resolve it from their shebang
   profile and the user's CLI, so a home isolates state only. Ottam never signs
   it out (`auth.logout` stays unsupported), and `agent.signIn` is refused
   while it reads as signed in, since a new login replaces the CLI's
-  (`AgentSignInService::sign_in`). One login backs every profile, so the
-  newest verdict any of them saw decides (`AgentRegistry::shared_login_works`).
+  (`AgentSignInService::sign_in`). One login backs every profile, so it reads
+  as working once any profile saw it work, until a session fails; after that
+  only a completed sign-in restores it, since an opened session proves only
+  that the login exists (`AgentRegistry::shared_login_works`).
 - Claude OAuth refresh: `<home>/.oauth_refresh.lock` or legacy
   `<realpath(home)>.lock` means a refresh is running unless
   `.oauth_refresh.lock.owner` proves the holder gone (same host, matching birth

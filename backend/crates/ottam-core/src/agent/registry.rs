@@ -383,22 +383,29 @@ type SessionCatalog = (
     BTreeMap<String, AgentModelSelects>,
 );
 
-/// Record a profile's verdict as the newest on its Mac-wide login.
+/// Record a profile's verdict on its Mac-wide login. A session that opens
+/// proves only that the Keychain item exists, so its `Ready` never clears a
+/// failure; only a completed sign-in does (`AgentRegistry::note_signed_in`).
 fn note_shared_auth(
     shared_auth: &StdMutex<BTreeMap<String, HarnessAuthState>>,
     definition: &AgentDefinition,
     auth_state: HarnessAuthState,
 ) {
-    if definition.presentation.sign_in_scope == SignInScope::Mac
-        && matches!(
-            auth_state,
-            HarnessAuthState::Ready | HarnessAuthState::Missing
-        )
-    {
-        shared_auth
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
-            .insert(definition.harness_id().to_owned(), auth_state);
+    if definition.presentation.sign_in_scope != SignInScope::Mac {
+        return;
+    }
+    let mut shared = shared_auth
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let harness = definition.harness_id().to_owned();
+    match auth_state {
+        HarnessAuthState::Missing => {
+            shared.insert(harness, auth_state);
+        }
+        HarnessAuthState::Ready => {
+            shared.entry(harness).or_insert(auth_state);
+        }
+        HarnessAuthState::Unknown | HarnessAuthState::Authenticating => {}
     }
 }
 
@@ -710,8 +717,22 @@ impl AgentRegistry {
         }
     }
 
-    /// Whether the newest verdict on a `SignInScope::Mac` login says it works.
-    /// None yet means no profile has seen it work, so a sign-in may run.
+    /// A login completed for this agent: on a `SignInScope::Mac` login it is
+    /// what proves the shared login works again after a failure.
+    pub(crate) fn note_signed_in(&self, agent_id: &AgentId) {
+        if let Ok(definition) = self.definition(agent_id) {
+            if definition.presentation.sign_in_scope == SignInScope::Mac {
+                self.shared_auth
+                    .lock()
+                    .unwrap_or_else(|poisoned| poisoned.into_inner())
+                    .insert(definition.harness_id().to_owned(), HarnessAuthState::Ready);
+            }
+        }
+    }
+
+    /// Whether the shared `SignInScope::Mac` login reads as working: some
+    /// profile saw it, and no session failed since the last completed
+    /// sign-in. None yet means a sign-in may run.
     pub(crate) fn shared_login_works(&self, definition: &AgentDefinition) -> bool {
         self.shared_auth
             .lock()

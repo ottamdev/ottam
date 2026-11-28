@@ -867,6 +867,7 @@ async fn supervise_terminal_login(
             let agent = super::types::AgentId(agent_id.0.clone());
             match registry.restart(&agent).await {
                 Ok(_) => {
+                    registry.note_signed_in(&agent);
                     if let Some(signed_in) = &signed_in {
                         signed_in(&agent_id);
                     }
@@ -1803,15 +1804,16 @@ mod tests {
         assert!(harness.terminals.roots().is_empty(), "no login started");
     }
 
-    /// Every profile shares one Mac-wide login, so the newest verdict any of
-    /// them saw decides: a profile with none is refused while a sibling's
-    /// works, and a later failure or confirmed login outranks earlier ones.
+    /// Every profile shares one Mac-wide login: a profile with no verdict is
+    /// refused while a sibling saw it work. A later session failure allows a
+    /// sign-in, a later probe that only finds the Keychain item does not undo
+    /// that, and a completed sign-in does.
     #[tokio::test(start_paused = true)]
     async fn a_new_profile_never_replaces_the_login_a_sibling_uses() {
         let mut definition = definition();
         definition.presentation.sign_in_scope = SignInScope::Mac;
-        let harness = Harness::with_definition(claude_methods(), brisk_policy(), definition);
-        let registry = &harness.service.registry;
+        let mut harness = Harness::with_definition(claude_methods(), brisk_policy(), definition);
+        let registry = Arc::clone(&harness.service.registry);
         let first = registry.definitions()[0].agent_id.clone();
         let second = crate::agent::AgentId(format!("{}.second", first.0));
         registry.publish_instance(crate::agent::AgentInstance {
@@ -1821,31 +1823,46 @@ mod tests {
             home: crate::agent::HomeLayout::Managed,
             claimed: true,
         });
-        registry.note_probed_auth(&first, HarnessAuthState::Ready);
-        let sign_in_second = || {
-            harness.service.sign_in(AgentSignInParams {
-                agent_id: AgentID(second.0.clone()),
-                workspace_id: None,
-                method_id: None,
-            })
+        let sign_in_second = |service: Arc<AgentSignInService>| {
+            let agent_id = AgentID(second.0.clone());
+            async move {
+                service
+                    .sign_in(AgentSignInParams {
+                        agent_id,
+                        workspace_id: None,
+                        method_id: None,
+                    })
+                    .await
+            }
         };
 
-        let refused = sign_in_second().await.expect_err("refused");
+        registry.note_probed_auth(&first, HarnessAuthState::Ready);
+        let refused = sign_in_second(Arc::clone(&harness.service))
+            .await
+            .expect_err("refused");
         assert!(refused.message.contains("replace"), "{refused:?}");
         assert!(harness.terminals.roots().is_empty(), "no login started");
 
-        // The second profile's session fails after the first saw the login
-        // work, and then the first signs in again: the newest verdict wins.
-        let second_definition = registry.definition(&second).unwrap();
+        // The second profile's session fails; a later probe of the first
+        // finds the Keychain item, which proves nothing new.
         registry.note_probed_auth(&second, HarnessAuthState::Missing);
-        assert!(!registry.shared_login_works(&second_definition));
         registry.note_probed_auth(&first, HarnessAuthState::Ready);
-        let refused = sign_in_second().await.expect_err("an older failure");
-        assert!(refused.message.contains("replace"), "{refused:?}");
-
-        registry.note_probed_auth(&second, HarnessAuthState::Missing);
-        let started = sign_in_second().await.expect("a sign-in");
+        let started = sign_in_second(Arc::clone(&harness.service))
+            .await
+            .expect("a sign-in");
         assert_eq!(started.delivery, AgentAuthDelivery::ClientTerminal);
+
+        // The login completes, so the shared login works again.
+        assert_eq!(
+            harness.next_event().await.phase,
+            AgentAuthPhase::AwaitingUser
+        );
+        harness.terminals.exit(Some(0));
+        assert_eq!(harness.next_event().await.phase, AgentAuthPhase::Succeeded);
+        let refused = sign_in_second(Arc::clone(&harness.service))
+            .await
+            .expect_err("a completed sign-in");
+        assert!(refused.message.contains("replace"), "{refused:?}");
     }
 
     /// The Keychain item proves only that a login exists. A session the agent
