@@ -84,6 +84,7 @@ pub(crate) fn native_servers(
             });
             opencode_servers(&directory, set("OPENCODE_CONFIG"), cwd)
         }
+        "agy" => agy_servers(home),
         _ => Vec::new(),
     };
     let mut native = NativeServers::default();
@@ -307,6 +308,25 @@ fn opencode_signature(server: &Map<String, Value>) -> Option<Signature> {
             }),
         _ => None,
     }
+}
+
+/// Antigravity: `mcpServers` in `config/mcp_config.json`, each
+/// `{command, args}` or `{serverUrl}`, less any marked `disabled`.
+fn agy_servers(home: &Path) -> Vec<(String, Option<Signature>)> {
+    let config = read_config(home.join("config/mcp_config.json"), false).unwrap_or_default();
+    entries(config.get("mcpServers"))
+        .filter_map(|(name, server)| {
+            let server = server.as_object()?;
+            if server.get("disabled") == Some(&Value::Bool(true)) {
+                return None;
+            }
+            let signature = match server.get("serverUrl").and_then(Value::as_str) {
+                Some(url) => normalized_url(url).map(Signature::Url),
+                None => command_signature(server),
+            };
+            Some((name.clone(), signature))
+        })
+        .collect()
 }
 
 /// Every string in `key`'s list across `layers`.
@@ -541,9 +561,24 @@ mod tests {
     }
 
     #[test]
+    fn agy_reads_its_mcp_config_and_skips_disabled_servers() {
+        let home = TempDir::new().unwrap();
+        write(
+            &home.path().join("config/mcp_config.json"),
+            r#"{"mcpServers":{"git":{"command":"uvx","args":["mcp-git"]},
+                "docs":{"serverUrl":"https://docs.example.com/mcp/"},
+                "off":{"command":"o","disabled":true}}}"#,
+        );
+        let native = native_servers("agy", home.path(), &BTreeMap::new(), home.path(), Path::new("/w"));
+        assert!(native.has(&local("repo", "uvx", &["mcp-git"])));
+        assert!(native.has(&remote("site", "https://docs.example.com/mcp")));
+        assert!(!native.has(&local("off", "o", &[])));
+    }
+
+    #[test]
     fn other_harnesses_and_missing_files_filter_nothing() {
         let user = TempDir::new().unwrap();
-        for harness in ["omp", "claude", "codex", "opencode"] {
+        for harness in ["omp", "claude", "codex", "opencode", "agy"] {
             let native = native_servers(
                 harness,
                 user.path(),

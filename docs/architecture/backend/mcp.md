@@ -33,7 +33,8 @@ blocked the session request up to 30 s, so core answers `initialize` itself
 whatever state the upstream is in.
 
 - **Entries** (`mcp/entries.rs`): servers off in the workspace are left out.
-  For existing-setup Claude Code, Codex and OpenCode instances, so is any
+  For existing-setup Claude Code, Codex, OpenCode and Antigravity instances,
+  so is any
   server that setup's own config already starts (matched by name after
   whitespace→`_`, codex-acp's rule, or by `url:`/`stdio:` signature). Ottam
   profiles and Oh-My-Pi read no MCP config under ACP and are never filtered.

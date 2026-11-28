@@ -129,11 +129,13 @@ agent shells, and first wherever npm or npx re-resolve it from their shebang
 - Deletion tombstones the instance (survives restart, no fallback to a
   sibling). Purge removes only an unredirected managed home, never vendor state
   (Claude keychain entries, agy's Keychain login, `~/.omp`). Existing-setup
-  homes: Ottam never creates, purges, signs out, cleans locks in, or queries
-  credentials of them; detection (`agent/setup_detection.rs`) never launches
-  or writes, and reads a Keychain item's attributes at most, never its
-  secret. Every harness with an existing setup is listed once
-  (`EXISTING_SETUP_HARNESSES`), which `agent.detectSetups` reports.
+  homes: Ottam never creates, purges, signs out, or cleans locks in them, and
+  never reads their credentials: detection (`agent/setup_detection.rs`) may
+  check that a Keychain item exists by its attributes, never its secret.
+  Detection never writes; it runs the login shell and the CLI's `--version`,
+  except for a CLI that updates itself when run. Every harness with an
+  existing setup is listed once (`EXISTING_SETUP_HARNESSES`), which
+  `agent.detectSetups` reports.
 - Sign-in: `_auth/status_update` `none` means missing credentials, a
   recognized kind means ready, anything else leaves the verdict alone. Claude
   creates and loads sessions while signed out, so those never prove sign-in.
@@ -221,13 +223,11 @@ agent shells, and first wherever npm or npx re-resolve it from their shebang
   reads, and again as legacy `models` ids with the effort baked in, which it
   ignores. At 1.5.16 a bare `session/new` writes a conversation, so the probe
   runs on a scratch `--gemini-dir`. A CLI setup is always the default
-  `~/.gemini`, launched with no `--gemini-dir`; it counts as found when
-  `antigravity-cli/` exists and the Keychain holds service `gemini`, account
-  `antigravity`. Detection never runs the user's `agy`, which updates itself,
-  so it reports no CLI version. Its note warns that the pin and that CLI
-  share one conversation database, which agy migrates in place, so a
-  conversation one version wrote may not open in the other; the skew runs
-  either way.
+  `~/.gemini`, launched with no `--gemini-dir`. Detection never runs the
+  user's `agy` (it updates itself), and counts only a Keychain sign-in: a
+  setup on agy's file token store reads as signed out. The pin and the
+  user's CLI share a conversation database that agy migrates in place, so
+  version skew in either direction is a risk the user is warned of.
 
 ## Permission Configuration Limits
 

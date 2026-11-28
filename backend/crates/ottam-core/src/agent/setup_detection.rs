@@ -41,6 +41,17 @@ pub(crate) fn detect(harness: &str) -> Result<DetectedSetup, HarnessError> {
             "Ottam can't use an existing CLI setup for this agent.",
         )
     })?;
+    // agy reads no variables and is never run, so the login shell has
+    // nothing to tell.
+    if harness == "agy" {
+        let user_home = std::env::var_os("HOME").map(PathBuf::from).ok_or_else(|| {
+            HarnessError::new(
+                HarnessErrorKind::Internal,
+                "Cannot locate your home directory",
+            )
+        })?;
+        return Ok(detect_agy(setup, &user_home, agy_keychain_item()));
+    }
     let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".into());
     let output = super::registry::command_output_with_timeout(
         setup_command(&shell, setup.variables, setup.cli)?,
@@ -149,11 +160,6 @@ pub(crate) fn detect(harness: &str) -> Result<DetectedSetup, HarnessError> {
         "omp" => {
             let path = set("PI_CODING_AGENT_DIR").unwrap_or_else(|| user_home.join(".omp/agent"));
             let summary = inspect_omp(setup, &path);
-            (path, summary)
-        }
-        "agy" => {
-            let path = user_home.join(".gemini");
-            let summary = inspect_agy(setup, &path, agy_keychain_item_exists());
             (path, summary)
         }
         _ => {
@@ -319,13 +325,43 @@ const AGY_KEYCHAIN_QUERY: [&str; 5] = [
     "antigravity",
 ];
 
-fn agy_keychain_item_exists() -> bool {
-    super::registry::command_output_args_with_timeout(
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum KeychainItem {
+    Found,
+    Missing,
+    /// `security` failed or timed out, as with a locked keychain.
+    Unknown,
+}
+
+fn agy_keychain_item() -> KeychainItem {
+    match super::registry::command_output_args_with_timeout(
         "/usr/bin/security",
         &AGY_KEYCHAIN_QUERY,
         Duration::from_secs(3),
-    )
-    .is_ok_and(|output| output.status.success())
+    ) {
+        Ok(output) if output.status.success() => KeychainItem::Found,
+        // errSecItemNotFound
+        Ok(output) if output.status.code() == Some(44) => KeychainItem::Missing,
+        _ => KeychainItem::Unknown,
+    }
+}
+
+/// agy's setup is always the default `~/.gemini`, which launches with no
+/// `--gemini-dir`.
+fn detect_agy(
+    setup: super::ExistingSetup,
+    user_home: &Path,
+    keychain: KeychainItem,
+) -> DetectedSetup {
+    let path = user_home.join(".gemini");
+    let summary = inspect_agy(setup, &path, keychain);
+    DetectedSetup {
+        summary,
+        layout: HomeLayout::Existing {
+            path,
+            environment: BTreeMap::new(),
+        },
+    }
 }
 
 /// agy's setup by its state directory and Keychain item; core never runs the
@@ -333,17 +369,20 @@ fn agy_keychain_item_exists() -> bool {
 fn inspect_agy(
     setup: super::ExistingSetup,
     path: &Path,
-    keychain_item_exists: bool,
+    keychain: KeychainItem,
 ) -> AgentDetectedSetup {
     let state = path.join("antigravity-cli");
     let readable = std::fs::read_dir(&state).is_ok();
-    let detail = if readable && keychain_item_exists {
+    let available = readable && keychain == KeychainItem::Found;
+    let detail = if available {
         format!(
             "Ottam runs Antigravity {version}, which may not match your self-updating CLI, and both use its conversation database. A conversation one version wrote may not open in the other.",
             version = super::registry::AGY_VERSION,
         )
-    } else if readable {
+    } else if readable && keychain == KeychainItem::Missing {
         "Your Antigravity setup has no Google sign-in yet. Sign in with agy first, or choose an Ottam profile.".into()
+    } else if readable {
+        "Ottam couldn't check the Keychain for your Antigravity sign-in. Unlock your login keychain, then check again.".into()
     } else if state.exists() {
         "Your Antigravity setup could not be read. Check its permissions or choose an Ottam profile.".into()
     } else {
@@ -353,14 +392,34 @@ fn inspect_agy(
         harness_id: "agy".into(),
         display_name: setup.title.into(),
         path: path.to_string_lossy().into_owned(),
-        available: readable && keychain_item_exists,
+        available,
         detail: Some(detail),
-        cli_version: None,
+        cli_version: readable.then(|| agy_cli_version(&state)).flatten(),
         skills: None,
         hooks: None,
         mcp_servers: None,
         plugins: None,
     }
+}
+
+/// The version the user's `agy` last ran as, from the head of the log its
+/// terminal sessions write; Ottam's own launches log elsewhere.
+fn agy_cli_version(state: &Path) -> Option<String> {
+    use std::io::Read;
+    let mut head = Vec::new();
+    std::fs::File::open(state.join("cli.log"))
+        .ok()?
+        .take(64 * 1024)
+        .read_to_end(&mut head)
+        .ok()?;
+    let head = String::from_utf8_lossy(&head);
+    let marker = "Language server version: ";
+    let start = head.find(marker)? + marker.len();
+    let version: String = head[start..]
+        .chars()
+        .take_while(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '+'))
+        .collect();
+    (!version.is_empty()).then_some(version)
 }
 
 /// OpenCode's MCP servers by name: v2 nests them under `mcp.servers`; v1
@@ -668,26 +727,69 @@ mod tests {
         assert!(!setup.reads_version, "detection never runs the user's agy");
         let root = tempfile::tempdir().unwrap();
         let home = root.path().join(".gemini");
+        let found = KeychainItem::Found;
 
-        let missing = inspect_agy(setup, &home, true);
+        let missing = inspect_agy(setup, &home, found);
         assert!(!missing.available);
         assert!(missing.detail.unwrap().contains("No existing setup"));
 
         // `~/.gemini` alone, without agy's state, is another Gemini tool's.
         std::fs::create_dir_all(&home).unwrap();
-        assert!(!inspect_agy(setup, &home, true).available);
+        assert!(!inspect_agy(setup, &home, found).available);
 
-        std::fs::create_dir_all(home.join("antigravity-cli")).unwrap();
-        let unsigned = inspect_agy(setup, &home, false);
+        let state = home.join("antigravity-cli");
+        std::fs::create_dir_all(&state).unwrap();
+        let unsigned = inspect_agy(setup, &home, KeychainItem::Missing);
         assert!(!unsigned.available);
         assert!(unsigned.detail.unwrap().contains("no Google sign-in"));
+        // A Keychain that couldn't be checked is not a missing sign-in.
+        let unknown = inspect_agy(setup, &home, KeychainItem::Unknown);
+        assert!(!unknown.available);
+        assert!(unknown.detail.unwrap().contains("couldn't check the Keychain"));
 
-        let found = inspect_agy(setup, &home, true);
-        assert!(found.available);
-        assert_eq!(found.path, home.to_string_lossy());
-        let detail = found.detail.unwrap();
+        let signed_in = inspect_agy(setup, &home, found);
+        assert!(signed_in.available);
+        assert_eq!(signed_in.path, home.to_string_lossy());
+        assert_eq!(signed_in.cli_version, None);
+        let detail = signed_in.detail.unwrap();
         assert!(detail.contains(super::super::registry::AGY_VERSION));
         assert!(detail.contains("conversation database"));
+
+        // The terminal CLI's version comes from its log, never a launch.
+        std::fs::write(
+            state.join("cli.log"),
+            "I1127 server.go:2711] Language server version: 1.5.14\n",
+        )
+        .unwrap();
+        assert_eq!(
+            inspect_agy(setup, &home, found).cli_version.as_deref(),
+            Some("1.5.14")
+        );
+
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&state, std::fs::Permissions::from_mode(0o000)).unwrap();
+        let unreadable = inspect_agy(setup, &home, found);
+        std::fs::set_permissions(&state, std::fs::Permissions::from_mode(0o755)).unwrap();
+        assert!(!unreadable.available);
+        assert!(unreadable.detail.unwrap().contains("could not be read"));
+    }
+
+    /// Launching without `--gemini-dir` depends on this exact layout: the
+    /// home itself, with no recorded variables.
+    #[test]
+    fn agy_detection_records_the_default_home_with_no_variables() {
+        let setup = crate::agent::existing_setup("agy").unwrap();
+        let root = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(root.path().join(".gemini/antigravity-cli")).unwrap();
+        let detected = detect_agy(setup, root.path(), KeychainItem::Found);
+        assert!(detected.summary.available);
+        assert_eq!(
+            detected.layout,
+            HomeLayout::Existing {
+                path: root.path().join(".gemini"),
+                environment: BTreeMap::new(),
+            }
+        );
     }
 
     #[test]

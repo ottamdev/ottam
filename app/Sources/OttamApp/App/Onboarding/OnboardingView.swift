@@ -286,6 +286,15 @@ private struct OnboardingChooseAgents: View {
                     .padding(.leading, 38)
                     .accessibilityLabel("\(provider.displayName) profile")
                     .accessibilityIdentifier("onboarding.profile.\(harnessID)")
+                    // Core's warning about sharing the setup, too long for
+                    // the picker's caption.
+                    if model.usesCLISetup(harnessID), let warning = detected.detail {
+                        Text(warning)
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                            .padding(.leading, 38)
+                            .accessibilityIdentifier("onboarding.profileNote.\(harnessID)")
+                    }
                 }
             }
         } footer: {
@@ -306,10 +315,7 @@ private struct OnboardingChooseAgents: View {
         ].compactMap(\.self).joined(separator: ", ")
         let path = (detected.path as NSString).abbreviatingWithTildeInPath
         if usesCLISetup {
-            let shares = counts.isEmpty ? "Shares \(path)" : "Shares \(path): \(counts)"
-            // Core's warning about sharing the setup, if it has one.
-            guard let warning = detected.detail else { return shares }
-            return "\(shares). \(warning)"
+            return counts.isEmpty ? "Shares \(path)" : "Shares \(path): \(counts)"
         }
         return counts.isEmpty ? "Separate from \(path)" : "Separate from \(path) (\(counts))"
     }

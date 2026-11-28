@@ -19,6 +19,7 @@ struct AgentsSettingsSection: View {
     /// add failure, so one provider page never shows another's.
     @State private var addingCLISetup: String?
     @State private var cliSetupErrors: [String: String] = [:]
+    @State private var setupDetectionError: String?
     @State private var navigationPath = NavigationPath()
     @State private var namedAgents: NamedAgentsSettingsModel?
     @State private var editingNamedAgent: NamedAgentDraft?
@@ -210,7 +211,14 @@ struct AgentsSettingsSection: View {
         }
         .formStyle(.grouped)
         .navigationTitle(providerName(harnessID))
-        .task { try? await model.detectSetups() }
+        .task {
+            do {
+                try await model.detectSetups()
+                setupDetectionError = nil
+            } catch {
+                setupDetectionError = error.localizedDescription
+            }
+        }
         .sheet(isPresented: Binding(get: { creatingHarness != nil }, set: { if !$0 { creatingHarness = nil } })) {
             AgentProfileLabelSheet(title: "Create \(providerName(harnessID)) Profile", actionTitle: "Create", initialLabel: "", existingLabels: instances(harnessID).compactMap(\.label), note: AgentSettingsPresentation.profileCreationNote(instances(harnessID).first)) { label in
                 let id = try await model.createProfile(harnessID: harnessID, label: label)
@@ -232,10 +240,15 @@ struct AgentsSettingsSection: View {
     private func cliSetupNote(_ harnessID: String) -> String? {
         if let error = cliSetupErrors[harnessID] { return error }
         if cliSetupAdded(harnessID) { return "Your CLI setup is already an instance above." }
-        guard let detected = detected(harnessID) else { return nil }
+        guard let detected = detected(harnessID) else {
+            if let setupDetectionError { return setupDetectionError }
+            // Detection runs a login shell per CLI, which takes a moment.
+            return model.detectedSetups.isEmpty ? "Checking for your CLI setup…" : nil
+        }
         if !detected.available { return detected.detail }
-        let reuses = "Reuses \(detected.path): its sign-in, hooks, MCP servers, and skills."
-        return [reuses, detected.detail].compactMap(\.self).joined(separator: " ")
+        let path = (detected.path as NSString).abbreviatingWithTildeInPath
+        let uses = "Uses your CLI’s own home, \(path), with the hooks, MCP servers, and skills it defines."
+        return [uses, detected.detail].compactMap(\.self).joined(separator: " ")
     }
 
     /// Adds the CLI's own home as an instance and opens its page, where
