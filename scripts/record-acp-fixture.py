@@ -14,11 +14,13 @@ line. Each recording spends a few small turns on a signed-in account.
 
 - Claude and Codex run on the user's own CLI home. Their recordings drop
   `available_commands_update`, which lists that home's skills and plugins.
-- OpenCode and Oh-My-Pi run in a managed profile that core itself lays out
-  in scratch (home, settings, plugin, and launch environment), holding only
-  a copy of the CLI's credential database. A newer pin may migrate a
-  database in place, so the user's own is only ever read. Binary agents run
-  the pinned download, verified against the registry's digest.
+- OpenCode, Oh-My-Pi, and Antigravity run in a managed profile that core
+  itself lays out in scratch (home, settings, plugin, and launch
+  environment). OpenCode's and Oh-My-Pi's hold only a copy of the CLI's
+  credential database. A newer pin may migrate a database in place, so the
+  user's own is only ever read. Antigravity's stays empty: its sign-in is in
+  the Keychain. Binary agents run the pinned download, verified against the
+  registry's digest.
 
 Scrubbing replaces the workspace with the scenario's fixture path, the node
 binary with /usr/local/bin/node, npx cache paths with /npx/<package>, $HOME
@@ -78,7 +80,9 @@ PRIVATE_UPDATES = ("available_commands_update",)
 # Claude's edit behind a permission prompt. OpenCode: two background
 # subagents whose ids `child_sessions.rs` names, a follow-up that resumes one,
 # a question form, and a turn cancelled while a subagent runs. Oh-My-Pi:
-# permission prompts, an async shell job, and a cancelled turn.
+# permission prompts, an async shell job, and a cancelled turn. Antigravity:
+# `initialize`, its `session/new` selects, and an edit behind a permission
+# prompt.
 SCENARIOS = {
     "claude": {
         "fixture": "claude-agent-acp-{version}.json",
@@ -128,6 +132,22 @@ SCENARIOS = {
             ],
         }],
     },
+    "agy": {
+        "fixture": "agy-acp-{version}.json",
+        "files": REPO_FILES,
+        # agy keeps its Google sign-in in the Keychain, so the managed
+        # profile needs nothing copied in.
+        "home": {"root": "~/.gemini", "copy": []},
+        "drop_updates": PRIVATE_UPDATES,
+        "sessions": [{
+            # Default asks before edits and commands.
+            "mode": "default",
+            # agy links the files it touched, and a link names the scratch
+            # workspace in pieces the leak check cannot see.
+            "prompts": [f"{LISTING} Then use your edit tool (not the shell) {APPEND}. "
+                        "Keep your reply to one sentence, with no file links or paths."],
+        }],
+    },
     "opencode": {
         "fixture": "opencode-{version}.json",
         "workspace": "/fixture/work",
@@ -173,6 +193,9 @@ DOWNLOAD_TIMEOUT = 60
 # Account fields and the placeholder each one's value becomes.
 SECRET_KEYS = {"email": EMAIL, "organization": ORGANIZATION, "organizationName": ORGANIZATION,
                "orgName": ORGANIZATION, "userName": "User", "username": "user"}
+# A subscription plan names what the account pays for; agy reports one as
+# `_meta.antigravity.tier`. Its keys are too generic for SECRET_KEYS.
+PLAN_KEYS = {"tier": {"name": "Example Plan", "id": "example-plan"}}
 EMAIL_PATTERN = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
 NPX_PATTERN = re.compile(
     r"[^\s\"']*/_npx/[0-9a-f]+/node_modules/(?:\.bin/|@[^/\s\"']+/)?([^/\s\"']+)[^\s\"']*")
@@ -341,7 +364,7 @@ def scrub(frames: list, pairs: list) -> list:
 
     def walk(value):
         if isinstance(value, dict):
-            return {key: walk(inner) for key, inner in value.items()}
+            return {key: walk(plan(key, inner)) for key, inner in value.items()}
         if isinstance(value, list):
             return [walk(inner) for inner in value]
         if isinstance(value, str):
@@ -349,6 +372,15 @@ def scrub(frames: list, pairs: list) -> list:
         return value
 
     return walk(frames)
+
+
+def plan(key: str, value):
+    """A plan object with its naming fields replaced in place: a plan name
+    can be a common word, so it is never replaced anywhere else."""
+    if key not in PLAN_KEYS or not isinstance(value, dict):
+        return value
+    return {**value, **{field: placeholder for field, placeholder in PLAN_KEYS[key].items()
+                        if isinstance(value.get(field), str)}}
 
 
 def leaks(rendered: str, needles: dict) -> list[str]:
@@ -558,20 +590,25 @@ def record(agent: str, scenario: dict, spec: dict, initialize: dict, timeout: fl
     if scenario.get("git"):
         subprocess.run(["git", "init", "-q", str(workspace)], check=True)
     env = {**os.environ, **spec["environment"]}
+    for name in spec.get("unset", []):
+        env.pop(name, None)
     if spec.get("binary"):
         env["PATH"] = f"{fetch_binary(spec['binary'], scratch)}{os.pathsep}{env['PATH']}"
     home = None
+    arguments = spec["arguments"]
     if scenario.get("home"):
         if not spec.get("managed"):
             fail(f"core laid out no managed profile for {agent}")
         home = Path(spec["managed"]["home"])
         env.update(seed_home(spec["managed"], scenario["home"]))
+        # A home argument (agy's `--gemini-dir`) rides the profile's launch.
+        arguments = spec["managed"]["arguments"]
     refresh_lock = None
     if agent == "claude":
         claude_home = Path(os.environ.get("CLAUDE_CONFIG_DIR") or Path.home() / ".claude")
         refresh_lock = claude_home / CLAUDE_REFRESH_LOCK
     stderr = open(stderr_path, "wb") if stderr_path else tempfile.TemporaryFile()
-    adapter = Adapter([spec["command"], *spec["arguments"]], env, workspace, stderr)
+    adapter = Adapter([spec["command"], *arguments], env, workspace, stderr)
     try:
         play(adapter, scenario, initialize, workspace, timeout)
     finally:

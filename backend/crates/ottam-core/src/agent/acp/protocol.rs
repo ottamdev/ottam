@@ -72,18 +72,7 @@ fn unset_variables(
     definition: &AgentDefinition,
     inherited: impl Iterator<Item = (String, String)>,
 ) -> Vec<String> {
-    let mut unset: Vec<_> = definition
-        .instance
-        .as_ref()
-        .and_then(|instance| match &instance.home {
-            super::super::HomeLayout::Existing { environment, .. } => Some(environment),
-            _ => None,
-        })
-        .into_iter()
-        .flat_map(|environment| environment.iter())
-        .filter(|(_, value)| value.is_none())
-        .map(|(key, _)| key.clone())
-        .collect();
+    let mut unset = definition_unset_variables(definition);
     let inherited: Vec<_> = inherited.map(|(key, _)| key).collect();
     if inherited.iter().any(|key| key == "CLAUDECODE") {
         let set_here = |key: &String| {
@@ -102,6 +91,41 @@ fn unset_variables(
             })
             .collect();
         unset.extend(host);
+    }
+    unset
+}
+
+/// What the definition itself removes, whatever core inherited: the
+/// instance's recorded-unset levers and the definition's `launch_unset`,
+/// except a variable the launch sets itself.
+pub(crate) fn definition_unset_variables(definition: &AgentDefinition) -> Vec<String> {
+    let recorded = definition
+        .instance
+        .as_ref()
+        .and_then(|instance| match &instance.home {
+            super::super::HomeLayout::Existing { environment, .. } => Some(environment),
+            _ => None,
+        })
+        .into_iter()
+        .flat_map(|environment| environment.iter())
+        .filter(|(_, value)| value.is_none())
+        .map(|(key, _)| key.clone());
+    let own = definition
+        .launch_unset
+        .iter()
+        .filter(|key| {
+            !definition
+                .launch
+                .environment
+                .iter()
+                .any(|(name, _)| name == *key)
+        })
+        .map(|key| key.to_string());
+    let mut unset = Vec::new();
+    for key in recorded.chain(own) {
+        if !unset.contains(&key) {
+            unset.push(key);
+        }
     }
     unset
 }
@@ -462,9 +486,10 @@ pub(super) fn decode_session_update(
     match serde_json::from_value::<SessionNotification>(params.clone()) {
         Ok(notification) => {
             if cfg!(debug_assertions) {
-                let dropped = dropped_paths(params, &to_json(&notification), &|path, value| {
+                let mut dropped = dropped_paths(params, &to_json(&notification), &|path, value| {
                     is_omitted_default(tag, path, value)
                 });
+                retain_unechoed(params, "update", &mut dropped);
                 if !dropped.is_empty() {
                     record_unhandled(agent, &format!("field:{tag}"), || dropped.join(","));
                 }
@@ -500,6 +525,16 @@ pub(super) fn is_omitted_default(tag: &str, path: &str, value: &Value) -> bool {
             (path, value.as_str()),
             ("update.kind", Some("other")) | ("update.status", Some("pending"))
         )
+}
+
+/// agy repeats a tool call's `rawInput` as `args`. Core reads `rawInput`, so
+/// the copy at `<key>.args` is no loss.
+pub(super) fn retain_unechoed(params: &Value, key: &str, dropped: &mut Vec<String>) {
+    let call = &params[key];
+    if call.get("args").is_some() && call.get("args") == call.get("rawInput") {
+        let path = format!("{key}.args");
+        dropped.retain(|dropped| *dropped != path);
+    }
 }
 
 fn text_chunk(content: &ContentBlock) -> Option<String> {

@@ -117,12 +117,15 @@ agent shells, and first wherever npm or npx re-resolve it from their shebang
   (`AgentAdapterInstallPresentation`). A pin upgrade stops no running
   adapter. Registration order is the default-pick order; the app keys icons by
   brand and renders agents from `agent.list` with no per-agent Swift.
-- Each instance gets an isolated home via `home_variables`; core never
-  overrides `HOME` (agent shells and Git would inherit it) and never falls
-  back to the vendor home. Isolation exists because sharing Claude's rotating
-  keychain refresh token with the terminal CLI forced daily re-login. Oh-My-Pi
-  needs `OMP_PROFILE=""` (a named profile overrides the dir). Under
-  `CLAUDECODE`, launches unset inherited `CLAUDE_*`.
+- Each instance gets an isolated home via `home_variables`, or
+  `home_arguments` for a CLI with no variable for it; core never overrides
+  `HOME` (agent shells and Git would inherit it) and never falls back to the
+  vendor home. Isolation exists because sharing Claude's rotating keychain
+  refresh token with the terminal CLI forced daily re-login. Oh-My-Pi needs
+  `OMP_PROFILE=""` (a named profile overrides the dir). A definition's
+  `launch_unset` applies to the adapter, the catalog probe, and the terminal
+  sign-in alike. Under `CLAUDECODE`, adapter launches also unset inherited
+  `CLAUDE_*`.
 - Deletion tombstones the instance (survives restart, no fallback to a
   sibling). Purge removes only an unredirected managed home, never vendor state
   (Claude keychain entries, `~/.omp`). Existing-setup homes: Ottam never
@@ -183,6 +186,19 @@ agent shells, and first wherever npm or npx re-resolve it from their shebang
   its own MCP config under ACP, is not forked despite advertising
   `session/fork`, sends no `async_task_*`, and rejects a prompt while busy
   (`-32003`, `session_busy`) instead of queueing, so the runner resends.
+- Antigravity (`agy acp`) has no home variable: `--gemini-dir` moves its
+  state, and its Google sign-in stays in the Keychain for every home, so
+  managed profiles share the Mac's login. Core never sends
+  `_meta.antigravity.systemPrompt`, though agy advertises
+  `systemPrompt.append`. A forum answer, not confirmed as Google's, says a
+  harness that injects system prompts on a consumer sign-in risks the
+  account. Launches unset `GEMINI_API_KEY` and `GOOGLE_API_KEY` (either
+  switches agy to key auth) and set `AGY_CLI_DISABLE_AUTO_UPDATE`. The
+  default sign-in is its `terminal-login`: the launch plus `--login`. Models
+  arrive as `configOptions` selects (family, thinking level), which core
+  reads, and again as legacy `models` ids with the effort baked in, which it
+  ignores. At 1.5.16 a bare `session/new` writes a conversation, so the probe
+  runs on a scratch `--gemini-dir`.
 
 ## Permission Configuration Limits
 

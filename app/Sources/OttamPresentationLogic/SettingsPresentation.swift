@@ -64,10 +64,11 @@ public enum AgentPackagePresentation: Equatable, Sendable {
     }
 }
 
-/// The providers whose CLI setup Ottam can use, matching core's
-/// `existing_setup` table. A name for before `agent.list` loads.
+/// The providers Settings and onboarding offer before any instance exists,
+/// with a name for before `agent.list` loads. Whether one can use its CLI
+/// setup is core's `agent.detectSetups`, not this list.
 public enum CLIProvider: String, CaseIterable, Sendable {
-    case codex, claude, opencode, omp
+    case codex, claude, opencode, omp, agy
 
     public init?(harnessID: String) { self.init(rawValue: harnessID) }
 
@@ -82,6 +83,7 @@ public enum CLIProvider: String, CaseIterable, Sendable {
         case .claude: "Claude Code"
         case .opencode: "OpenCode"
         case .omp: "Oh-My-Pi"
+        case .agy: "Antigravity"
         }
     }
 }

@@ -18,8 +18,9 @@ behind a Swift `AgentConnection` boundary.
 | Launchable bundle | `scripts/build-app.sh` |
 
 ACP adapters need Node (`node`, `npm`, `npx`): Claude 22+, Codex 18+.
-OpenCode installs as a pinned prebuilt binary. Core discovers system installs
-and offers a managed runtime in agent setup; `OTTAM_NODE` overrides discovery.
+OpenCode, Oh-My-Pi, and Antigravity install as pinned prebuilt binaries.
+Core discovers system installs and offers a managed runtime in agent setup;
+`OTTAM_NODE` overrides discovery.
 Adapter pins live in `backend/crates/ottam-core/src/agent/registry.rs`.
 
 ## Docs

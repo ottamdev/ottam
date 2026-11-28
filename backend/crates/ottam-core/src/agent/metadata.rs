@@ -278,6 +278,7 @@ mod tests {
             include_str!("fixtures/codex-acp-2.7.0.json"),
             include_str!("fixtures/omp-18.22.0.json"),
             include_str!("fixtures/opencode-2.3.0.json"),
+            include_str!("fixtures/agy-acp-1.5.16.json"),
         ];
         let mut checked = 0;
         for fixture in fixtures {

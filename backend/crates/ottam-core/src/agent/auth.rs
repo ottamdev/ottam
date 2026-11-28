@@ -56,7 +56,14 @@ const SECRET_ONLY_METHOD_IDS: &[&str] = &["api-key", "apikey"];
 /// ones a person signing in to Ottam almost always wants — for the agents
 /// shipped today. An agent whose ids are not listed falls through to the
 /// structural ordering below, so this list is a nicety, not a requirement.
-const PREFERRED_METHOD_IDS: &[&str] = &["claude-ai-login", "chat-gpt", "claude-login"];
+/// Antigravity's `terminal-login` is its paste-the-code Google login, run in
+/// a terminal; it comes ahead of agy's adapter-run `oauth-personal`.
+const PREFERRED_METHOD_IDS: &[&str] = &[
+    "claude-ai-login",
+    "chat-gpt",
+    "claude-login",
+    "terminal-login",
+];
 
 /// How long a login may run, and how patient the reveal is.
 #[derive(Debug, Clone, Copy)]
@@ -667,6 +674,23 @@ pub(crate) fn terminal_command(
     );
     env.retain(|(name, _)| name != "HOME");
 
+    // The terminal inherits core's environment, so variables the launch
+    // removes go the way the adapter's do: `env -u`, argv only. A variable
+    // the terminal sets itself stays.
+    let mut unset = super::acp::definition_unset_variables(definition);
+    unset.retain(|key| !env.iter().any(|(name, _)| name == key));
+    let (program, args) = if unset.is_empty() {
+        (program, args)
+    } else {
+        let mut wrapped: Vec<String> = unset
+            .into_iter()
+            .flat_map(|key| ["-u".to_string(), key])
+            .collect();
+        wrapped.push(program);
+        wrapped.extend(args);
+        ("/usr/bin/env".to_string(), wrapped)
+    };
+
     Ok(ResolvedAuthCommand { program, args, env })
 }
 
@@ -1199,6 +1223,50 @@ mod tests {
         let command = terminal_command(&definition, &chosen).expect("a command");
         assert_eq!(command.program, definition.launch.command);
         assert_eq!(command.args, vec!["acp", "--login"]);
+    }
+
+    /// agy's advertised `--login` runs on the launch command, so it keeps the
+    /// home argument, and the login drops what the launch drops.
+    #[test]
+    fn an_advertised_login_keeps_the_home_argument_and_the_unsets() {
+        let mut definition = definition();
+        definition.launch.command = "/agents/agy/adapter/1.5.16/bin/agy".to_string();
+        definition.launch.arguments = ["acp", "--disable-telemetry", "--gemini-dir", "/ottam/home"]
+            .map(String::from)
+            .to_vec();
+        definition.adapter = Some(crate::agent::AdapterPackage {
+            name: "antigravity-cli".to_string(),
+            version: "1.5.16".to_string(),
+            source: crate::agent::AdapterSource::Binary(crate::agent::BinaryAdapter {
+                command: "agy".to_string(),
+                artifacts: Vec::new(),
+            }),
+        });
+        definition.launch_unset = &["GEMINI_API_KEY", "GOOGLE_API_KEY"];
+        let mut chosen = method("terminal-login", HarnessAuthMethodKind::Terminal);
+        chosen.terminal_command = Some(HarnessAuthTerminalCommand {
+            program: None,
+            args: vec!["--login".to_string()],
+            env: Vec::new(),
+            label: None,
+        });
+        let command = terminal_command(&definition, &chosen).expect("a command");
+        assert_eq!(command.program, "/usr/bin/env");
+        assert_eq!(
+            command.args,
+            [
+                "-u",
+                "GEMINI_API_KEY",
+                "-u",
+                "GOOGLE_API_KEY",
+                "/agents/agy/adapter/1.5.16/bin/agy",
+                "acp",
+                "--disable-telemetry",
+                "--gemini-dir",
+                "/ottam/home",
+                "--login",
+            ]
+        );
     }
 
     /// omp advertises its plain TUI; the definition's `omp login` replaces it

@@ -27,7 +27,8 @@ fn managed_profiles_create_rename_delete_and_restart_preserve_siblings() {
     let home = tempfile::tempdir().unwrap();
     let mut core = CoreProcess::new_in_home(home.path());
     core.initialize();
-    for provider in ["codex", "claude", "opencode", "omp"] {
+    // agy moves its home with a flag, not a variable, and still gets profiles.
+    for provider in ["codex", "claude", "opencode", "omp", "agy"] {
         let installation = home
             .path()
             .join("agents")
@@ -91,10 +92,18 @@ fn managed_profiles_create_rename_delete_and_restart_preserve_siblings() {
         let removed =
             core.send(json!({"id":904,"method":"agent.authState","params":{"agentID":id}}));
         assert_error_response(&removed, &json!(904), -32000, "removed");
-        let seed_deleted = core.send(json!({"id":905,"method":"agent.delete","params":{"agentID":provider,"purge":true,"operationKey":format!("seed-{provider}")}}));
-        assert_success_response(&seed_deleted, &json!(905));
-        assert!(!seed.exists());
+        // agy has no seeded default instance to delete.
+        if provider != "agy" {
+            let seed_deleted = core.send(json!({"id":905,"method":"agent.delete","params":{"agentID":provider,"purge":true,"operationKey":format!("seed-{provider}")}}));
+            assert_success_response(&seed_deleted, &json!(905));
+            assert!(!seed.exists());
+        }
         assert!(installation.join("keep").exists());
+    }
+    // A harness that cannot move its home, or none at all, gets no profile.
+    for (id, provider) in [(908, "test.native"), (909, "unknown")] {
+        let refused = core.send(json!({"id":id,"method":"agent.create","params":{"harnessID":provider,"layout":"managed","label":"Work"}}));
+        assert_error_response(&refused, &json!(id), -32602, "Unsupported profile provider");
     }
     core.shutdown();
     let mut restarted = CoreProcess::new_in_home(home.path());

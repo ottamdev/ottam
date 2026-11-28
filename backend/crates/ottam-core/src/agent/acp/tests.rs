@@ -117,6 +117,7 @@ fn recorded_sessions_carry_turn_usage_and_context_usage() {
         ("codex", include_str!("../fixtures/codex-acp-2.7.0.json")),
         ("opencode", include_str!("../fixtures/opencode-2.3.0.json")),
         ("omp", include_str!("../fixtures/omp-18.22.0.json")),
+        ("agy", include_str!("../fixtures/agy-acp-1.5.16.json")),
     ] {
         let messages = serde_json::from_str::<Vec<serde_json::Value>>(recording).unwrap();
         // A cancelled answer may carry no usage (Oh-My-Pi, OpenCode).
@@ -162,6 +163,61 @@ fn recorded_sessions_carry_turn_usage_and_context_usage() {
             );
         }
     }
+}
+
+/// agy sends its models twice; core reads the `configOptions` selects, so
+/// the picker shows families with effort as the thinking level. Its
+/// terminal login is the launch command plus `--login`, and the default
+/// sign-in picks it.
+#[test]
+fn recorded_agy_session_offers_families_efforts_and_a_terminal_login() {
+    use agent_client_protocol::schema::v1::{InitializeResponse, NewSessionResponse};
+    let frames = serde_json::from_str::<Vec<serde_json::Value>>(include_str!(
+        "../fixtures/agy-acp-1.5.16.json"
+    ))
+    .unwrap();
+    let initialize =
+        serde_json::from_value::<InitializeResponse>(frames[0]["result"].clone()).unwrap();
+    let methods: Vec<_> = initialize
+        .auth_methods
+        .iter()
+        .map(super::protocol::normalize_auth_method)
+        .collect();
+    let login = crate::agent::auth::select_auth_method(
+        &methods,
+        None,
+        crate::agent::SignInProof::Session,
+    )
+    .unwrap();
+    assert_eq!(login.method_id, "terminal-login");
+    let command = login.terminal_command.expect("a terminal command");
+    assert_eq!(command.program, None);
+    assert_eq!(command.args, ["--login"]);
+
+    let session = serde_json::from_value::<NewSessionResponse>(frames[1]["result"].clone()).unwrap();
+    let selects = super::session_config::extract_session_selects(session.config_options.as_deref());
+    let values = |select: Option<&super::session_config::ConfigSelect>| {
+        select
+            .expect("select present")
+            .options
+            .iter()
+            .map(|option| option.id.clone())
+            .collect::<Vec<_>>()
+    };
+    let models = values(selects.model.as_ref());
+    assert!(models.contains(&"gemini-4-neon".to_string()), "{models:?}");
+    assert!(
+        models.iter().all(|id| !id.ends_with("-high")),
+        "families, not effort ids: {models:?}"
+    );
+    assert_eq!(
+        values(selects.thought_level()),
+        ["low", "medium", "high", "xhigh"]
+    );
+    assert_eq!(
+        values(selects.mode.as_ref()),
+        ["default", "accept-edits", "auto", "plan"]
+    );
 }
 
 /// Recorded from the pinned adapters against Ottam's `initialize` (an
@@ -644,7 +700,11 @@ fn write_fixture_recording_inputs() {
                 let environment: BTreeMap<_, _> = launch.environment.into_iter().collect();
                 (
                     launch.agent.0,
-                    serde_json::json!({"home": launch.home, "environment": environment}),
+                    serde_json::json!({
+                        "home": launch.home,
+                        "arguments": launch.arguments,
+                        "environment": environment,
+                    }),
                 )
             })
             .collect();
@@ -672,6 +732,7 @@ fn write_fixture_recording_inputs() {
                     "command": launch.command,
                     "arguments": launch.arguments,
                     "environment": launch.environment.iter().cloned().collect::<BTreeMap<_, _>>(),
+                    "unset": super::protocol::definition_unset_variables(&definition),
                     "version": definition.adapter.as_ref().map(|adapter| adapter.version.clone()),
                     "binary": binary,
                     "managed": managed.remove(&definition.agent_id.0),
@@ -702,6 +763,7 @@ fn unhandled_nothing_in_the_recorded_sessions() {
         include_str!("../fixtures/claude-agent-acp-0.108.0.json"),
         include_str!("../fixtures/opencode-2.3.0.json"),
         include_str!("../fixtures/omp-18.22.0.json"),
+        include_str!("../fixtures/agy-acp-1.5.16.json"),
     ]
     .into_iter()
     .flat_map(|text| serde_json::from_str::<Vec<serde_json::Value>>(text).unwrap());
@@ -778,9 +840,17 @@ fn unhandled_nothing_in_the_recorded_sessions() {
             Some(method) => panic!("no handler claims {method}"),
             None => continue,
         };
-        let dropped = dropped_paths(params, &typed, &|path, value| {
+        let mut dropped = dropped_paths(params, &typed, &|path, value| {
             is_omitted_default(tag, path, value)
         });
+        for key in ["update", "toolCall"] {
+            super::protocol::retain_unechoed(params, key, &mut dropped);
+        }
+        // agy tags the tool call it asks permission for as a `tool_call`
+        // update; the tag says nothing there.
+        if params["toolCall"]["sessionUpdate"] == "tool_call" {
+            dropped.retain(|path| path != "toolCall.sessionUpdate");
+        }
         assert!(dropped.is_empty(), "{method} loses {dropped:?}: {params}");
         checked += 1;
     }
