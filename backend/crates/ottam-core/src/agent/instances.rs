@@ -1,6 +1,6 @@
 use super::types::{
     AdapterPackage, AgentDefinition, AgentId, AgentLaunchSpec, AgentPresentation, ChildSessionTags,
-    ClientPlugin, FormSkip, HomeSetting, HomeVariable, McpConnections, SignInProof,
+    ClientPlugin, FormSkip, HomeArgument, HomeSetting, HomeVariable, McpConnections, SignInProof,
     SubagentMessageTools, TerminalLoginReveal,
 };
 use serde::{Deserialize, Serialize};
@@ -105,6 +105,8 @@ pub struct HarnessDefinition {
     pub adapter: Option<AdapterPackage>,
     pub launch: AgentLaunchSpec,
     pub home_variables: &'static [HomeVariable],
+    pub home_arguments: &'static [HomeArgument],
+    pub launch_unset: &'static [&'static str],
     pub subagent_messages: SubagentMessageTools,
     pub child_sessions: Option<ChildSessionTags>,
     pub client_plugin: Option<ClientPlugin>,
@@ -125,6 +127,8 @@ impl HarnessDefinition {
             adapter: definition.adapter,
             launch: definition.launch,
             home_variables: definition.home_variables,
+            home_arguments: definition.home_arguments,
+            launch_unset: definition.launch_unset,
             subagent_messages: definition.subagent_messages,
             child_sessions: definition.child_sessions,
             client_plugin: definition.client_plugin,
@@ -145,6 +149,8 @@ impl HarnessDefinition {
             adapter: self.adapter.clone(),
             launch: self.launch.clone(),
             home_variables: self.home_variables,
+            home_arguments: self.home_arguments,
+            launch_unset: self.launch_unset,
             subagent_messages: self.subagent_messages,
             child_sessions: self.child_sessions,
             client_plugin: self.client_plugin,
@@ -166,6 +172,8 @@ impl HarnessDefinition {
             adapter: self.adapter.clone(),
             launch: self.launch.clone(),
             home_variables: self.home_variables,
+            home_arguments: self.home_arguments,
+            launch_unset: self.launch_unset,
             subagent_messages: self.subagent_messages,
             child_sessions: self.child_sessions,
             client_plugin: self.client_plugin,
@@ -211,7 +219,9 @@ impl AgentDefinition {
         match self.harness_id() {
             super::registry::CLAUDE_AGENT_ID => Some("plan"),
             super::registry::CODEX_AGENT_ID => Some("read-only"),
-            super::registry::OPENCODE_AGENT_ID | super::registry::OMP_AGENT_ID => Some("plan"),
+            super::registry::OPENCODE_AGENT_ID
+            | super::registry::OMP_AGENT_ID
+            | super::registry::AGY_AGENT_ID => Some("plan"),
             _ => None,
         }
     }
@@ -238,6 +248,9 @@ impl AgentDefinition {
             super::registry::CLAUDE_AGENT_ID => &["default", "plan"],
             super::registry::CODEX_AGENT_ID => &["read-only"],
             super::registry::OPENCODE_AGENT_ID | super::registry::OMP_AGENT_ID => &["plan"],
+            // agy's `default` asks before edits and commands (its mode list
+            // at 1.5.16).
+            super::registry::AGY_AGENT_ID => &["default", "plan"],
             _ => &[],
         }
     }

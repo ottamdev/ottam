@@ -4,10 +4,10 @@ import SwiftUI
 /// The rounded-tile brand icon for an agent, Xcode Intelligence-style: a
 /// brand-colored tile carrying the vendor's glyph. Glyphs ship as vector PDFs
 /// in AppResources (Claude starburst from Anthropic's mark, OpenAI blossom,
-/// OpenCode's mark, omp's pi) and render as templates so the tile owns the
-/// colors, except a multi-color mark, which keeps its own. Tile treatments follow each
-/// vendor's own: Claude terracotta, OpenAI white, OpenCode near-black, omp
-/// near-black violet.
+/// OpenCode's mark, omp's pi, Antigravity's arch) and render as templates so
+/// the tile owns the colors, except a multi-color mark, which keeps its own.
+/// Tile treatments follow each vendor's own: Claude terracotta, OpenAI and
+/// Antigravity white, OpenCode near-black, omp near-black violet.
 ///
 /// Keyed by the `brand` core ships on the agent, not by agent id, so every
 /// agent from a known vendor shares its tile; no brand, or one this catalog
@@ -48,7 +48,7 @@ struct AgentIconView: View {
             }
         }
         .frame(width: size, height: size)
-        // The hairline keeps the white OpenAI tile from dissolving into light
+        // The hairline keeps the white tiles from dissolving into light
         // backgrounds.
         .overlay(tileShape.stroke(.quaternary, lineWidth: 1))
         .accessibilityHidden(true)
@@ -91,6 +91,15 @@ private struct AgentBrand {
             background: Color(red: 0.059, green: 0.039, blue: 0.078),
             glyphColor: nil,
             glyphScale: 1
+        ),
+        // Antigravity's favicon arch without its white disc. Its colors come
+        // from blurred layers Apple's PDF renderer can't draw as vectors, so
+        // the PDF carries the mark as a 256-pixel image with alpha.
+        "google": AgentBrand(
+            resource: "agent-antigravity",
+            background: .white,
+            glyphColor: nil,
+            glyphScale: 0.62
         ),
     ]
 

@@ -160,13 +160,30 @@ pub enum HomeTarget {
     File(&'static str),
 }
 
-impl HomeVariable {
+impl HomeTarget {
     pub fn value(&self, home: &std::path::Path) -> std::path::PathBuf {
-        match self.target {
+        match self {
             HomeTarget::Root => home.to_path_buf(),
             HomeTarget::Dir(path) | HomeTarget::File(path) => home.join(path),
         }
     }
+}
+
+impl HomeVariable {
+    pub fn value(&self, home: &std::path::Path) -> std::path::PathBuf {
+        self.target.value(home)
+    }
+}
+
+/// A launch flag that points a vendor CLI at a home, for a CLI that takes
+/// no variable for it (`agy --gemini-dir`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct HomeArgument {
+    pub flag: &'static str,
+    pub target: HomeTarget,
+    /// Where the CLI looks without the flag, relative to the user's home. An
+    /// existing setup there launches without it.
+    pub default: &'static str,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -203,9 +220,14 @@ pub struct AgentDefinition {
     /// test engine); every real engine carries its pin here.
     pub adapter: Option<AdapterPackage>,
     pub launch: AgentLaunchSpec,
-    /// How a managed home reaches the CLI. Empty means the CLI has no home
-    /// override, so it gets no isolated home and runs against its default.
+    /// How a managed home reaches the CLI. With no variables and no
+    /// arguments the CLI has no home override, so it gets no isolated home
+    /// and runs against its default.
     pub home_variables: &'static [HomeVariable],
+    pub home_arguments: &'static [HomeArgument],
+    /// Variables removed from what every launch inherits: the adapter, the
+    /// catalog probe, and the terminal sign-in.
+    pub launch_unset: &'static [&'static str],
     pub subagent_messages: SubagentMessageTools,
     /// Subagent activity the agent projects onto the parent's session, tagged
     /// per child, with a control call that launched it.
@@ -273,6 +295,11 @@ impl AgentDefinition {
         self.adapter
             .as_ref()
             .is_some_and(|package| package.binary().is_some())
+    }
+
+    /// Whether the CLI can be pointed at a home Ottam manages.
+    pub fn has_home_override(&self) -> bool {
+        !self.home_variables.is_empty() || !self.home_arguments.is_empty()
     }
 }
 
@@ -373,6 +400,8 @@ impl AgentDefinition {
                 minimum_node_major: 18,
             },
             home_variables: &[],
+            home_arguments: &[],
+            launch_unset: &[],
             subagent_messages: SubagentMessageTools::default(),
             child_sessions: None,
             client_plugin: None,

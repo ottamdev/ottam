@@ -66,6 +66,20 @@ class Scrub(unittest.TestCase):
         found = recorder.leaks(rendered, {"home": HOME, "absent": "/nowhere", "none": None})
         self.assertEqual(found, ["home"])
 
+    def test_a_plan_tier_becomes_a_placeholder(self):
+        tier = {"name": "Pro", "id": "g1-pro-tier", "upgradeUri": "https://x.test/up"}
+        frames, _ = self.scrubbed([{"jsonrpc": "2.0", "id": 1, "result": {
+            "_meta": {"antigravity": {"tier": tier}}, "model": "Gemini 3 Pro"}}])
+        result = frames[0]["result"]
+        self.assertEqual(result["_meta"]["antigravity"]["tier"],
+                         {"name": "Example Plan", "id": "example-plan",
+                          "upgradeUri": "https://x.test/up"})
+        # Only the plan object changes: a common word stays elsewhere.
+        self.assertEqual(result["model"], "Gemini 3 Pro")
+        # A boolean `tier` capability carries no plan.
+        _, hidden = self.scrubbed([{"jsonrpc": "2.0", "id": 0, "result": {"tier": True}}])
+        self.assertEqual(hidden, {})
+
     def test_placeholders_are_not_secrets(self):
         _, hidden = self.scrubbed([auth(recorder.EMAIL, recorder.ORGANIZATION)])
         self.assertEqual(hidden, {})

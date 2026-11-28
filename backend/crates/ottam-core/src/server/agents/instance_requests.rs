@@ -123,7 +123,10 @@ impl AgentServer {
                         Err(response) => return response,
                     };
                     if params.layout == AgentHomeKind::Managed {
-                        if crate::agent::existing_setup(&params.harness_id).is_none() {
+                        if !task_bridge
+                            .registry()
+                            .supports_managed_profile(&params.harness_id)
+                        {
                             return error_response(
                                 request.id,
                                 -32602,

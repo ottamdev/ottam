@@ -207,9 +207,10 @@ The four `HackNerdFontMono` faces in `Contents/Resources/Fonts` are
 
 ## Agent marks
 
-`agent-claude.pdf` and `agent-openai.pdf` are derived from the Anthropic and
-OpenAI marks. They are trademarks of their owners, used only to identify each
-agent, and imply no endorsement. `agent-opencode.pdf` is OpenCode's mark from
+`agent-claude.pdf`, `agent-openai.pdf`, and `agent-antigravity.pdf` are
+derived from the Anthropic, OpenAI, and Google Antigravity marks. They are
+trademarks of their owners, used only to identify each agent, and imply no
+endorsement. `agent-opencode.pdf` is OpenCode's mark from
 `packages/identity/mark.svg` in [OpenCode](https://github.com/sst/opencode)
 (MIT). `agent-omp.pdf` is the pi from omp.sh's favicon,
 `packages/collab-web/public/favicon.svg` in

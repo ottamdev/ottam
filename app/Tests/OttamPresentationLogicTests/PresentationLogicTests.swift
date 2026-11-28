@@ -469,6 +469,7 @@ struct AgentSettingsPresentationTests {
         #expect(CLIProvider(agentID: "opencode") == .opencode)
         #expect(CLIProvider(agentID: "omp.work") == .omp)
         #expect(CLIProvider(agentID: "claude.work")?.displayName == "Claude Code")
+        #expect(CLIProvider(agentID: "agy")?.displayName == "Antigravity")
         #expect(CLIProvider(agentID: "test.native") == nil)
     }
 

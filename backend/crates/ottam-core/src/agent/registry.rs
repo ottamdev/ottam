@@ -9,8 +9,8 @@ use super::types::{
     AgentPresentation, AgentRuntimeStatus, AgentSessionSelects, BinaryAdapter, BinaryArchive,
     BinaryArtifact, CancelPermissionBroker, ChildSessionTags, ClientPlugin, FormSkip,
     HarnessAdapter, HarnessAuthState, HarnessError, HarnessErrorKind, HarnessPermissionBroker,
-    HomeSetting, HomeTarget, HomeVariable, McpConnections, RuntimeAvailability, RuntimeSource,
-    SignInProof, SubagentFollowUpTool, SubagentHandbackTool, SubagentMessageTools,
+    HomeArgument, HomeSetting, HomeTarget, HomeVariable, McpConnections, RuntimeAvailability,
+    RuntimeSource, SignInProof, SubagentFollowUpTool, SubagentHandbackTool, SubagentMessageTools,
     TerminalLoginReveal,
 };
 use std::collections::BTreeMap;
@@ -29,6 +29,7 @@ pub const CLAUDE_AGENT_ID: &str = "claude";
 pub const TEST_NATIVE_AGENT_ID: &str = "test.native";
 pub const OPENCODE_AGENT_ID: &str = "opencode";
 pub const OMP_AGENT_ID: &str = "omp";
+pub const AGY_AGENT_ID: &str = "agy";
 /// A binary-lane agent that installs from `OTTAM_TEST_BINARY_AGENT_URL`,
 /// for exercising the download path without a real vendor binary.
 pub const TEST_BINARY_AGENT_ID: &str = "test.binary";
@@ -716,7 +717,7 @@ impl AgentRegistry {
         if let Some(home) = definition.existing_home() {
             return Some(home.to_path_buf());
         }
-        if definition.home_variables.is_empty() {
+        if !definition.has_home_override() {
             return None;
         }
         Some(
@@ -986,7 +987,7 @@ impl AgentRegistry {
             return std::fs::read_dir(home).map(|_| ()).map_err(|_| HarnessError::new(HarnessErrorKind::Internal, "Your CLI setup is missing or unreadable. Ottam will not create or replace it."));
         }
         if let Some(home) = self.agent_home(agent) {
-            create_managed_home(&home, definition.home_variables).map_err(|_| HarnessError::new(HarnessErrorKind::Internal, "Cannot create the agent's managed home; refusing to use your CLI home as a fallback."))?;
+            create_managed_home(&home, &definition).map_err(|_| HarnessError::new(HarnessErrorKind::Internal, "Cannot create the agent's managed home; refusing to use your CLI home as a fallback."))?;
             apply_home_settings(&home, definition.home_settings).map_err(|error| {
                 HarnessError::new(
                     HarnessErrorKind::Internal,
@@ -995,6 +996,14 @@ impl AgentRegistry {
             })?;
         }
         Ok(())
+    }
+
+    /// A managed profile needs a built-in harness that can point at a home of
+    /// its own; reusing a CLI setup is `existing_setup`'s question.
+    pub(crate) fn supports_managed_profile(&self, harness_id: &str) -> bool {
+        self.harnesses
+            .get(&super::HarnessId(harness_id.into()))
+            .is_some_and(|harness| harness.template_definition().has_home_override())
     }
 
     pub(crate) fn harness_instances(&self, harness_id: &str) -> Vec<AgentId> {
@@ -1279,19 +1288,18 @@ impl AgentRegistry {
         // PATH fix, so the adapter spawn, the model-catalog probe, and the
         // sign-in terminal all see one consistent home per agent.
         if let Some(super::AgentInstance {
-            home: super::HomeLayout::Existing { environment, .. },
+            home: super::HomeLayout::Existing { path, environment },
             ..
-        }) = &definition.instance
+        }) = definition.instance.clone()
         {
             for (name, value) in environment {
-                definition.launch.environment.retain(|(key, _)| key != name);
+                definition.launch.environment.retain(|(key, _)| key != &name);
                 if let Some(value) = value {
-                    definition
-                        .launch
-                        .environment
-                        .push((name.clone(), value.clone()));
+                    definition.launch.environment.push((name, value));
                 }
             }
+            let user_home = std::env::var_os("HOME").map(PathBuf::from);
+            set_existing_home_arguments(&mut definition, &path, user_home.as_deref());
         } else if let Some(policy) = &self.home_policy {
             let home = policy.root.join(&definition.agent_id.0).join("home");
             set_home_environment(&mut definition, &home);
@@ -1482,11 +1490,19 @@ impl AgentRegistry {
     pub(crate) fn create_probe_adapter(
         &self,
         agent_id: &AgentId,
-        extra_arguments: Vec<String>,
+        scratch_flag: Option<(&str, &Path)>,
     ) -> Result<Arc<dyn HarnessAdapter>, HarnessError> {
         self.prepare_home(agent_id)?;
         let mut definition = self.definition(agent_id)?;
-        definition.launch.arguments.extend(extra_arguments);
+        // Replaces the flag when the launch already sets it: agy's scratch
+        // `--gemini-dir` stands in for its home argument.
+        if let Some((flag, store)) = scratch_flag {
+            set_flag(
+                &mut definition.launch.arguments,
+                flag,
+                Some(&store.to_string_lossy()),
+            );
+        }
         let adapter = self.factory.create(definition, 1);
         self.track_adapter(&adapter);
         // After tracking: shutdown sets the flag before it snapshots live
@@ -1540,7 +1556,7 @@ impl AgentRegistry {
         if let Some(instance) = &mut definition.instance {
             instance.home = super::HomeLayout::Managed;
         }
-        create_managed_home(&home, definition.home_variables).map_err(|error| {
+        create_managed_home(&home, &definition).map_err(|error| {
             HarnessError::new(
                 HarnessErrorKind::Internal,
                 format!("Cannot prepare installation verification home: {error}"),
@@ -2296,8 +2312,8 @@ fn pinned(package: (&str, &str)) -> AdapterPackage {
     }
 }
 
-/// Point every home variable at `home`, replacing values the launch spec or
-/// an earlier pass set.
+/// Point every home variable and home argument at `home`, replacing values
+/// the launch spec or an earlier pass set.
 fn set_home_environment(definition: &mut AgentDefinition, home: &Path) {
     for variable in definition.home_variables {
         definition
@@ -2309,6 +2325,53 @@ fn set_home_environment(definition: &mut AgentDefinition, home: &Path) {
             variable.value(home).to_string_lossy().into_owned(),
         ));
     }
+    for argument in definition.home_arguments {
+        set_flag(
+            &mut definition.launch.arguments,
+            argument.flag,
+            Some(&argument.target.value(home).to_string_lossy()),
+        );
+    }
+}
+
+/// Point every home argument at an existing setup. A setup where the CLI
+/// looks by default gets no flag, so the launch matches the user's own.
+fn set_existing_home_arguments(
+    definition: &mut AgentDefinition,
+    path: &Path,
+    user_home: Option<&Path>,
+) {
+    for argument in definition.home_arguments {
+        let at_default = user_home.is_some_and(|home| home.join(argument.default) == path);
+        let value = (!at_default).then(|| argument.target.value(path));
+        set_flag(
+            &mut definition.launch.arguments,
+            argument.flag,
+            value.as_ref().map(|value| value.to_string_lossy()).as_deref(),
+        );
+    }
+}
+
+/// Remove every `flag value` and `flag=value` from `arguments`, then append
+/// `flag value` when there is a value.
+pub(crate) fn set_flag(arguments: &mut Vec<String>, flag: &str, value: Option<&str>) {
+    let prefix = format!("{flag}=");
+    let mut kept = Vec::with_capacity(arguments.len());
+    let mut iter = std::mem::take(arguments).into_iter().peekable();
+    while let Some(argument) = iter.next() {
+        if argument == flag {
+            // Its value, unless the flag was left without one.
+            if iter.peek().is_some_and(|next| !next.starts_with('-')) {
+                iter.next();
+            }
+        } else if !argument.starts_with(&prefix) {
+            kept.push(argument);
+        }
+    }
+    if let Some(value) = value {
+        kept.extend([flag.to_string(), value.to_string()]);
+    }
+    *arguments = kept;
 }
 
 /// Merge Ottam's JSON config into the user's: objects merge key by key,
@@ -2380,6 +2443,7 @@ fn apply_home_settings(home: &Path, settings: &[HomeSetting]) -> io::Result<()> 
 pub(crate) struct ManagedFixtureLaunch {
     pub(crate) agent: AgentId,
     pub(crate) home: PathBuf,
+    pub(crate) arguments: Vec<String>,
     pub(crate) environment: Vec<(String, String)>,
 }
 
@@ -2405,28 +2469,34 @@ pub(crate) fn managed_fixture_launches(
     .with_home_root(root.to_path_buf());
     built_in_definitions()
         .into_iter()
-        .filter(|definition| !definition.home_variables.is_empty())
+        .filter(AgentDefinition::has_home_override)
         .map(|definition| {
             let agent = definition.agent_id;
             registry.prepare_home(&agent)?;
             let home = registry.agent_home(&agent).ok_or_else(|| {
                 HarnessError::new(HarnessErrorKind::Internal, "no managed home")
             })?;
-            let environment = registry.definition(&agent)?.launch.environment;
+            let launch = registry.definition(&agent)?.launch;
             Ok(ManagedFixtureLaunch {
                 agent,
                 home,
-                environment,
+                arguments: launch.arguments,
+                environment: launch.environment,
             })
         })
         .collect()
 }
 
-fn create_managed_home(home: &Path, variables: &[HomeVariable]) -> io::Result<()> {
+fn create_managed_home(home: &Path, definition: &AgentDefinition) -> io::Result<()> {
     std::fs::create_dir_all(home)?;
-    for variable in variables {
-        if let HomeTarget::Dir(_) = variable.target {
-            std::fs::create_dir_all(variable.value(home))?;
+    let targets = definition
+        .home_variables
+        .iter()
+        .map(|variable| variable.target)
+        .chain(definition.home_arguments.iter().map(|argument| argument.target));
+    for target in targets {
+        if let HomeTarget::Dir(_) = target {
+            std::fs::create_dir_all(target.value(home))?;
         }
     }
     Ok(())
@@ -2464,6 +2534,8 @@ pub(super) fn built_in_definitions() -> Vec<AgentDefinition> {
                 name: "CLAUDE_CONFIG_DIR",
                 target: HomeTarget::Root,
             }],
+            home_arguments: &[],
+            launch_unset: &[],
             // Claude Code may have a subagent deliver its final report
             // through `SubagentHandback` instead of its last message, and the
             // parent messages a running subagent through `SendMessage`.
@@ -2518,6 +2590,8 @@ pub(super) fn built_in_definitions() -> Vec<AgentDefinition> {
                 name: "CODEX_HOME",
                 target: HomeTarget::Root,
             }],
+            home_arguments: &[],
+            launch_unset: &[],
             // codex-acp hides its collaboration calls in native mode.
             subagent_messages: SubagentMessageTools::default(),
             child_sessions: None,
@@ -2533,6 +2607,7 @@ pub(super) fn built_in_definitions() -> Vec<AgentDefinition> {
         },
         opencode_definition(),
         omp_definition(),
+        agy_definition(),
     ];
     #[cfg(test_seams)]
     push_test_definitions(&mut definitions);
@@ -2563,6 +2638,8 @@ fn push_test_definitions(definitions: &mut Vec<AgentDefinition>) {
             },
             adapter: None,
             home_variables: &[],
+            home_arguments: &[],
+            launch_unset: &[],
             subagent_messages: SubagentMessageTools::default(),
             child_sessions: None,
             client_plugin: None,
@@ -2633,6 +2710,8 @@ fn test_binary_definition() -> Option<AgentDefinition> {
                 target: HomeTarget::Dir("config"),
             },
         ],
+        home_arguments: &[],
+        launch_unset: &[],
         subagent_messages: SubagentMessageTools::default(),
         child_sessions: None,
         client_plugin: None,
@@ -2732,6 +2811,8 @@ fn opencode_definition() -> AgentDefinition {
                 target: HomeTarget::Dir("state"),
             },
         ],
+        home_arguments: &[],
+        launch_unset: &[],
         // A follow-up to a running child joins its run, so `acp/child_sessions.rs`
         // releases that call and it is stamped here. One to a finished child
         // starts a run whose prompt it becomes.
@@ -2855,6 +2936,8 @@ fn omp_definition() -> AgentDefinition {
             name: "PI_CODING_AGENT_DIR",
             target: HomeTarget::Root,
         }],
+        home_arguments: &[],
+        launch_unset: &[],
         subagent_messages: SubagentMessageTools::default(),
         child_sessions: None,
         client_plugin: None,
@@ -2875,6 +2958,96 @@ fn omp_definition() -> AgentDefinition {
         // `--no-session` in ACP, and records a handle in
         // `acp-session-handles.json` only for a switched or forked session.
         catalog_probe: ProbeCleanup::ScratchSessionDir("--session-dir"),
+    }
+}
+
+/// Antigravity ships one Go executable per platform as a GitHub release
+/// tarball. The digests are GitHub's asset digests, matched against fresh
+/// downloads; Google publishes none of its own.
+const AGY_VERSION: &str = "1.5.16";
+const AGY_ARTIFACTS: [(&str, &str, &str); 2] = [
+    (
+        "aarch64",
+        "https://github.com/google-antigravity/antigravity-cli/releases/download/1.5.16/agy_cli_mac_arm64.tar.gz",
+        "ba47202f712de4c4a78fd787d81ba206d73e11c97572fc69420f29a77efc8d95",
+    ),
+    (
+        "x86_64",
+        "https://github.com/google-antigravity/antigravity-cli/releases/download/1.5.16/agy_cli_mac_x64.tar.gz",
+        "14cd76a31e42ad461d6f8adf7631306cac37553f547aba0a0f111b0824d21c0c",
+    ),
+];
+
+fn agy_definition() -> AgentDefinition {
+    AgentDefinition {
+        agent_id: AgentId::new(AGY_AGENT_ID),
+        instance: None,
+        presentation: AgentPresentation {
+            product_name: "Antigravity",
+            vendor_name: "Google",
+            vendor_home: Some("~/.gemini"),
+            brand: Some("google"),
+            account_label: "Google account",
+            account_kind: AccountKind::Subscription,
+        },
+        // `agy acp --login` prints a Google URL and waits for a pasted code.
+        terminal_login_reveal: TerminalLoginReveal::Immediate,
+        launch: AgentLaunchSpec {
+            command: "agy".to_string(),
+            arguments: vec!["acp".to_string(), "--disable-telemetry".to_string()],
+            // The installed CLI updates itself in the background; the pin is
+            // Ottam's.
+            environment: vec![(
+                "AGY_CLI_DISABLE_AUTO_UPDATE".to_string(),
+                "true".to_string(),
+            )],
+            minimum_node_major: 0,
+        },
+        adapter: Some(AdapterPackage {
+            name: "antigravity-cli".to_string(),
+            version: AGY_VERSION.to_string(),
+            source: AdapterSource::Binary(BinaryAdapter {
+                command: "agy".to_string(),
+                artifacts: AGY_ARTIFACTS
+                    .iter()
+                    .map(|(arch, url, sha256)| BinaryArtifact {
+                        arch,
+                        url: url.to_string(),
+                        sha256: sha256.to_string(),
+                        archive: BinaryArchive::Tgz {
+                            member: "antigravity".to_string(),
+                        },
+                    })
+                    .collect(),
+            }),
+        }),
+        home_variables: &[],
+        // agy has no variable for its home; `--gemini-dir` moves all of its
+        // state. Its Google sign-in stays in the Keychain whatever the home.
+        home_arguments: &[HomeArgument {
+            flag: "--gemini-dir",
+            target: HomeTarget::Root,
+            default: ".gemini",
+        }],
+        // An inherited key switches agy to key auth, whose models then
+        // reject the subscription's requests.
+        launch_unset: &["GEMINI_API_KEY", "GOOGLE_API_KEY"],
+        subagent_messages: SubagentMessageTools::default(),
+        child_sessions: None,
+        client_plugin: None,
+        home_settings: &[],
+        form_skip: FormSkip::Decline,
+        // agy sends no auth status, and a session with no credential fails
+        // with "Authentication required".
+        sign_in_proof: SignInProof::Session,
+        // The advertised `terminal-login` method is `--login` on the launch
+        // command, so it carries the home argument.
+        terminal_login_args: None,
+        mcp_connections: McpConnections::PerSession,
+        // At 1.5.16 every `session/new` writes `conversations/<id>.db` and
+        // there is no `session/delete`. The Keychain sign-in makes a scratch
+        // home list the same models.
+        catalog_probe: ProbeCleanup::ScratchSessionDir("--gemini-dir"),
     }
 }
 
@@ -4004,6 +4177,134 @@ mod tests {
             registry.shutdown_waiting_on().is_empty(),
             "a lock without a live adapter does not block quit"
         );
+    }
+
+    /// agy takes its home as `--gemini-dir`, not a variable: a managed
+    /// profile still gets its own home, and the flag follows the layout.
+    #[test]
+    fn a_home_argument_points_each_layout_at_its_home() {
+        let root = tempfile::tempdir().unwrap();
+        let custom = tempfile::tempdir().unwrap();
+        let registry = AgentRegistry::with_components(
+            built_in_definitions(),
+            Arc::new(ReadyProbe),
+            Arc::new(FakeFactory::default()),
+        )
+        .with_home_policy(AgentHomePolicy {
+            root: root.path().into(),
+        });
+        let gemini_dir = |definition: &AgentDefinition| {
+            let arguments = &definition.launch.arguments;
+            let flags: Vec<_> = arguments
+                .iter()
+                .enumerate()
+                .filter(|(_, argument)| *argument == "--gemini-dir")
+                .map(|(index, _)| arguments.get(index + 1).cloned())
+                .collect();
+            assert!(flags.len() <= 1, "one flag at most: {arguments:?}");
+            flags.into_iter().next().flatten()
+        };
+
+        // A home argument alone is enough for a managed profile; a harness
+        // that cannot move its home is not.
+        assert!(registry.supports_managed_profile(AGY_AGENT_ID));
+        assert!(registry.supports_managed_profile("claude"));
+        assert!(!registry.supports_managed_profile(TEST_NATIVE_AGENT_ID));
+        assert!(!registry.supports_managed_profile("unknown"));
+
+        let managed = AgentId::new(AGY_AGENT_ID);
+        let home = root.path().join("agy").join("home");
+        let definition = registry.definition(&managed).unwrap();
+        assert_eq!(registry.agent_home(&managed), Some(home.clone()));
+        assert_eq!(
+            gemini_dir(&definition).as_deref(),
+            Some(home.to_string_lossy().as_ref())
+        );
+        assert_eq!(&definition.launch.arguments[..2], ["acp", "--disable-telemetry"]);
+        registry.prepare_home(&managed).unwrap();
+        assert!(home.is_dir());
+        // A second pass over a resolved definition keeps one flag.
+        let again = registry.resolved_definition(definition);
+        assert_eq!(
+            gemini_dir(&again).as_deref(),
+            Some(home.to_string_lossy().as_ref())
+        );
+
+        let existing = AgentId::new("agy.custom");
+        registry.publish_instance(super::super::AgentInstance {
+            id: existing.clone(),
+            harness_id: super::super::HarnessId(AGY_AGENT_ID.into()),
+            label: "My Antigravity".into(),
+            home: super::super::HomeLayout::Existing {
+                path: custom.path().into(),
+                environment: BTreeMap::new(),
+            },
+            claimed: false,
+        });
+        let definition = registry.definition(&existing).unwrap();
+        assert_eq!(registry.agent_home(&existing), Some(custom.path().into()));
+        assert_eq!(
+            gemini_dir(&definition).as_deref(),
+            Some(custom.path().to_string_lossy().as_ref())
+        );
+        assert!(!root.path().join("agy.custom").exists());
+    }
+
+    #[test]
+    fn an_existing_setup_at_the_default_home_launches_without_the_flag() {
+        let user_home = Path::new("/Users/user");
+        let mut definition = agy_definition();
+        set_existing_home_arguments(&mut definition, &user_home.join(".gemini"), Some(user_home));
+        assert_eq!(definition.launch.arguments, ["acp", "--disable-telemetry"]);
+        set_existing_home_arguments(&mut definition, Path::new("/elsewhere"), Some(user_home));
+        assert_eq!(
+            definition.launch.arguments,
+            ["acp", "--disable-telemetry", "--gemini-dir", "/elsewhere"]
+        );
+    }
+
+    #[test]
+    fn set_flag_replaces_every_spelling_of_the_flag() {
+        let mut arguments: Vec<String> = ["acp", "--gemini-dir", "/a", "--x", "--gemini-dir=/b"]
+            .map(String::from)
+            .to_vec();
+        set_flag(&mut arguments, "--gemini-dir", Some("/c"));
+        assert_eq!(arguments, ["acp", "--x", "--gemini-dir", "/c"]);
+        set_flag(&mut arguments, "--gemini-dir", None);
+        assert_eq!(arguments, ["acp", "--x"]);
+        // A flag left without a value keeps the flag after it.
+        let mut arguments: Vec<String> = ["acp", "--gemini-dir", "--disable-telemetry"]
+            .map(String::from)
+            .to_vec();
+        set_flag(&mut arguments, "--gemini-dir", Some("/c"));
+        assert_eq!(arguments, ["acp", "--disable-telemetry", "--gemini-dir", "/c"]);
+    }
+
+    /// The pin owns the version, no inherited key changes the account, and
+    /// nothing in a launch asks agy for a system prompt.
+    #[test]
+    fn agy_launches_pinned_on_its_google_sign_in() {
+        let definition = agy_definition();
+        assert!(definition
+            .launch
+            .environment
+            .contains(&("AGY_CLI_DISABLE_AUTO_UPDATE".into(), "true".into())));
+        assert_eq!(definition.launch_unset, ["GEMINI_API_KEY", "GOOGLE_API_KEY"]);
+        let unset = super::super::acp::definition_unset_variables(&definition);
+        assert_eq!(unset, ["GEMINI_API_KEY", "GOOGLE_API_KEY"]);
+        assert_eq!(definition.catalog_probe, ProbeCleanup::ScratchSessionDir("--gemini-dir"));
+        assert_eq!(definition.terminal_login_args, None);
+        let adapter = definition.adapter.as_ref().unwrap();
+        assert_eq!(adapter.version, "1.5.16");
+        let binary = adapter.binary().unwrap();
+        assert_eq!(binary.command, "agy");
+        assert!(binary.artifacts.iter().all(|artifact| artifact.url.contains("/1.5.16/")
+            && artifact.archive
+                == BinaryArchive::Tgz {
+                    member: "antigravity".into()
+                }));
+        let launch = format!("{:?}", definition.launch);
+        assert!(!launch.contains("systemPrompt"), "{launch}");
     }
 
     #[tokio::test]

@@ -16,7 +16,9 @@ mod xd_devices;
 mod tests;
 
 pub(crate) use adapter::AcpHarnessAdapter;
-pub(crate) use protocol::{launch_unset_variables, reword_refresh_lock_failure};
+pub(crate) use protocol::{
+    definition_unset_variables, launch_unset_variables, reword_refresh_lock_failure,
+};
 pub(crate) use xd_devices::DEVICE_CALL_STAMP;
 pub use features::{
     compatibility, AcpFeature, AcpFeatureGroup, ClientSupport, FeatureCompatibility, SdkStatus,

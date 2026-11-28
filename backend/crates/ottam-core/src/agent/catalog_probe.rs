@@ -67,7 +67,7 @@ pub enum ProbeCleanup {
     DeleteSession,
     /// `session/new` stores the session and the agent cannot delete it. This
     /// launch flag points its session store at a per-probe directory that the
-    /// probe removes.
+    /// probe removes, replacing the flag's value if the launch sets it.
     ScratchSessionDir(&'static str),
 }
 
@@ -156,13 +156,11 @@ pub(super) async fn probe(
         ProbeCleanup::ScratchSessionDir(_) => Some(scratch_session_store(agent_id)?),
         _ => None,
     };
-    let extra_arguments = match (cleanup, &session_store) {
-        (ProbeCleanup::ScratchSessionDir(flag), Some(store)) => {
-            vec![flag.to_string(), store.to_string_lossy().into_owned()]
-        }
-        _ => Vec::new(),
+    let scratch_flag = match (cleanup, &session_store) {
+        (ProbeCleanup::ScratchSessionDir(flag), Some(store)) => Some((flag, store.as_path())),
+        _ => None,
     };
-    let adapter = match registry.create_probe_adapter(agent_id, extra_arguments) {
+    let adapter = match registry.create_probe_adapter(agent_id, scratch_flag) {
         Ok(adapter) => adapter,
         Err(error) => {
             if let Some(store) = &session_store {
@@ -452,6 +450,11 @@ mod tests {
             cleanups.get("omp"),
             Some(&ProbeCleanup::ScratchSessionDir("--session-dir"))
         );
+        // A scratch home, never `_meta`: agy's probe sends no system prompt
+        // (docs/architecture/backend/acp.md).
+        let agy = cleanups.get("agy").copied().unwrap();
+        assert_eq!(agy, ProbeCleanup::ScratchSessionDir("--gemini-dir"));
+        assert_eq!(agy.session_meta(), None);
     }
 
     #[test]
