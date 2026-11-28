@@ -113,9 +113,15 @@ public struct AgentSettingsPresentation: Equatable, Sendable {
         status = AgentSetupStatus(agent: agent)
         vendorName = agent.vendorName
         accountLabel = agent.accountLabel
-        var home = "The agent runs against its own fresh home inside Ottam — "
-            + "sessions and sign-in never touch the terminal CLI's, "
-            + "and none of its customizations carry over."
+        let sharesMacSignIn = agent.signInScope == .mac
+        var home = sharesMacSignIn
+            ? "The agent runs against its own fresh home inside Ottam — "
+                + "sessions never touch the terminal CLI's, "
+                + "and none of its customizations carry over. "
+                + "Its sign-in is this Mac’s, not the home’s."
+            : "The agent runs against its own fresh home inside Ottam — "
+                + "sessions and sign-in never touch the terminal CLI's, "
+                + "and none of its customizations carry over."
         if let vendorHome = agent.vendorHome {
             home += " If you miss your old setup, feel free to prompt the agent "
                 + "to pull in what it needs from \(vendorHome)."
@@ -146,6 +152,10 @@ public struct AgentSettingsPresentation: Equatable, Sendable {
                 ?? "The agent stopped unexpectedly. Try it again from Chat."
         case .running, .stopped:
             accountFootnote = "Ottam checks this the first time you use the agent; nothing is stored across launches."
+        case .signedOut where sharesMacSignIn, .expired where sharesMacSignIn:
+            accountFootnote = "Sign-in opens a login terminal here and may replace this Mac’s "
+                + "\(agent.accountLabel) for \(agent.displayName) in Terminal too. "
+                + "Use the account \(agent.displayName) in Terminal uses, then press Done."
         case .signedOut, .expired:
             switch agent.accountKind {
             case .subscription:
@@ -175,6 +185,45 @@ public struct AgentSettingsPresentation: Equatable, Sendable {
     }
 
     public var wantsSignIn: Bool { status.wantsSignIn }
+
+    /// The Account row's note for an agent whose login lives in this Mac's
+    /// Keychain rather than its home: a profile is not an account, and there
+    /// is no Sign Out. Nil for every other agent.
+    public static func sharedSignInNote(_ agent: AgentSummary) -> String? {
+        guard agent.signInScope == .mac else { return nil }
+        return "Uses this Mac’s \(agent.accountLabel), shared with \(agent.displayName) in Terminal "
+            + "and every \(agent.displayName) profile. A profile keeps its own settings and "
+            + "conversations, not its own account, so it never signs out."
+    }
+
+    /// The profile list row's subtitle: what this profile shares with the CLI.
+    public static func profileRowSubtitle(_ agent: AgentSummary) -> String {
+        if agent.homeKind == .existing { return "Shares sign-in and sessions with your CLI" }
+        if agent.signInScope == .mac { return "Separate sessions, this Mac’s \(agent.accountLabel)" }
+        return "Separate sign-in and sessions"
+    }
+
+    /// What Create Profile tells the user the new profile will be.
+    public static func profileCreationNote(_ agent: AgentSummary?) -> String {
+        guard let agent, agent.signInScope == .mac else {
+            return "Creates an empty Ottam profile with its own sign-in. "
+                + "Configuration and credentials are not copied from another profile."
+        }
+        return "Creates an empty Ottam profile that uses this Mac’s \(agent.accountLabel), shared "
+            + "with \(agent.displayName) in Terminal. A profile keeps its own settings and "
+            + "conversations, not its own account. If \(agent.displayName) in Terminal says "
+            + "you’re signed out after signing in here, sign in there too."
+    }
+
+    /// What removing a managed profile's home deletes.
+    public static func purgeNote(_ agent: AgentSummary?) -> String {
+        guard let agent, agent.signInScope == .mac else {
+            return "Removes this profile’s credentials, configuration and vendor sessions. "
+                + "Vendor keychain entries are preserved."
+        }
+        return "Removes this profile’s configuration and vendor sessions. "
+            + "This Mac’s \(agent.accountLabel) is kept."
+    }
 
     /// Whether the user has this agent: its adapter is installed or on its
     /// way. Core reinstalls in the background when an app update moves the

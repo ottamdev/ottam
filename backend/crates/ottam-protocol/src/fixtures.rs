@@ -476,6 +476,7 @@ pub fn agent_summary_fixture() -> AgentSummary {
         brand: Some("openai".to_string()),
         account_label: "ChatGPT account".to_string(),
         account_kind: AgentAccountKind::Subscription,
+        sign_in_scope: AgentSignInScope::Home,
         model_providers: None,
         runtime: AgentRuntimeStatus {
             availability: AgentRuntimeAvailability::Ready,

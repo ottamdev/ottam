@@ -62,15 +62,19 @@ private func agent(
     vendorName: String = "Anthropic",
     vendorHome: String? = "~/.claude",
     accountLabel: String = "Claude account",
-    accountKind: AgentAccountKind = .subscription
+    accountKind: AgentAccountKind = .subscription,
+    signInScope: AgentSignInScope = .home,
+    homeKind: AgentHomeKind? = nil
 ) -> AgentSummary {
     AgentSummary(
+        homeKind: homeKind,
         agentID: AgentID(id),
         displayName: "Agent",
         vendorName: vendorName,
         vendorHome: vendorHome,
         accountLabel: accountLabel,
         accountKind: accountKind,
+        signInScope: signInScope,
         runtime: AgentRuntimeStatus(
             availability: runtime,
             component: component,
@@ -506,6 +510,37 @@ struct AgentSettingsPresentationTests {
             #expect(other.accountFootnote?.contains("browser") == false)
             #expect(other.accountFootnote?.contains("press Done") == true)
         }
+    }
+
+    /// agy keeps its Google login in this Mac's Keychain, not its home, so a
+    /// profile is not an account: Settings says so, warns that a sign-in may
+    /// replace the CLI's login, and never offers Sign Out.
+    @Test("a Mac-wide sign-in is not the home's")
+    func macWideSignInIsNotTheHomes() {
+        func agy(_ authState: AgentAuthState) -> AgentSummary {
+            agent(
+                id: "agy", authState: authState, vendorName: "Google", vendorHome: "~/.gemini",
+                accountLabel: "Google account", signInScope: .mac, homeKind: .managed
+            )
+        }
+        let signedIn = agy(.ready)
+        #expect(AgentSettingsPresentation(agent: signedIn).wantsSignIn == false)
+        #expect(AgentSettingsPresentation.sharedSignInNote(signedIn)?.contains("this Mac’s Google account") == true)
+        #expect(AgentSettingsPresentation(agent: signedIn).homeFootnote.contains("Its sign-in is this Mac’s"))
+        #expect(AgentSettingsPresentation.profileCreationNote(signedIn).contains("not its own account"))
+        #expect(!AgentSettingsPresentation.profileCreationNote(signedIn).contains("its own sign-in"))
+        #expect(AgentSettingsPresentation.purgeNote(signedIn).contains("Google account is kept"))
+        #expect(AgentSettingsPresentation.profileRowSubtitle(signedIn) == "Separate sessions, this Mac’s Google account")
+
+        let signedOut = AgentSettingsPresentation(agent: agy(.missing))
+        #expect(signedOut.wantsSignIn)
+        #expect(signedOut.accountFootnote?.contains("may replace this Mac’s Google account") == true)
+
+        let claude = agent(authState: .missing)
+        #expect(AgentSettingsPresentation.sharedSignInNote(claude) == nil)
+        #expect(AgentSettingsPresentation.profileCreationNote(claude).contains("its own sign-in"))
+        #expect(AgentSettingsPresentation.profileRowSubtitle(claude) == "Separate sign-in and sessions")
+        #expect(AgentSettingsPresentation(agent: claude).accountFootnote?.contains("replace") == false)
     }
 
     /// A multi-provider agent can always take another provider, so its

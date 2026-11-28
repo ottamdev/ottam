@@ -3,7 +3,7 @@ use crate::agent::{
     AdapterStatus, AgentDefinition, AgentModelOption, AgentRuntimeStatus as HarnessRuntimeStatus,
     ClientSupport, FeatureCompatibility, HarnessAuthMethodKind, HarnessAuthState, HarnessError,
     HarnessErrorKind, HarnessStopReason, HarnessUpdateKind, RuntimeAvailability, RuntimeSource,
-    SdkStatus, SteeringCapability as HarnessSteeringCapability,
+    SdkStatus, SignInScope, SteeringCapability as HarnessSteeringCapability,
 };
 use crate::core_error::CoreError;
 use ottam_protocol::{
@@ -11,7 +11,8 @@ use ottam_protocol::{
     AgentAdapterStatus, AgentAuthMethod, AgentAuthMethodKind, AgentAuthState,
     AgentFeatureClientSupport, AgentFeatureCompatibility, AgentFeatureGroup, AgentFeatureSdkStatus,
     AgentFeatureVerdict, AgentID, AgentLifecycleState, AgentRuntimeAvailability,
-    AgentRuntimeSource, AgentRuntimeStatus, AgentStopReason, AgentSummary, AgentUpdate,
+    AgentRuntimeSource, AgentRuntimeStatus, AgentSignInScope, AgentStopReason, AgentSummary,
+    AgentUpdate,
     ProtocolError, ProtocolResponse, RequestID, SteeringCapability,
 };
 use serde_json::{json, Value};
@@ -224,6 +225,10 @@ pub(super) fn map_definition(
             AccountKind::Subscription => AgentAccountKind::Subscription,
             AccountKind::ApiKey => AgentAccountKind::ApiKey,
             AccountKind::MultiProvider { .. } => AgentAccountKind::MultiProvider,
+        },
+        sign_in_scope: match presentation.sign_in_scope {
+            SignInScope::Home => AgentSignInScope::Home,
+            SignInScope::Mac => AgentSignInScope::Mac,
         },
         model_providers: model_providers(presentation.account_kind, cached_models),
         runtime: map_runtime_status(runtime),

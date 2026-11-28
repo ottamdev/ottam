@@ -34,8 +34,8 @@ use tokio_util::sync::CancellationToken;
 
 use super::registry::AgentRegistry;
 use super::types::{
-    AgentDefinition, HarnessAdapter, HarnessAuthMethod, HarnessAuthMethodKind, HarnessError,
-    HarnessErrorKind, SignInProof, TerminalLoginReveal,
+    AgentDefinition, HarnessAdapter, HarnessAuthMethod, HarnessAuthMethodKind, HarnessAuthState,
+    HarnessError, HarnessErrorKind, SignInProof, SignInScope, TerminalLoginReveal,
 };
 use crate::core_error::CoreError;
 
@@ -258,13 +258,26 @@ impl AgentSignInService {
         // grow the per-agent lock table. An existing CLI home signs in too: the
         // login is the CLI's own, run with that home's variables, so it writes
         // exactly what a terminal login would. Signing out stays with the CLI.
-        self.registry.definition(&agent_id)?;
+        let definition = self.registry.definition(&agent_id)?;
         let start_lock = self.start_lock(&params.agent_id);
         let _start_guard = start_lock.lock().await;
         // The first caller may have installed the live session while this one
         // waited for the per-agent creation lock.
         if let Some(existing) = self.resume_session(&params.agent_id) {
             return Ok(existing);
+        }
+        // A login kept outside the home is the CLI's and every profile's: a new
+        // one replaces it, so it runs only once that login stopped working.
+        if definition.presentation.sign_in_scope == SignInScope::Mac
+            && self.registry.cached_status(&agent_id).await?.auth_state == HarnessAuthState::Ready
+        {
+            return Err(HarnessError::new(
+                HarnessErrorKind::Internal,
+                format!(
+                    "{} already uses this Mac's {}; signing in again would replace it",
+                    definition.presentation.product_name, definition.presentation.account_label
+                ),
+            ));
         }
 
         let adapter = self.registry.get_or_start(&agent_id).await?;
@@ -973,7 +986,7 @@ enum AdapterOutcome {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::agent::{AgentLaunchSpec, HarnessAuthTerminalCommand};
+    use crate::agent::{AdapterLifecycleState, AgentLaunchSpec, HarnessAuthTerminalCommand};
 
     fn method(id: &str, kind: HarnessAuthMethodKind) -> HarnessAuthMethod {
         HarnessAuthMethod {
@@ -1769,6 +1782,75 @@ mod tests {
         );
         harness.terminals.exit(Some(0));
         assert_eq!(harness.next_event().await.phase, AgentAuthPhase::Succeeded);
+    }
+
+    /// agy keeps its Google login in this Mac's Keychain, shared by every
+    /// profile and the user's own CLI. The catalog probe's session proves the
+    /// Keychain login exists; a new login would replace it, so none runs.
+    #[tokio::test(start_paused = true)]
+    async fn a_mac_wide_login_that_works_is_never_replaced() {
+        let mut definition = definition();
+        definition.presentation.sign_in_scope = SignInScope::Mac;
+        let harness = Harness::with_definition(claude_methods(), brisk_policy(), definition);
+        let agent_id = harness.service.registry.definitions()[0].agent_id.clone();
+        harness
+            .service
+            .registry
+            .note_probed_auth(&agent_id, HarnessAuthState::Ready);
+
+        let refused = harness.sign_in_with(None).await.expect_err("refused");
+        assert!(refused.message.contains("replace"), "{refused:?}");
+        assert!(harness.terminals.roots().is_empty(), "no login started");
+    }
+
+    /// The Keychain item proves only that a login exists. A session the agent
+    /// refused with "Authentication required" marks the profile signed out,
+    /// and that verdict outlives the adapter: the probe's "signed in" does
+    /// not come back. Sign in is then allowed.
+    #[tokio::test(start_paused = true)]
+    async fn an_auth_required_session_signs_out_a_mac_wide_login_the_probe_saw() {
+        let mut definition = definition();
+        definition.presentation.sign_in_scope = SignInScope::Mac;
+        let harness = Harness::with_definition(claude_methods(), brisk_policy(), definition);
+        let registry = &harness.service.registry;
+        let agent_id = registry.definitions()[0].agent_id.clone();
+        registry.note_probed_auth(&agent_id, HarnessAuthState::Ready);
+
+        registry.get_or_start(&agent_id).await.expect("adapter");
+        let adapter = harness.factory.adapters()[0].clone();
+        adapter.status_tx.send_modify(|status| {
+            status.lifecycle = AdapterLifecycleState::Ready;
+            status.auth_state = HarnessAuthState::Ready;
+        });
+        for _ in 0..10 {
+            tokio::task::yield_now().await;
+        }
+        // A prompt fails with `-32000` "Authentication required".
+        adapter.status_tx.send_modify(|status| {
+            status.auth_state = HarnessAuthState::Missing;
+        });
+        // A real adapter stays signed out until it restarts; let the
+        // registry's status watch see each state before the next.
+        for _ in 0..10 {
+            tokio::task::yield_now().await;
+        }
+        // The adapter stops; a stopped one has no verdict of its own.
+        adapter.status_tx.send_modify(|status| {
+            status.lifecycle = AdapterLifecycleState::Stopped;
+            status.auth_state = HarnessAuthState::Unknown;
+        });
+        let mut auth_state = HarnessAuthState::Unknown;
+        for _ in 0..100 {
+            auth_state = registry.cached_status(&agent_id).await.unwrap().auth_state;
+            if auth_state == HarnessAuthState::Missing {
+                break;
+            }
+            tokio::task::yield_now().await;
+        }
+        assert_eq!(auth_state, HarnessAuthState::Missing);
+
+        let started = harness.sign_in_with(None).await.expect("a sign-in");
+        assert_eq!(started.delivery, AgentAuthDelivery::ClientTerminal);
     }
 
     #[tokio::test(start_paused = true)]

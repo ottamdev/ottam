@@ -559,6 +559,13 @@ public enum AgentAccountKind: String, Codable, Equatable, Sendable {
     case multiProvider
 }
 
+public enum AgentSignInScope: String, Codable, Equatable, Sendable {
+    /// The login lives in the agent's home.
+    case home
+    /// The login lives in this Mac's Keychain, shared by every home.
+    case mac
+}
+
 public enum AgentLifecycleState: String, Codable, Equatable, Sendable {
     case stopped
     case starting
@@ -2867,6 +2874,8 @@ public struct AgentSummary: Codable, Equatable, Sendable {
     /// What signing in connects ("ChatGPT account").
     public var accountLabel: String
     public var accountKind: AgentAccountKind
+    /// Where the login lives. `mac` means every profile and the user's own CLI share it, so a home isolates state only and is never signed out.
+    public var signInScope: AgentSignInScope
     /// A `multiProvider` agent's providers the user set up, sorted, read off its last-seen model IDs (`provider/model`). Providers the agent lists with no setup (omp's on-device `apple`) are left out, so an agent can be signed in with none. Absent for other account kinds and before the agent's models were ever seen.
     public var modelProviders: [String]?
     public var runtime: AgentRuntimeStatus
@@ -2886,6 +2895,7 @@ public struct AgentSummary: Codable, Equatable, Sendable {
         brand: String? = nil,
         accountLabel: String,
         accountKind: AgentAccountKind,
+        signInScope: AgentSignInScope,
         modelProviders: [String]? = nil,
         runtime: AgentRuntimeStatus,
         adapter: AgentAdapterStatus,
@@ -2902,10 +2912,50 @@ public struct AgentSummary: Codable, Equatable, Sendable {
         self.brand = brand
         self.accountLabel = accountLabel
         self.accountKind = accountKind
+        self.signInScope = signInScope
         self.modelProviders = modelProviders
         self.runtime = runtime
         self.adapter = adapter
         self.adapterPackage = adapterPackage
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case canSetLayout
+        case harnessID
+        case label
+        case homeKind
+        case agentID
+        case displayName
+        case vendorName
+        case vendorHome
+        case brand
+        case accountLabel
+        case accountKind
+        case signInScope
+        case modelProviders
+        case runtime
+        case adapter
+        case adapterPackage
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        canSetLayout = try container.decodeIfPresent(Bool.self, forKey: .canSetLayout)
+        harnessID = try container.decodeIfPresent(String.self, forKey: .harnessID)
+        label = try container.decodeIfPresent(String.self, forKey: .label)
+        homeKind = try container.decodeIfPresent(AgentHomeKind.self, forKey: .homeKind)
+        agentID = try container.decode(AgentID.self, forKey: .agentID)
+        displayName = try container.decode(String.self, forKey: .displayName)
+        vendorName = try container.decode(String.self, forKey: .vendorName)
+        vendorHome = try container.decodeIfPresent(String.self, forKey: .vendorHome)
+        brand = try container.decodeIfPresent(String.self, forKey: .brand)
+        accountLabel = try container.decode(String.self, forKey: .accountLabel)
+        accountKind = try container.decode(AgentAccountKind.self, forKey: .accountKind)
+        signInScope = try container.decodeIfPresent(AgentSignInScope.self, forKey: .signInScope) ?? .home
+        modelProviders = try container.decodeIfPresent([String].self, forKey: .modelProviders)
+        runtime = try container.decode(AgentRuntimeStatus.self, forKey: .runtime)
+        adapter = try container.decode(AgentAdapterStatus.self, forKey: .adapter)
+        adapterPackage = try container.decodeIfPresent(AgentAdapterPackage.self, forKey: .adapterPackage)
     }
 }
 

@@ -140,6 +140,16 @@ pub enum AgentAccountKind {
     MultiProvider,
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub enum AgentSignInScope {
+    /// The login lives in the agent's home.
+    #[default]
+    Home,
+    /// The login lives in this Mac's Keychain, shared by every home.
+    Mac,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub enum AgentRuntimeAvailability {
@@ -388,6 +398,10 @@ pub struct AgentSummary {
     /// What signing in connects ("ChatGPT account").
     pub account_label: String,
     pub account_kind: AgentAccountKind,
+    /// Where the login lives. `mac` means every profile and the user's own
+    /// CLI share it, so a home isolates state only and is never signed out.
+    #[serde(default)]
+    pub sign_in_scope: AgentSignInScope,
     /// A `multiProvider` agent's providers the user set up, sorted, read off
     /// its last-seen model IDs (`provider/model`). Providers the agent lists
     /// with no setup (omp's on-device `apple`) are left out, so an agent can
