@@ -227,13 +227,15 @@ struct AgentsSettingsSection: View {
         instances(harnessID).contains { $0.homeKind == .existing }
     }
 
-    /// Why Add My CLI Setup is unavailable, or what it will reuse.
+    /// Why Add My CLI Setup is unavailable, or what it will reuse and any
+    /// warning core gives about sharing it.
     private func cliSetupNote(_ harnessID: String) -> String? {
         if let error = cliSetupErrors[harnessID] { return error }
         if cliSetupAdded(harnessID) { return "Your CLI setup is already an instance above." }
         guard let detected = detected(harnessID) else { return nil }
         if !detected.available { return detected.detail }
-        return "Reuses \(detected.path): its sign-in, hooks, MCP servers, and skills."
+        let reuses = "Reuses \(detected.path): its sign-in, hooks, MCP servers, and skills."
+        return [reuses, detected.detail].compactMap(\.self).joined(separator: " ")
     }
 
     /// Adds the CLI's own home as an instance and opens its page, where

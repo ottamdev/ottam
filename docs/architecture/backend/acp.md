@@ -131,7 +131,9 @@ agent shells, and first wherever npm or npx re-resolve it from their shebang
   (Claude keychain entries, agy's Keychain login, `~/.omp`). Existing-setup
   homes: Ottam never creates, purges, signs out, cleans locks in, or queries
   credentials of them; detection (`agent/setup_detection.rs`) never launches
-  or writes.
+  or writes, and reads a Keychain item's attributes at most, never its
+  secret. Every harness with an existing setup is listed once
+  (`EXISTING_SETUP_HARNESSES`), which `agent.detectSetups` reports.
 - Sign-in: `_auth/status_update` `none` means missing credentials, a
   recognized kind means ready, anything else leaves the verdict alone. Claude
   creates and loads sessions while signed out, so those never prove sign-in.
@@ -218,7 +220,14 @@ agent shells, and first wherever npm or npx re-resolve it from their shebang
   arrive as `configOptions` selects (family, thinking level), which core
   reads, and again as legacy `models` ids with the effort baked in, which it
   ignores. At 1.5.16 a bare `session/new` writes a conversation, so the probe
-  runs on a scratch `--gemini-dir`.
+  runs on a scratch `--gemini-dir`. A CLI setup is always the default
+  `~/.gemini`, launched with no `--gemini-dir`; it counts as found when
+  `antigravity-cli/` exists and the Keychain holds service `gemini`, account
+  `antigravity`. Detection never runs the user's `agy`, which updates itself,
+  so it reports no CLI version. Its note warns that the pin and that CLI
+  share one conversation database, which agy migrates in place, so a
+  conversation one version wrote may not open in the other; the skew runs
+  either way.
 
 ## Permission Configuration Limits
 

@@ -32,7 +32,13 @@ pub(crate) struct ExistingSetup {
     /// The CLI's command.
     pub cli: &'static str,
     pub variables: &'static [&'static str],
+    /// Whether detection may run the CLI for its `--version`.
+    pub reads_version: bool,
 }
+
+/// Every harness `existing_setup` has an arm for, in the order clients list
+/// them.
+pub(crate) const EXISTING_SETUP_HARNESSES: [&str; 5] = ["codex", "claude", "opencode", "omp", "agy"];
 
 pub(crate) fn existing_setup(harness: &str) -> Option<ExistingSetup> {
     Some(match harness {
@@ -40,11 +46,13 @@ pub(crate) fn existing_setup(harness: &str) -> Option<ExistingSetup> {
             title: "Codex",
             cli: "codex",
             variables: &["CODEX_HOME"],
+            reads_version: true,
         },
         "claude" => ExistingSetup {
             title: "Claude Code",
             cli: "claude",
             variables: &["CLAUDE_CONFIG_DIR"],
+            reads_version: true,
         },
         // OpenCode keeps its database under the data home and its settings
         // under the config home; either has its own override. Inline config
@@ -59,6 +67,7 @@ pub(crate) fn existing_setup(harness: &str) -> Option<ExistingSetup> {
                 "OPENCODE_CONFIG_DIR",
                 "OPENCODE_CONFIG_CONTENT",
             ],
+            reads_version: true,
         },
         // omp's agent directory holds credentials, settings, and sessions.
         // Its named profiles and XDG layout (`omp config init-xdg`) aren't
@@ -67,6 +76,16 @@ pub(crate) fn existing_setup(harness: &str) -> Option<ExistingSetup> {
             title: "Oh-My-Pi",
             cli: "omp",
             variables: &["PI_CODING_AGENT_DIR"],
+            reads_version: true,
+        },
+        // agy has no variable for its home, so its setup is always the
+        // default `~/.gemini`. Detection never runs the user's own binary,
+        // which updates itself.
+        "agy" => ExistingSetup {
+            title: "Antigravity",
+            cli: "agy",
+            variables: &[],
+            reads_version: false,
         },
         _ => return None,
     })

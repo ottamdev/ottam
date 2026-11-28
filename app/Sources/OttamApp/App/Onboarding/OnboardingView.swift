@@ -306,7 +306,10 @@ private struct OnboardingChooseAgents: View {
         ].compactMap(\.self).joined(separator: ", ")
         let path = (detected.path as NSString).abbreviatingWithTildeInPath
         if usesCLISetup {
-            return counts.isEmpty ? "Shares \(path)" : "Shares \(path): \(counts)"
+            let shares = counts.isEmpty ? "Shares \(path)" : "Shares \(path): \(counts)"
+            // Core's warning about sharing the setup, if it has one.
+            guard let warning = detected.detail else { return shares }
+            return "\(shares). \(warning)"
         }
         return counts.isEmpty ? "Separate from \(path)" : "Separate from \(path) (\(counts))"
     }

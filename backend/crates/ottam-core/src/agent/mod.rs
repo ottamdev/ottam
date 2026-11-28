@@ -34,7 +34,7 @@ pub(crate) use auth::{
     AgentSignInService, AuthEventSink, AuthTerminalFuture, AuthTerminalHost, AuthTerminalRequest,
     AuthTerminalRoot, AuthTerminalSession, SignedInSink,
 };
-pub(crate) use instances::{existing_setup, ExistingSetup};
+pub(crate) use instances::{existing_setup, ExistingSetup, EXISTING_SETUP_HARNESSES};
 pub use instances::{AgentInstance, AgentInstanceId, HarnessDefinition, HarnessId, HomeLayout};
 pub(crate) use model_catalog::pinned_adapter_package;
 pub(crate) use model_catalog::CatalogChangeSink;

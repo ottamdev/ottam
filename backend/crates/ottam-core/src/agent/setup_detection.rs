@@ -1,4 +1,5 @@
-//! Detection reads only configuration, never auth.json or keychain data.
+//! Detection reads only configuration, never auth.json or keychain secrets.
+//! A Keychain item's attributes say whether a CLI is signed in.
 use super::{HarnessError, HarnessErrorKind, HomeLayout};
 use ottam_protocol::AgentDetectedSetup;
 use std::collections::BTreeMap;
@@ -37,7 +38,7 @@ pub(crate) fn detect(harness: &str) -> Result<DetectedSetup, HarnessError> {
     let setup = super::existing_setup(harness).ok_or_else(|| {
         HarnessError::new(
             HarnessErrorKind::AgentNotFound,
-            "Existing setups are available for Codex, Claude Code, and OpenCode.",
+            "Ottam can't use an existing CLI setup for this agent.",
         )
     })?;
     let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".into());
@@ -108,7 +109,7 @@ pub(crate) fn detect(harness: &str) -> Result<DetectedSetup, HarnessError> {
     };
     let cli =
         PathBuf::from(String::from_utf8_lossy(fields[setup.variables.len() * 2]).into_owned());
-    let cli_version = if cli.is_absolute() {
+    let cli_version = if setup.reads_version && cli.is_absolute() {
         super::registry::command_output_args_with_timeout(
             &cli.to_string_lossy(),
             &["--version"],
@@ -148,6 +149,11 @@ pub(crate) fn detect(harness: &str) -> Result<DetectedSetup, HarnessError> {
         "omp" => {
             let path = set("PI_CODING_AGENT_DIR").unwrap_or_else(|| user_home.join(".omp/agent"));
             let summary = inspect_omp(setup, &path);
+            (path, summary)
+        }
+        "agy" => {
+            let path = user_home.join(".gemini");
+            let summary = inspect_agy(setup, &path, agy_keychain_item_exists());
             (path, summary)
         }
         _ => {
@@ -294,6 +300,61 @@ fn inspect_omp(setup: super::ExistingSetup, path: &Path) -> AgentDetectedSetup {
         path: path.to_string_lossy().into_owned(),
         available: readable,
         detail: Some(detail.into()),
+        cli_version: None,
+        skills: None,
+        hooks: None,
+        mcp_servers: None,
+        plugins: None,
+    }
+}
+
+/// agy's Google sign-in: service `gemini`, account `antigravity`. Without
+/// `-g` or `-w`, `security` reads only the item's attributes, which raises no
+/// access prompt.
+const AGY_KEYCHAIN_QUERY: [&str; 5] = [
+    "find-generic-password",
+    "-s",
+    "gemini",
+    "-a",
+    "antigravity",
+];
+
+fn agy_keychain_item_exists() -> bool {
+    super::registry::command_output_args_with_timeout(
+        "/usr/bin/security",
+        &AGY_KEYCHAIN_QUERY,
+        Duration::from_secs(3),
+    )
+    .is_ok_and(|output| output.status.success())
+}
+
+/// agy's setup by its state directory and Keychain item; core never runs the
+/// user's `agy`.
+fn inspect_agy(
+    setup: super::ExistingSetup,
+    path: &Path,
+    keychain_item_exists: bool,
+) -> AgentDetectedSetup {
+    let state = path.join("antigravity-cli");
+    let readable = std::fs::read_dir(&state).is_ok();
+    let detail = if readable && keychain_item_exists {
+        format!(
+            "Ottam runs Antigravity {version}, which may not match your self-updating CLI, and both use its conversation database. A conversation one version wrote may not open in the other.",
+            version = super::registry::AGY_VERSION,
+        )
+    } else if readable {
+        "Your Antigravity setup has no Google sign-in yet. Sign in with agy first, or choose an Ottam profile.".into()
+    } else if state.exists() {
+        "Your Antigravity setup could not be read. Check its permissions or choose an Ottam profile.".into()
+    } else {
+        "No existing setup was found. Set up the CLI first or choose a separate profile.".into()
+    };
+    AgentDetectedSetup {
+        harness_id: "agy".into(),
+        display_name: setup.title.into(),
+        path: path.to_string_lossy().into_owned(),
+        available: readable && keychain_item_exists,
+        detail: Some(detail),
         cli_version: None,
         skills: None,
         hooks: None,
@@ -598,6 +659,59 @@ mod tests {
         .unwrap();
         let merged = inspect_opencode(setup, &data, &database, &config);
         assert_eq!((merged.mcp_servers, merged.plugins), (Some(2), Some(4)));
+    }
+
+    #[test]
+    fn agy_setup_needs_its_state_directory_and_keychain_item() {
+        let setup = crate::agent::existing_setup("agy").unwrap();
+        assert!(setup.variables.is_empty());
+        assert!(!setup.reads_version, "detection never runs the user's agy");
+        let root = tempfile::tempdir().unwrap();
+        let home = root.path().join(".gemini");
+
+        let missing = inspect_agy(setup, &home, true);
+        assert!(!missing.available);
+        assert!(missing.detail.unwrap().contains("No existing setup"));
+
+        // `~/.gemini` alone, without agy's state, is another Gemini tool's.
+        std::fs::create_dir_all(&home).unwrap();
+        assert!(!inspect_agy(setup, &home, true).available);
+
+        std::fs::create_dir_all(home.join("antigravity-cli")).unwrap();
+        let unsigned = inspect_agy(setup, &home, false);
+        assert!(!unsigned.available);
+        assert!(unsigned.detail.unwrap().contains("no Google sign-in"));
+
+        let found = inspect_agy(setup, &home, true);
+        assert!(found.available);
+        assert_eq!(found.path, home.to_string_lossy());
+        let detail = found.detail.unwrap();
+        assert!(detail.contains(super::super::registry::AGY_VERSION));
+        assert!(detail.contains("conversation database"));
+    }
+
+    #[test]
+    fn agy_keychain_query_reads_attributes_only() {
+        assert!(!AGY_KEYCHAIN_QUERY
+            .iter()
+            .any(|argument| matches!(*argument, "-g" | "-w")));
+    }
+
+    /// `agent.detectSetups` reports each harness in this list; one missing
+    /// from it shows no note on its Add My CLI Setup button.
+    #[test]
+    fn every_existing_setup_is_listed_for_detection() {
+        for definition in super::super::registry::built_in_definitions() {
+            let harness = definition.agent_id.0.as_str();
+            assert_eq!(
+                crate::agent::existing_setup(harness).is_some(),
+                crate::agent::EXISTING_SETUP_HARNESSES.contains(&harness),
+                "{harness}"
+            );
+        }
+        assert!(crate::agent::EXISTING_SETUP_HARNESSES
+            .iter()
+            .all(|harness| crate::agent::existing_setup(harness).is_some()));
     }
 
     #[test]
