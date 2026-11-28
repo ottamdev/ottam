@@ -1864,17 +1864,11 @@ private struct ChatQueuedMessagesButton: View {
 
     private func row(_ message: QueuedMessage) -> some View {
         let previewText = message.previewText
+        let hasBadges = message.quoteCount > 0 || message.imageCount > 0
         return HStack(alignment: previewText == nil ? .center : .top, spacing: 6) {
-            VStack(alignment: .leading, spacing: 5) {
-                if let previewText {
-                    Text(previewText)
-                        .appFont(.callout)
-                        .lineLimit(3)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-
-                if message.quoteCount > 0 || message.imageCount > 0 {
-                    HStack(spacing: 5) {
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                if hasBadges {
+                    HStack(spacing: 4) {
                         if message.quoteCount > 0 {
                             attachmentBadge(
                                 systemImage: "quote.opening",
@@ -1894,6 +1888,14 @@ private struct ChatQueuedMessagesButton: View {
                             )
                         }
                     }
+                    .fixedSize()
+                }
+
+                if let previewText {
+                    Text(previewText)
+                        .appFont(.callout)
+                        .lineLimit(3)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
