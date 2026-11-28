@@ -239,6 +239,7 @@ enum ChatSubmitError: LocalizedError {
     case missingInitialInput
     case noEngine
     case noWorkspace
+    case unresolvedDefaultWorktreeBranch
 
     var errorDescription: String? {
         switch self {
@@ -248,6 +249,8 @@ enum ChatSubmitError: LocalizedError {
             return "No Chat engine is available."
         case .noWorkspace:
             return "No workspace is open."
+        case .unresolvedDefaultWorktreeBranch:
+            return "Could not determine the repository’s default branch. Retry or choose Current in the base-branch picker."
         }
     }
 }
@@ -2392,7 +2395,11 @@ final class ChatWorkspaceModel {
         worktreeBranchesLoadGeneration &+= 1
         let generation = worktreeBranchesLoadGeneration
         draftWorktreeBranchesLoading = true
-        draftWorktreeBranchesError = nil
+        defer {
+            if worktreeBranchesLoadGeneration == generation {
+                draftWorktreeBranchesLoading = false
+            }
+        }
         do {
             let result = try await fetch(workspaceID, sourceID)
             guard !Task.isCancelled,
@@ -2404,7 +2411,6 @@ final class ChatWorkspaceModel {
             }
             draftWorktreeBranches = result
             draftWorktreeBranchesSourceID = sourceID
-            draftWorktreeBranchesLoading = false
             draftWorktreeBranchesError = nil
         } catch {
             guard !Task.isCancelled,
@@ -2414,10 +2420,28 @@ final class ChatWorkspaceModel {
             else {
                 return
             }
-            draftWorktreeBranchesLoading = false
             draftWorktreeBranchesError = error.localizedDescription
             Self.logger.debug("worktree base branches load failed: \(error.localizedDescription, privacy: .public)")
         }
+    }
+
+    /// Resolves the `worktreeBaseRef` to send with `conversation.create`.
+    /// When the user chose `.defaultBranch` and the branch list has not loaded
+    /// yet for the active project, fetches it before submitting so a fast send
+    /// never silently cuts from `HEAD`.
+    func resolveDraftWorktreeBaseRef(
+        fetch: @MainActor (WorkspaceID, ProjectSourceID) async throws -> WorktreeBaseBranchesResult
+    ) async throws -> String? {
+        if draftWorktreeBaseSelection == .defaultBranch,
+           let sourceID = draftProjectSourceID,
+           draftWorktreeBranchesSourceID != sourceID
+        {
+            await loadDraftWorktreeBranches(fetch: fetch)
+            guard draftWorktreeBranchesSourceID == sourceID else {
+                throw ChatSubmitError.unresolvedDefaultWorktreeBranch
+            }
+        }
+        return draftWorktreeBaseBranchMenu.wireBaseRef
     }
 
     /// Applies a root the user picked from the composer's chooser.
@@ -3111,7 +3135,13 @@ final class ChatWorkspaceModel {
             let targetConversationID = selectedConversationID
             let workingRoot = draftWorkingRoot
             let createWorktree = canDraftWorktree && draftCreatesWorktree
-            let worktreeBaseRef = createWorktree ? draftWorktreeBaseBranchMenu.wireBaseRef : nil
+            let worktreeBaseRef: String? = if createWorktree, targetConversationID == nil {
+                try await resolveDraftWorktreeBaseRef { workspaceID, sourceID in
+                    try await backend.worktreeBaseBranches(workspaceID: workspaceID, projectSourceID: sourceID)
+                }
+            } else {
+                nil
+            }
             // A new chat copies the switch's default, and a run reads its value.
             await settleAlwaysAllowToolActions()
             let conversationID: ConversationID
