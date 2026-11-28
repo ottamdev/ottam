@@ -43,8 +43,9 @@ pub(super) struct CreatedCheckout {
     pub worktree: ManagedWorktree,
 }
 
-/// `git worktree add` a new `ottam/<words>-<hex>` branch off the primary
-/// checkout's HEAD into `$OTTAM_HOME/worktrees/<project>/<words>-<hex>`.
+/// `git worktree add` a new `ottam/<words>-<hex>` branch off `base_ref` (or
+/// the primary checkout's HEAD when omitted) into
+/// `$OTTAM_HOME/worktrees/<project>/<words>-<hex>`.
 /// `taken` is every path and branch a worktree row of the project holds,
 /// archived or not: a name is never handed out twice.
 pub(super) fn create_checkout(
@@ -53,17 +54,28 @@ pub(super) fn create_checkout(
     primary_path: &str,
     taken: &(Vec<String>, Vec<String>),
     message: Option<&str>,
+    base_ref: Option<&str>,
 ) -> Result<CreatedCheckout, CoreError> {
-    // Before anything touches the disk, so a repository with no commits
-    // leaves nothing behind.
-    let base_commit = git::head_commit(primary_path)?.ok_or_else(|| {
-        CoreError::new(
-            "worktreeNoCommits",
-            "This repository has no commits yet. Make a first commit, then start a worktree chat.",
-        )
-        .with_path(primary_path)
-        .recoverable(true)
-    })?;
+    // Before anything touches the disk, so a missing ref or repository with no
+    // commits leaves nothing behind.
+    let base_commit = match base_ref {
+        Some(reference) => git::resolve_commit(primary_path, reference)?.ok_or_else(|| {
+            CoreError::new(
+                "worktreeBaseRefNotFound",
+                format!("The base branch “{reference}” was not found in this repository."),
+            )
+            .with_path(primary_path)
+            .recoverable(true)
+        })?,
+        None => git::head_commit(primary_path)?.ok_or_else(|| {
+            CoreError::new(
+                "worktreeNoCommits",
+                "This repository has no commits yet. Make a first commit, then start a worktree chat.",
+            )
+            .with_path(primary_path)
+            .recoverable(true)
+        })?,
+    };
     let words = slug(message.unwrap_or_default(), "chat");
     let project_dir = worktrees_root(home).join(slug(project_name, "project"));
     std::fs::create_dir_all(&project_dir).map_err(|error| {
@@ -479,8 +491,16 @@ impl AgentServer {
         let id = request_id.clone();
         let spawned = lane.spawn(origin, async move {
             let message = params.message.as_ref().map(|message| message.body.clone());
+            let base_ref = params.worktree_base_ref.clone();
             let created = git::run_blocking("worktreeAdd", move || {
-                create_checkout(&home, &project_name, &primary_path, &taken, message.as_deref())
+                create_checkout(
+                    &home,
+                    &project_name,
+                    &primary_path,
+                    &taken,
+                    message.as_deref(),
+                    base_ref.as_deref(),
+                )
             })
             .await;
             let created = match created {
@@ -746,6 +766,72 @@ impl AgentServer {
                 None => error_response(id, -32000, "the worktree was not released"),
             },
         )
+    }
+
+    /// `worktree.baseBranches`: list local and remote branches on the
+    /// project's primary checkout so the composer can pick a base branch.
+    pub(super) async fn handle_worktree_base_branches(
+        &mut self,
+        origin: ConnectionId,
+        request: ProtocolRequest<Value>,
+    ) -> Option<Value> {
+        let params = match decode_params::<WorktreeSourceParams>(&request, InvalidParamsLog::Warn) {
+            Ok(params) => params,
+            Err(response) => return Some(response),
+        };
+        let (Ok(workspace_id), Ok(source_id)) = (
+            WorkspaceId::try_from(params.workspace_id.0.as_str()),
+            ProjectSourceId::try_from(params.project_source_id.0.as_str()),
+        ) else {
+            return Some(core_error_response(request.id, -32000, invalid_id("invalidID")));
+        };
+        let loaded = self
+            .database
+            .run("worktree.baseBranches", move |connection| {
+                let source = ProjectRepository::get_source(connection, &source_id)?;
+                let membership =
+                    WorkspaceRepository::membership(connection, &workspace_id, &source.project_id)?;
+                if membership.removed_at.is_some() {
+                    return Err(crate::storage::StorageError::new(
+                        "storageConstraint",
+                        "the selected Project is not an active member of the Workspace",
+                    )
+                    .recoverable(true));
+                }
+                let primary = ProjectRepository::primary_source(connection, &source.project_id)?;
+                Ok(primary.canonical_path)
+            })
+            .await;
+        let primary_path = match loaded {
+            Ok(path) => path,
+            Err(error) => return Some(core_error_response(request.id, -32000, error.into())),
+        };
+        let Some(deferred) = self.deferred.as_mut() else {
+            return Some(error_response(
+                request.id,
+                -32000,
+                "deferred request runtime is unavailable",
+            ));
+        };
+        let id = request.id.clone();
+        let spawned = deferred.spawn(origin, async move {
+            match git::run_blocking("worktreeBaseBranches", move || {
+                git::worktree_base_branches(&primary_path)
+            })
+            .await
+            {
+                Ok(result) => success_response(id, result),
+                Err(error) => core_error_response(id, -32000, error),
+            }
+        });
+        if spawned.is_err() {
+            return Some(error_response(
+                request.id,
+                -32002,
+                "worktree.baseBranches concurrency limit reached",
+            ));
+        }
+        None
     }
 }
 

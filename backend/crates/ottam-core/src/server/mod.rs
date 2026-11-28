@@ -742,6 +742,9 @@ impl AgentServer {
         if request.method == ottam_protocol::METHOD_WORKTREE_REMOVE {
             return self.handle_worktree_remove(origin, request).await;
         }
+        if request.method == ottam_protocol::METHOD_WORKTREE_BASE_BRANCHES {
+            return self.handle_worktree_base_branches(origin, request).await;
+        }
         let response = match request.method.as_str() {
             METHOD_INITIALIZE => self.handle_initialize(origin, request),
             METHOD_PROJECT_OPEN_PATH => self.handle_project_open_path(request).await,

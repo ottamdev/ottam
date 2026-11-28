@@ -199,6 +199,8 @@ pub type WorktreeStatusRequest = ProtocolRequest<WorktreeStatusParams>;
 pub type WorktreeStatusResponse = ProtocolResponse<WorktreeStatusResult>;
 pub type WorktreeRemoveRequest = ProtocolRequest<WorktreeRemoveParams>;
 pub type WorktreeRemoveResponse = ProtocolResponse<WorktreeRemoveResult>;
+pub type WorktreeBaseBranchesRequest = ProtocolRequest<WorktreeBaseBranchesParams>;
+pub type WorktreeBaseBranchesResponse = ProtocolResponse<WorktreeBaseBranchesResult>;
 pub type ConversationResolveRunInputDeliveryRequest =
     ProtocolRequest<ConversationResolveRunInputDeliveryParams>;
 pub type ConversationResolveRunInputDeliveryResponse =

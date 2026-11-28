@@ -211,9 +211,11 @@ leave recoverable orphan state, never half-valid relational state.
 A conversation's worktree is a non-primary `localGit` ProjectSource with
 `worktree_branch` and `worktree_base_commit` set (2026-11-18), so
 availability, terminals and Review follow the source model instead of a
-parallel one. Core cuts it on a new branch off the primary checkout's HEAD,
-under `$OTTAM_HOME/worktrees` (2026-11-18), so Ottam owns its lifetime and
-never writes beside the user's checkout.
+parallel one. Core cuts it on a new branch under `$OTTAM_HOME/worktrees`
+(2026-11-18), so Ottam owns its lifetime and never writes beside the user's
+checkout: omitting `worktreeBaseRef` cuts from the primary checkout's current
+HEAD, while an explicit `refs/heads/…` or `refs/remotes/…` ref is resolved
+verbatim by exact ref before recording `worktree_base_commit`.
 
 - Nothing under `$OTTAM_HOME/worktrees` opens as a project, recorded or not,
   and Core never adopts a worktree it did not make. Create and removal check

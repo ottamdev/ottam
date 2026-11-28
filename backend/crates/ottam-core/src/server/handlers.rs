@@ -433,6 +433,17 @@ impl AgentServer {
                 .handle_worktree_conversation_create(origin, request.id, params)
                 .await;
         }
+        if params.worktree_base_ref.is_some() {
+            return Some(core_error_response(
+                request.id,
+                -32602,
+                CoreError::new(
+                    "invalidParams",
+                    "worktreeBaseRef requires createWorktree to be true",
+                )
+                .recoverable(true),
+            ));
+        }
         let chat = self.chat_service(&params.workspace_id);
         Some(
             match chat

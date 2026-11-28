@@ -195,4 +195,230 @@ struct WorktreeRootTests {
         model.draftCreatesWorktree = true
         #expect(model.errorText == nil)
     }
+
+    @Test("only Current/Default preference persists; Worktree toggle and one-off branches reset on new chat")
+    func draftWorktreePreferencesPersist() {
+        let suite = "worktree-defaults-\(UUID())"
+        let defaults = UserDefaults(suiteName: suite)!
+        let backend = DiffReviewModel(client: OttamCoreProcessClient(
+            executableURL: URL(fileURLWithPath: "/nonexistent/ottam-core")
+        ))
+        let alphaRoot = WorkingRootSelection.project(
+            projectID: member.project.projectID,
+            sourceID: member.source.projectSourceID
+        )
+
+        func makeConfiguredModel() -> ChatWorkspaceModel {
+            let model = ChatWorkspaceModel(defaults: defaults)
+            model.configure(
+                workspaceID: WorkspaceID("worktrees"),
+                workspaceFiles: nil,
+                projects: [member],
+                projectSummary: nil,
+                backend: backend
+            )
+            return model
+        }
+
+        let first = makeConfiguredModel()
+        #expect(!first.draftCreatesWorktree)
+        #expect(first.draftWorktreeBaseSelection == .current)
+
+        first.selectDraftWorkingRoot(alphaRoot)
+        first.draftCreatesWorktree = true
+        first.selectDraftWorktreeBase(.defaultBranch)
+
+        // Picking a one-off branch applies only to the current draft without
+        // overwriting the saved `.defaultBranch` preference.
+        first.selectDraftWorktreeBase(.branch("refs/heads/feat/temp"))
+        #expect(first.draftWorktreeBaseSelection == .branch("refs/heads/feat/temp"))
+
+        // Starting a new chat resets Worktree to unticked and restores the saved
+        // Current/Default preference (not the one-off branch).
+        first.beginNewConversation(backend: backend)
+        #expect(!first.draftCreatesWorktree)
+        #expect(first.draftWorktreeBaseSelection == .defaultBranch)
+
+        // A fresh model on the same UserDefaults starts with Worktree unticked
+        // and restores only the `.defaultBranch` preference.
+        first.draftCreatesWorktree = true
+        let restored = makeConfiguredModel()
+        #expect(!restored.draftCreatesWorktree)
+        #expect(restored.draftWorktreeBaseSelection == .defaultBranch)
+
+        // Switching back to Current persists `.current`.
+        restored.selectDraftWorktreeBase(.current)
+        let backToCurrent = makeConfiguredModel()
+        #expect(!backToCurrent.draftCreatesWorktree)
+        #expect(backToCurrent.draftWorktreeBaseSelection == .current)
+    }
+
+    @Test("loadDraftWorktreeBranches handles errors without locking the trigger and ignores stale responses")
+    func draftWorktreeBranchLoadErrorsAndOutOfOrderResponses() async {
+        enum FakeError: LocalizedError {
+            case failed
+            var errorDescription: String? { "git unavailable" }
+        }
+
+        let suite = "worktree-load-\(UUID())"
+        let defaults = UserDefaults(suiteName: suite)!
+        let backend = DiffReviewModel(client: OttamCoreProcessClient(
+            executableURL: URL(fileURLWithPath: "/nonexistent/ottam-core")
+        ))
+        let model = ChatWorkspaceModel(defaults: defaults)
+        model.configure(
+            workspaceID: WorkspaceID("worktrees"),
+            workspaceFiles: nil,
+            projects: [member],
+            projectSummary: nil,
+            backend: backend
+        )
+        model.draftCreatesWorktree = true
+
+        // 1. A failed initial fetch records loadError and keeps the trigger clickable for Retry.
+        await model.loadDraftWorktreeBranches { _, _ in
+            throw FakeError.failed
+        }
+        #expect(model.draftWorktreeBranches == nil)
+        #expect(model.draftWorktreeBranchesError == "git unavailable")
+        #expect(!model.draftWorktreeBaseBranchMenu.isTriggerDisabled)
+
+        // 2. An older slow fetch finishing after a newer fetch does not overwrite the newer result.
+        let olderResult = WorktreeBaseBranchesResult(
+            currentBranch: "old-branch",
+            detachedHead: nil,
+            defaultBranchRef: "refs/heads/main",
+            primaryHasUncommittedChanges: false,
+            branches: [
+                WorktreeBaseBranch(name: "old-branch", refName: "refs/heads/old-branch", kind: .local),
+                WorktreeBaseBranch(name: "main", refName: "refs/heads/main", kind: .local),
+            ]
+        )
+        let newerResult = WorktreeBaseBranchesResult(
+            currentBranch: "new-branch",
+            detachedHead: nil,
+            defaultBranchRef: "refs/heads/main",
+            primaryHasUncommittedChanges: false,
+            branches: [
+                WorktreeBaseBranch(name: "new-branch", refName: "refs/heads/new-branch", kind: .local),
+                WorktreeBaseBranch(name: "main", refName: "refs/heads/main", kind: .local),
+            ]
+        )
+
+        var releaseOlder: CheckedContinuation<WorktreeBaseBranchesResult, Error>?
+        let olderTask = Task { @MainActor in
+            await model.loadDraftWorktreeBranches { _, _ in
+                try await withCheckedThrowingContinuation { continuation in
+                    releaseOlder = continuation
+                }
+            }
+        }
+        while releaseOlder == nil {
+            await Task.yield()
+        }
+
+        // Newer fetch starts and finishes first.
+        await model.loadDraftWorktreeBranches { _, _ in newerResult }
+        #expect(model.draftWorktreeBranches?.currentBranch == "new-branch")
+        #expect(model.draftWorktreeBranchesError == nil)
+
+        // Older fetch now resolves; it must be discarded.
+        releaseOlder?.resume(returning: olderResult)
+        await olderTask.value
+        #expect(model.draftWorktreeBranches?.currentBranch == "new-branch")
+    }
+
+    @Test("cancelling an in-flight branch retry clears loading and preserves the retryable error")
+    func cancellingBranchLoadDoesNotStrandTrigger() async {
+        enum FakeError: LocalizedError {
+            case failed
+            var errorDescription: String? { "git unavailable" }
+        }
+
+        let model = ChatWorkspaceModel(defaults: UserDefaults(suiteName: "worktree-cancel-\(UUID())")!)
+        let backend = DiffReviewModel(client: OttamCoreProcessClient(
+            executableURL: URL(fileURLWithPath: "/nonexistent/ottam-core")
+        ))
+        model.configure(
+            workspaceID: WorkspaceID("worktrees"),
+            workspaceFiles: nil,
+            projects: [member],
+            projectSummary: nil,
+            backend: backend
+        )
+        model.draftCreatesWorktree = true
+
+        // Initial load fails.
+        await model.loadDraftWorktreeBranches { _, _ in throw FakeError.failed }
+        #expect(model.draftWorktreeBranchesError == "git unavailable")
+        #expect(!model.draftWorktreeBaseBranchMenu.isTriggerDisabled)
+
+        // User reopens popover to retry, then dismisses it before the fetch finishes.
+        var releaseRetry: CheckedContinuation<WorktreeBaseBranchesResult, Error>?
+        let retryTask = Task { @MainActor in
+            await model.loadDraftWorktreeBranches { _, _ in
+                try await withTaskCancellationHandler {
+                    try await withCheckedThrowingContinuation { continuation in
+                        releaseRetry = continuation
+                    }
+                } onCancel: {
+                    Task { @MainActor in
+                        releaseRetry?.resume(throwing: CancellationError())
+                    }
+                }
+            }
+        }
+        while releaseRetry == nil {
+            await Task.yield()
+        }
+        #expect(model.draftWorktreeBranchesLoading)
+
+        retryTask.cancel()
+        await retryTask.value
+        #expect(!model.draftWorktreeBranchesLoading)
+        #expect(!model.draftWorktreeBaseBranchMenu.isTriggerDisabled)
+        #expect(model.draftWorktreeBranchesError == "git unavailable")
+    }
+
+    @Test("submitting with Default preference resolves the default ref on demand and refuses silent HEAD fallback on error")
+    func resolveDefaultBranchBeforeSubmit() async throws {
+        enum FakeError: LocalizedError {
+            case failed
+            var errorDescription: String? { "git unavailable" }
+        }
+
+        let model = ChatWorkspaceModel(defaults: UserDefaults(suiteName: "worktree-default-submit-\(UUID())")!)
+        let backend = DiffReviewModel(client: OttamCoreProcessClient(
+            executableURL: URL(fileURLWithPath: "/nonexistent/ottam-core")
+        ))
+        model.configure(
+            workspaceID: WorkspaceID("worktrees"),
+            workspaceFiles: nil,
+            projects: [member],
+            projectSummary: nil,
+            backend: backend
+        )
+        model.draftCreatesWorktree = true
+        model.selectDraftWorktreeBase(.defaultBranch)
+
+        // If branch discovery fails while Default is selected, submit throws instead of silently cutting from HEAD.
+        await #expect(throws: ChatSubmitError.unresolvedDefaultWorktreeBranch) {
+            _ = try await model.resolveDraftWorktreeBaseRef { _, _ in throw FakeError.failed }
+        }
+
+        // If branch discovery succeeds on demand, submit receives the resolved default ref.
+        let resolved = try await model.resolveDraftWorktreeBaseRef { _, _ in
+            WorktreeBaseBranchesResult(
+                currentBranch: "feat/work",
+                detachedHead: nil,
+                defaultBranchRef: "refs/heads/main",
+                primaryHasUncommittedChanges: false,
+                branches: [
+                    WorktreeBaseBranch(name: "feat/work", refName: "refs/heads/feat/work", kind: .local),
+                    WorktreeBaseBranch(name: "main", refName: "refs/heads/main", kind: .local),
+                ]
+            )
+        }
+        #expect(resolved == "refs/heads/main")
+    }
 }

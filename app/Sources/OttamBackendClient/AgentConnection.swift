@@ -396,7 +396,8 @@ public final class OttamCoreProcessClient: @unchecked Sendable {
         contextProjectIDs: [ProjectID] = [],
         title: String? = nil,
         message: ConversationInitialMessage? = nil,
-        createWorktree: Bool = false
+        createWorktree: Bool = false,
+        worktreeBaseRef: String? = nil
     ) async throws -> ConversationCreateResult {
         try await connection.createConversation(
             workspaceID: workspaceID,
@@ -404,7 +405,18 @@ public final class OttamCoreProcessClient: @unchecked Sendable {
             contextProjectIDs: contextProjectIDs,
             title: title,
             message: message,
-            createWorktree: createWorktree
+            createWorktree: createWorktree,
+            worktreeBaseRef: worktreeBaseRef
+        )
+    }
+
+    public func worktreeBaseBranches(
+        workspaceID: WorkspaceID,
+        projectSourceID: ProjectSourceID
+    ) async throws -> WorktreeBaseBranchesResult {
+        try await connection.worktreeBaseBranches(
+            workspaceID: workspaceID,
+            projectSourceID: projectSourceID
         )
     }
 
@@ -948,7 +960,8 @@ public extension AgentConnection {
         contextProjectIDs: [ProjectID] = [],
         title: String? = nil,
         message: ConversationInitialMessage? = nil,
-        createWorktree: Bool = false
+        createWorktree: Bool = false,
+        worktreeBaseRef: String? = nil
     ) async throws -> ConversationCreateResult {
         try await request(
             method: "conversation.create",
@@ -958,8 +971,19 @@ public extension AgentConnection {
                 contextProjectIDs: contextProjectIDs,
                 title: title,
                 message: message,
-                createWorktree: createWorktree
+                createWorktree: createWorktree,
+                worktreeBaseRef: worktreeBaseRef
             )
+        )
+    }
+
+    func worktreeBaseBranches(
+        workspaceID: WorkspaceID,
+        projectSourceID: ProjectSourceID
+    ) async throws -> WorktreeBaseBranchesResult {
+        try await request(
+            method: "worktree.baseBranches",
+            params: WorktreeSourceParams(workspaceID: workspaceID, projectSourceID: projectSourceID)
         )
     }
 

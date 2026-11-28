@@ -1109,24 +1109,400 @@ private struct ChatLandingComposer: View {
             // the user does not have. The Worktree checkbox stands on its own.
             let offersRootChoice = !WorkspaceShape.of(projects: model.projects).collapsesRootChooser
             if offersRootChoice || model.canDraftWorktree {
-                HStack(spacing: 16) {
+                HStack(alignment: .firstTextBaseline, spacing: 16) {
                     if offersRootChoice {
                         ChatWorkingRootMenu(model: model, addProject: addProject)
+                            .layoutPriority(1)
                     }
                     if model.canDraftWorktree {
-                        Toggle("Worktree", isOn: $model.draftCreatesWorktree)
-                            .toggleStyle(.checkbox)
-                            .disabled(model.isSubmitting)
-                            .help("Work in a new git worktree on its own branch, apart from the project's checkout")
-                            .accessibilityIdentifier(AccessibilityID.chatWorktreeToggle)
+                        HStack(alignment: .firstTextBaseline, spacing: 4) {
+                            Toggle("Worktree", isOn: $model.draftCreatesWorktree)
+                                .toggleStyle(.checkbox)
+                                .disabled(model.isSubmitting)
+                                .help("Work in a new git worktree on its own branch, apart from the project's checkout")
+                                .accessibilityIdentifier(AccessibilityID.chatWorktreeToggle)
+                                .layoutPriority(1)
+                            if model.draftCreatesWorktree {
+                                ChatWorktreeBaseBranchPicker(model: model, backend: backend)
+                            }
+                        }
                     }
-                    Spacer()
+                    Spacer(minLength: 12)
+                    if model.canDraftWorktree
+                        && model.draftCreatesWorktree
+                        && model.draftWorktreeBaseBranchMenu.showsDirtyNote
+                    {
+                        ViewThatFits(in: .horizontal) {
+                            Text("Uncommitted changes stay behind")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                            EmptyView()
+                        }
+                    }
                 }
                 .appFont(.callout)
-                .foregroundStyle(.secondary)
                 .padding(.horizontal, 4)
             }
         }
+        .task(id: WorktreeBranchesLoadKey(
+            workspaceID: model.workspaceID,
+            sourceID: model.draftProjectSourceID,
+            enabled: model.canDraftWorktree && model.draftCreatesWorktree,
+            draftGeneration: model.draftGeneration
+        )) {
+            await model.loadDraftWorktreeBranches(backend: backend)
+        }
+    }
+}
+
+private struct WorktreeBranchesLoadKey: Equatable {
+    let workspaceID: WorkspaceID?
+    let sourceID: ProjectSourceID?
+    let enabled: Bool
+    let draftGeneration: Int
+}
+
+/// Inline base-branch popover shown next to the Worktree checkbox while ticked,
+/// matching `ChatSessionSelector`'s root + pushed searchable sub-page pattern.
+private struct ChatWorktreeBaseBranchPicker: View {
+    @Bindable var model: ChatWorkspaceModel
+    let backend: DiffReviewModel
+
+    private enum Page: Hashable {
+        case root
+        case local
+        case remote
+    }
+
+    private enum RowID: Hashable {
+        case current
+        case branch(String)
+        case navigate(Page)
+        case retry
+    }
+
+    @State private var isPresented = false
+    @State private var page = Page.root
+    @State private var hoveredRow: RowID?
+    @State private var branchQuery = ""
+
+    var body: some View {
+        let menuState = model.draftWorktreeBaseBranchMenu
+        // SwiftUI's plain `Button` reports its bottom edge as `.firstTextBaseline`
+        // instead of forwarding its `Text` label's baseline. Using a hidden
+        // `.callout` `Text` (plus trailing room for the chevron) as the layout
+        // anchor and overlaying the live `Button` keeps `Worktree`, `from`, and
+        // the branch name on the exact same typographic baseline.
+        HStack(alignment: .firstTextBaseline, spacing: 5) {
+            Text("from")
+                .foregroundStyle(.secondary)
+            Text(menuState.selectedTitle)
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .padding(.trailing, 14)
+                .hidden()
+                .accessibilityHidden(true)
+                .overlay(alignment: .leading) {
+                    Button {
+                        page = .root
+                        branchQuery = ""
+                        isPresented = true
+                    } label: {
+                        HStack(alignment: .center, spacing: 4) {
+                            Text(menuState.selectedTitle)
+                                .lineLimit(1)
+                                .truncationMode(.tail)
+                            Image(systemName: "chevron.up.chevron.down")
+                                .font(.system(size: 9, weight: .semibold))
+                                .foregroundStyle(.secondary)
+                                .accessibilityHidden(true)
+                        }
+                        .contentShape(.rect)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(model.isSubmitting || menuState.isTriggerDisabled)
+                    .help(menuState.helpText)
+                    .accessibilityLabel("Base branch")
+                    .accessibilityValue(menuState.selectedTitle)
+                    .accessibilityIdentifier(AccessibilityID.chatWorktreeBaseBranchMenu)
+                    .popover(isPresented: $isPresented, arrowEdge: .top) {
+                        popoverContent(menuState: model.draftWorktreeBaseBranchMenu)
+                    }
+                }
+        }
+    }
+
+    private func popoverContent(menuState: WorktreeBaseBranchMenuState) -> some View {
+        Group {
+            switch page {
+            case .root:
+                rootPage(menuState)
+            case .local:
+                branchListPage(
+                    title: "Local branches",
+                    branches: menuState.allLocalBranches,
+                    menuState: menuState
+                )
+            case .remote:
+                branchListPage(
+                    title: "Remote branches",
+                    branches: menuState.allRemoteBranches,
+                    menuState: menuState
+                )
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .frame(width: 280, alignment: .leading)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier(AccessibilityID.chatWorktreeBaseBranchPopover)
+        .onChange(of: page) { branchQuery = "" }
+        .task { await model.loadDraftWorktreeBranches(backend: backend) }
+    }
+
+    private func rootPage(_ menuState: WorktreeBaseBranchMenuState) -> some View {
+        VStack(alignment: .leading, spacing: 1) {
+            menuHeader("Base branch")
+            primaryBranchRow(
+                title: menuState.currentHeadTitle,
+                subtitle: menuState.isCurrentHeadAvailable ? "Current" : "No commits yet",
+                id: .current,
+                isSelected: menuState.isCurrentSelected,
+                disabled: !menuState.isCurrentHeadAvailable
+            ) {
+                model.selectDraftWorktreeBase(.current)
+            }
+            if let defaultBranch = menuState.defaultBranch {
+                primaryBranchRow(
+                    title: defaultBranch.name,
+                    subtitle: "Default",
+                    id: .branch(defaultBranch.refName),
+                    isSelected: menuState.isDefaultSelected
+                ) {
+                    model.selectDraftWorktreeBase(.defaultBranch)
+                }
+            }
+            if let custom = menuState.selectedCustomBranch {
+                primaryBranchRow(
+                    title: custom.name,
+                    subtitle: custom.kind == .remote ? "Remote" : "Local",
+                    id: .branch(custom.refName),
+                    isSelected: true
+                ) {
+                    model.selectDraftWorktreeBase(.branch(custom.refName))
+                }
+            } else if let missingRef = menuState.missingSelectedRef {
+                primaryBranchRow(
+                    title: WorktreeBaseBranchMenuState.shortDisplayName(for: missingRef),
+                    subtitle: "Not found in repository",
+                    id: .branch(missingRef),
+                    isSelected: true
+                ) {
+                    model.selectDraftWorktreeBase(.branch(missingRef))
+                }
+            }
+            if menuState.loadError != nil, menuState.result == nil {
+                Divider()
+                    .padding(.vertical, 5)
+                HStack(spacing: 8) {
+                    Text("Could not list branches")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Spacer(minLength: 0)
+                    Button("Retry") {
+                        Task { await model.loadDraftWorktreeBranches(backend: backend) }
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .disabled(menuState.isLoading)
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 3)
+            }
+            if menuState.hasLocalBranchesDrilldown || menuState.hasRemoteBranchesDrilldown {
+                Divider()
+                    .padding(.vertical, 5)
+                if menuState.hasLocalBranchesDrilldown {
+                    navRow(
+                        "Local branches",
+                        page: .local,
+                        count: menuState.allLocalBranches.count
+                    )
+                }
+                if menuState.hasRemoteBranchesDrilldown {
+                    navRow(
+                        "Remote branches",
+                        page: .remote,
+                        count: menuState.allRemoteBranches.count
+                    )
+                }
+            }
+        }
+    }
+
+    private func branchListPage(
+        title: String,
+        branches: [WorktreeBaseBranch],
+        menuState: WorktreeBaseBranchMenuState
+    ) -> some View {
+        let searchable = ChatSelectorOptionSearch.isSearchable(optionCount: branches.count)
+        let visible = searchable
+            ? ChatSelectorOptionSearch.matches(branches, query: branchQuery, id: \.refName, label: \.name)
+            : branches
+        return VStack(alignment: .leading, spacing: 1) {
+            backHeader(title)
+            if searchable {
+                TextField("Search", text: $branchQuery)
+                    .textFieldStyle(.roundedBorder)
+                    .onSubmit {
+                        let matches = ChatSelectorOptionSearch.matches(
+                            branches, query: branchQuery, id: \.refName, label: \.name
+                        )
+                        guard let top = matches.first else { return }
+                        isPresented = false
+                        model.selectDraftWorktreeBase(.branch(top.refName))
+                    }
+                    .padding(.horizontal, 4)
+                    .padding(.top, 6)
+                    .padding(.bottom, 6)
+                    .background(PopoverSearchFieldFocus())
+            }
+            if searchable {
+                ScrollViewReader { proxy in
+                    ScrollView {
+                        branchRows(visible, menuState: menuState)
+                        if visible.isEmpty {
+                            Text("No Matches")
+                                .foregroundStyle(.secondary)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 12)
+                        }
+                    }
+                    .frame(height: 300)
+                    .onAppear {
+                        if let selected = branches.first(where: { menuState.isBranchSelected($0) }) {
+                            proxy.scrollTo(RowID.branch(selected.refName), anchor: .center)
+                        }
+                    }
+                }
+            } else {
+                branchRows(visible, menuState: menuState)
+            }
+        }
+    }
+
+    private func branchRows(
+        _ branches: [WorktreeBaseBranch],
+        menuState: WorktreeBaseBranchMenuState
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 1) {
+            ForEach(branches, id: \.refName) { branch in
+                let isSelected = menuState.isBranchSelected(branch)
+                Button {
+                    isPresented = false
+                    model.selectDraftWorktreeBase(.branch(branch.refName))
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "checkmark")
+                            .font(.system(size: 11, weight: .semibold))
+                            .opacity(isSelected ? 1 : 0)
+                            .frame(width: 13)
+                            .accessibilityHidden(true)
+                        Text(branch.name)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                        Spacer(minLength: 0)
+                    }
+                    .rowHover(.branch(branch.refName), in: $hoveredRow)
+                }
+                .buttonStyle(.plain)
+                .help(branch.name)
+                .accessibilityAddTraits(isSelected ? .isSelected : [])
+                .id(RowID.branch(branch.refName))
+            }
+        }
+    }
+
+    private func primaryBranchRow(
+        title: String,
+        subtitle: String,
+        id: RowID,
+        isSelected: Bool,
+        disabled: Bool = false,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button {
+            isPresented = false
+            action()
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "checkmark")
+                    .font(.system(size: 11, weight: .semibold))
+                    .opacity(isSelected ? 1 : 0)
+                    .frame(width: 13)
+                    .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(title)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                    Text(subtitle)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer(minLength: 0)
+            }
+            .rowHover(id, in: $hoveredRow, highlighted: !disabled)
+        }
+        .buttonStyle(.plain)
+        .disabled(disabled)
+        .help(title)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+    }
+
+    private func menuHeader(_ title: String) -> some View {
+        Text(title)
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 8)
+            .padding(.bottom, 2)
+    }
+
+    private func backHeader(_ title: String) -> some View {
+        Button {
+            page = .root
+        } label: {
+            HStack(spacing: 4) {
+                Image(systemName: "chevron.left")
+                    .font(.system(size: 10, weight: .semibold))
+                Text(title)
+                    .font(.caption)
+            }
+            .foregroundStyle(.secondary)
+            .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .padding(.horizontal, 8)
+        .padding(.bottom, 2)
+    }
+
+    private func navRow(_ label: String, page destination: Page, count: Int) -> some View {
+        Button {
+            page = destination
+        } label: {
+            HStack(spacing: 6) {
+                Text(label)
+                Spacer(minLength: 12)
+                Text("\(count)")
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(.tertiary)
+            }
+            .rowHover(.navigate(destination), in: $hoveredRow)
+        }
+        .buttonStyle(.plain)
     }
 }
 
@@ -1550,6 +1926,7 @@ private struct ChatSessionSelector: View {
                         select(id == advertisedDefault ? nil : id)
                     }
                     .padding(.horizontal, 4)
+                    .padding(.top, 6)
                     .padding(.bottom, 6)
                     .background(PopoverSearchFieldFocus())
             }

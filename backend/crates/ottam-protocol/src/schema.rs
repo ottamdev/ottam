@@ -232,6 +232,8 @@ pub fn protocol_schema_bundle() -> Value {
             "worktreeStatusResponse": response_schema_value::<crate::WorktreeStatusResult>(),
             "worktreeRemoveRequest": schema_value::<crate::WorktreeRemoveRequest>(),
             "worktreeRemoveResponse": response_schema_value::<crate::WorktreeRemoveResult>(),
+            "worktreeBaseBranchesRequest": schema_value::<crate::WorktreeBaseBranchesRequest>(),
+            "worktreeBaseBranchesResponse": response_schema_value::<crate::WorktreeBaseBranchesResult>(),
             "conversationResolveRunInputDeliveryRequest": schema_value::<ConversationResolveRunInputDeliveryRequest>(),
             "conversationResolveRunInputDeliveryResponse": response_schema_value::<ConversationResolveRunInputDeliveryResult>(),
             "conversationEventDeltaNotification": schema_value::<ConversationEventDeltaNotification>(),

@@ -15,6 +15,7 @@
       "idempotencyKey": "client-key-1",
       "attachmentIDs": []
     },
-    "createWorktree": true
+    "createWorktree": true,
+    "worktreeBaseRef": "refs/heads/main"
   }
 }

@@ -190,6 +190,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         worktree_status_response_fixture,
         worktree_remove_request_fixture,
         worktree_remove_response_fixture,
+        worktree_base_branches_request_fixture,
+        worktree_base_branches_response_fixture,
         conversation_resolve_run_input_delivery_request_fixture,
         conversation_resolve_run_input_delivery_response_fixture,
         conversation_list_messages_request_fixture,

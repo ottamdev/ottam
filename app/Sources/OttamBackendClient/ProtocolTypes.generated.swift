@@ -818,6 +818,11 @@ public enum McpSignInOutcome: String, Codable, Equatable, Sendable {
     case failed
 }
 
+public enum WorktreeBaseBranchKind: String, Codable, Equatable, Sendable {
+    case local
+    case remote
+}
+
 // MARK: - Wire structs
 
 public struct ConversationListTranscriptParams: Codable, Equatable, Sendable {
@@ -3738,8 +3743,10 @@ public struct ConversationCreateParams: Codable, Equatable, Sendable {
     public var contextProjectIDs: [ProjectID]
     public var title: String?
     public var message: ConversationInitialMessage?
-    /// Work in a new git worktree: Core cuts a branch off the project's primary checkout HEAD and links the conversation to it. Needs a project working root.
+    /// Work in a new git worktree: Core cuts a branch off `worktreeBaseRef` (or the project's primary checkout HEAD when omitted) and links the conversation to it. Needs a project working root.
     public var createWorktree: Bool
+    /// Optional full branch ref (`refs/heads/…` or `refs/remotes/…`) on the primary checkout to cut the worktree from when `createWorktree` is true. Defaults to the primary checkout's current HEAD when omitted.
+    public var worktreeBaseRef: String?
 
     public init(
         workspaceID: WorkspaceID,
@@ -3747,7 +3754,8 @@ public struct ConversationCreateParams: Codable, Equatable, Sendable {
         contextProjectIDs: [ProjectID],
         title: String? = nil,
         message: ConversationInitialMessage? = nil,
-        createWorktree: Bool
+        createWorktree: Bool,
+        worktreeBaseRef: String? = nil
     ) {
         self.workspaceID = workspaceID
         self.workingRoot = workingRoot
@@ -3755,6 +3763,7 @@ public struct ConversationCreateParams: Codable, Equatable, Sendable {
         self.title = title
         self.message = message
         self.createWorktree = createWorktree
+        self.worktreeBaseRef = worktreeBaseRef
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -3764,6 +3773,7 @@ public struct ConversationCreateParams: Codable, Equatable, Sendable {
         case title
         case message
         case createWorktree
+        case worktreeBaseRef
     }
 
     public init(from decoder: Decoder) throws {
@@ -3774,6 +3784,7 @@ public struct ConversationCreateParams: Codable, Equatable, Sendable {
         title = try container.decodeIfPresent(String.self, forKey: .title)
         message = try container.decodeIfPresent(ConversationInitialMessage.self, forKey: .message)
         createWorktree = try container.decode(Bool.self, forKey: .createWorktree)
+        worktreeBaseRef = try container.decodeIfPresent(String.self, forKey: .worktreeBaseRef)
     }
 }
 
@@ -5500,6 +5511,47 @@ public struct WorktreeRemoveResult: Codable, Equatable, Sendable {
 
     public init(removal: WorktreeRemoval) {
         self.removal = removal
+    }
+}
+
+public struct WorktreeBaseBranchesResult: Codable, Equatable, Sendable {
+    /// Branch currently checked out on the primary checkout, or `None` when HEAD is detached or the repository has no commits yet.
+    public var currentBranch: String?
+    /// Short commit hash of HEAD when the primary checkout has a detached HEAD.
+    public var detachedHead: String?
+    /// Detected default branch's `refName` (prefers the local branch that `refs/remotes/origin/HEAD` points to, else its remote target, else local `main`/`master`, else `origin/main`/`origin/master`), when present in `branches`.
+    public var defaultBranchRef: String?
+    /// Whether the primary checkout has staged, unstaged, or untracked changes.
+    public var primaryHasUncommittedChanges: Bool
+    /// Branches available to cut a worktree from, local branches first.
+    public var branches: [WorktreeBaseBranch]
+
+    public init(
+        currentBranch: String? = nil,
+        detachedHead: String? = nil,
+        defaultBranchRef: String? = nil,
+        primaryHasUncommittedChanges: Bool,
+        branches: [WorktreeBaseBranch]
+    ) {
+        self.currentBranch = currentBranch
+        self.detachedHead = detachedHead
+        self.defaultBranchRef = defaultBranchRef
+        self.primaryHasUncommittedChanges = primaryHasUncommittedChanges
+        self.branches = branches
+    }
+}
+
+public struct WorktreeBaseBranch: Codable, Equatable, Sendable {
+    /// Short display name, e.g. `main`, `feat/auth`, or `origin/main`.
+    public var name: String
+    /// Unambiguous git ref name, e.g. `refs/heads/main` or `refs/remotes/origin/main`.
+    public var refName: String
+    public var kind: WorktreeBaseBranchKind
+
+    public init(name: String, refName: String, kind: WorktreeBaseBranchKind) {
+        self.name = name
+        self.refName = refName
+        self.kind = kind
     }
 }
 

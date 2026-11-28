@@ -254,6 +254,192 @@ pub fn head_commit(repo_path: &str) -> Result<Option<String>, CoreError> {
     Ok((result.status_code == Some(0) && !commit.is_empty()).then(|| commit.to_string()))
 }
 
+/// The commit an exact branch ref (`refs/heads/…` or `refs/remotes/…`) points
+/// at, or `None` when no such ref exists. Resolved via `git for-each-ref` with
+/// an exact refname check so a missing ref never falls back across namespaces,
+/// never matches a prefix, and never parses revision syntax.
+pub fn resolve_commit(repo_path: &str, reference: &str) -> Result<Option<String>, CoreError> {
+    let valid_prefix =
+        reference.starts_with("refs/heads/") || reference.starts_with("refs/remotes/");
+    if !valid_prefix
+        || reference.ends_with('/')
+        || reference.chars().any(char::is_control)
+    {
+        return Err(CoreError::new(
+            "worktreeInvalidBaseRef",
+            "The selected base branch is not a valid git branch reference.",
+        )
+        .with_path(repo_path)
+        .recoverable(true));
+    }
+    let output = run_git(
+        repo_path,
+        ["for-each-ref", "--format=%(refname)%09%(objectname)", "--", reference],
+    )?;
+    let Some(hash) = output.lines().find_map(|line| {
+        let (found_ref, object) = line.split_once('\t')?;
+        (found_ref == reference && !object.is_empty()).then_some(object)
+    }) else {
+        return Ok(None);
+    };
+    let verified = run_git_with_allowed_exit_codes(
+        repo_path,
+        &["rev-parse", "--verify", "--quiet", &format!("{hash}^{{commit}}")],
+        &[0, 1],
+    )?;
+    let commit = verified.stdout.trim();
+    Ok((verified.status_code == Some(0) && !commit.is_empty()).then(|| commit.to_string()))
+}
+
+/// Branches on the primary checkout that a new worktree can cut from, plus
+/// HEAD and dirty-tree context for the composer picker.
+pub fn worktree_base_branches(
+    repo_path: &str,
+) -> Result<ottam_protocol::WorktreeBaseBranchesResult, CoreError> {
+    use ottam_protocol::{WorktreeBaseBranch, WorktreeBaseBranchKind, WorktreeBaseBranchesResult};
+
+    // `--no-optional-locks` keeps this background probe from contending with
+    // `.git/index.lock` held by a foreground git command.
+    let status = run_git(
+        repo_path,
+        [
+            "--no-optional-locks",
+            "status",
+            "--porcelain=v1",
+            "-z",
+            "--untracked-files=normal",
+        ],
+    )?;
+    let primary_has_uncommitted_changes = !status.is_empty();
+
+    let (current_branch, detached_head) = match head_commit(repo_path)? {
+        None => (None, None),
+        Some(head) => {
+            let symbolic = run_git_with_allowed_exit_codes(
+                repo_path,
+                &["symbolic-ref", "--quiet", "--short", "HEAD"],
+                &[0, 1],
+            )?;
+            if symbolic.status_code == Some(0) {
+                let name = symbolic.stdout.trim();
+                if name.is_empty() {
+                    (None, Some(head.chars().take(7).collect()))
+                } else {
+                    (Some(name.to_string()), None)
+                }
+            } else {
+                (None, Some(head.chars().take(7).collect()))
+            }
+        }
+    };
+
+    // Enumerate refs even on an unborn HEAD: a freshly initialized repository
+    // can already have fetched remote-tracking branches that can seed a worktree.
+    let refs_output = run_git(
+        repo_path,
+        [
+            "for-each-ref",
+            "--sort=-committerdate",
+            "--format=%(refname)%09%(symref)",
+            "refs/heads",
+            "refs/remotes",
+        ],
+    )?;
+
+    let mut local = Vec::new();
+    let mut remote = Vec::new();
+    let mut origin_head_target = None;
+
+    for line in refs_output.lines() {
+        if line.is_empty() {
+            continue;
+        }
+        let (ref_name, symref) = line.split_once('\t').unwrap_or((line, ""));
+        if !symref.is_empty() {
+            if ref_name == "refs/remotes/origin/HEAD" {
+                origin_head_target = Some(symref.to_string());
+            }
+            continue;
+        }
+        if let Some(name) = ref_name.strip_prefix("refs/heads/") {
+            local.push(WorktreeBaseBranch {
+                name: name.to_string(),
+                ref_name: ref_name.to_string(),
+                kind: WorktreeBaseBranchKind::Local,
+            });
+        } else if let Some(name) = ref_name.strip_prefix("refs/remotes/") {
+            remote.push(WorktreeBaseBranch {
+                name: name.to_string(),
+                ref_name: ref_name.to_string(),
+                kind: WorktreeBaseBranchKind::Remote,
+            });
+        }
+    }
+
+    let default_branch_ref = detect_default_branch_ref(&local, &remote, origin_head_target.as_deref());
+    let current_ref = current_branch.as_deref().map(|name| format!("refs/heads/{name}"));
+
+    let mut ordered = Vec::with_capacity(local.len() + remote.len());
+    if let Some(ref current_ref) = current_ref {
+        if let Some(pos) = local.iter().position(|branch| &branch.ref_name == current_ref) {
+            ordered.push(local.remove(pos));
+        }
+    }
+    if let Some(ref default_ref) = default_branch_ref {
+        if let Some(pos) = local.iter().position(|branch| &branch.ref_name == default_ref) {
+            ordered.push(local.remove(pos));
+        }
+    }
+    let (managed, regular): (Vec<_>, Vec<_>) =
+        local.into_iter().partition(|branch| branch.name.starts_with("ottam/"));
+    ordered.extend(regular);
+    ordered.extend(managed);
+
+    if let Some(ref default_ref) = default_branch_ref {
+        if let Some(pos) = remote.iter().position(|branch| &branch.ref_name == default_ref) {
+            ordered.push(remote.remove(pos));
+        }
+    }
+    ordered.extend(remote);
+
+    Ok(WorktreeBaseBranchesResult {
+        current_branch,
+        detached_head,
+        default_branch_ref,
+        primary_has_uncommitted_changes,
+        branches: ordered,
+    })
+}
+
+fn detect_default_branch_ref(
+    local: &[ottam_protocol::WorktreeBaseBranch],
+    remote: &[ottam_protocol::WorktreeBaseBranch],
+    origin_head_target: Option<&str>,
+) -> Option<String> {
+    if let Some(target) = origin_head_target {
+        if let Some(name) = target.strip_prefix("refs/remotes/origin/") {
+            let local_ref = format!("refs/heads/{name}");
+            if local.iter().any(|branch| branch.ref_name == local_ref) {
+                return Some(local_ref);
+            }
+        }
+        if remote.iter().any(|branch| branch.ref_name == target) {
+            return Some(target.to_string());
+        }
+    }
+    for candidate in ["refs/heads/main", "refs/heads/master"] {
+        if local.iter().any(|branch| branch.ref_name == candidate) {
+            return Some(candidate.to_string());
+        }
+    }
+    for candidate in ["refs/remotes/origin/main", "refs/remotes/origin/master"] {
+        if remote.iter().any(|branch| branch.ref_name == candidate) {
+            return Some(candidate.to_string());
+        }
+    }
+    None
+}
+
 /// The commit a local branch points at, or `None` when there is no such branch.
 pub fn branch_commit(repo_path: &str, branch: &str) -> Result<Option<String>, CoreError> {
     let reference = format!("refs/heads/{branch}");
@@ -673,7 +859,8 @@ fn git_output_max_bytes() -> usize {
 mod tests {
     use super::{
         branch_commit, create_branch, delete_branch_if_unchanged, keep_unbranched_head,
-        head_lock_marker, porcelain_entry_count, run_git_with_allowed_exit_codes,
+        head_lock_marker, porcelain_entry_count, resolve_commit, run_git_with_allowed_exit_codes,
+        worktree_base_branches,
     };
     use std::path::Path;
 
@@ -806,5 +993,72 @@ mod tests {
         assert!(branch_commit(&path, "ottam/reused").ok().flatten().is_some());
 
         assert_eq!(delete_branch_if_unchanged(&path, "ottam/missing", &base).ok(), Some(false));
+    }
+
+    #[test]
+    fn worktree_base_branches_covers_default_detection_ordering_detached_and_unborn_head() {
+        let (temp, base) = repo_with_commit();
+        let repo = temp.path();
+        let path = repo.to_string_lossy().into_owned();
+
+        // Rename initial branch to `master` to verify master fallback, plus
+        // add a managed `ottam/*` branch and a regular feature branch.
+        git(repo, &["branch", "-M", "master"]);
+        git(repo, &["branch", "ottam/managed-1234", &base]);
+        git(repo, &["checkout", "--quiet", "-b", "feat/work"]);
+        git(repo, &["commit", "--quiet", "--allow-empty", "-m", "feat"]);
+
+        let listed = worktree_base_branches(&path).expect("list master fallback");
+        assert_eq!(listed.current_branch.as_deref(), Some("feat/work"));
+        assert_eq!(listed.detached_head, None);
+        assert_eq!(listed.default_branch_ref.as_deref(), Some("refs/heads/master"));
+        let names: Vec<&str> = listed.branches.iter().map(|b| b.name.as_str()).collect();
+        assert_eq!(names, vec!["feat/work", "master", "ottam/managed-1234"]);
+
+        // `origin/HEAD` pointing to `refs/remotes/origin/trunk` prefers local
+        // `refs/heads/trunk` when present, else falls back to the remote ref.
+        git(repo, &["update-ref", "refs/remotes/origin/trunk", &base]);
+        git(repo, &["symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/trunk"]);
+        let remote_default = worktree_base_branches(&path).expect("remote origin/HEAD");
+        assert_eq!(
+            remote_default.default_branch_ref.as_deref(),
+            Some("refs/remotes/origin/trunk")
+        );
+        assert!(remote_default
+            .branches
+            .iter()
+            .all(|b| b.ref_name != "refs/remotes/origin/HEAD"));
+
+        git(repo, &["branch", "trunk", &base]);
+        let local_default = worktree_base_branches(&path).expect("local origin/HEAD");
+        assert_eq!(local_default.default_branch_ref.as_deref(), Some("refs/heads/trunk"));
+
+        // Detached HEAD exposes short commit hash while preserving branches.
+        git(repo, &["checkout", "--quiet", "--detach", &base]);
+        let detached = worktree_base_branches(&path).expect("detached");
+        assert_eq!(detached.current_branch, None);
+        assert_eq!(detached.detached_head.as_deref(), Some(&base[..7]));
+        assert_eq!(detached.default_branch_ref.as_deref(), Some("refs/heads/trunk"));
+
+        // Unborn HEAD still enumerates existing fetched refs.
+        let unborn_dir = tempfile::tempdir().expect("unborn dir");
+        let unborn = unborn_dir.path();
+        let unborn_path = unborn.to_string_lossy().into_owned();
+        git(unborn, &["init", "--quiet"]);
+        git(unborn, &["fetch", "--quiet", &path, "refs/heads/trunk:refs/remotes/origin/trunk"]);
+        let unborn_list = worktree_base_branches(&unborn_path).expect("unborn list");
+        assert_eq!(unborn_list.current_branch, None);
+        assert_eq!(unborn_list.detached_head, None);
+        assert_eq!(unborn_list.branches.len(), 1);
+        assert_eq!(unborn_list.branches[0].ref_name, "refs/remotes/origin/trunk");
+
+        // Exact ref resolution rejects short names, tags, and revision syntax.
+        git(repo, &["tag", "v1", &base]);
+        assert_eq!(resolve_commit(&path, "refs/heads/trunk").expect("exact local"), Some(base.clone()));
+        assert_eq!(resolve_commit(&path, "refs/remotes/origin/trunk").expect("exact remote"), Some(base.clone()));
+        assert_eq!(resolve_commit(&path, "refs/heads/v1").expect("no tag fallback"), None);
+        assert_eq!(resolve_commit(&path, "refs/heads/feat").expect("no prefix match"), None);
+        assert_eq!(resolve_commit(&path, "trunk").unwrap_err().kind, "worktreeInvalidBaseRef");
+        assert_eq!(resolve_commit(&path, "HEAD~1").unwrap_err().kind, "worktreeInvalidBaseRef");
     }
 }

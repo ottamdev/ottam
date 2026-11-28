@@ -640,11 +640,16 @@ pub struct ConversationCreateParams {
     pub title: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub message: Option<ConversationInitialMessage>,
-    /// Work in a new git worktree: Core cuts a branch off the project's
-    /// primary checkout HEAD and links the conversation to it. Needs a
-    /// project working root.
+    /// Work in a new git worktree: Core cuts a branch off `worktreeBaseRef`
+    /// (or the project's primary checkout HEAD when omitted) and links the
+    /// conversation to it. Needs a project working root.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub create_worktree: bool,
+    /// Optional full branch ref (`refs/heads/…` or `refs/remotes/…`) on the
+    /// primary checkout to cut the worktree from when `createWorktree` is true.
+    /// Defaults to the primary checkout's current HEAD when omitted.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub worktree_base_ref: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
