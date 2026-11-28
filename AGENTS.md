@@ -83,7 +83,9 @@ Adapter pins live in `backend/crates/ottam-core/src/agent/registry.rs`.
 ## Milestones
 
 Plan user-facing work as milestones the user can try in the app; PRs are review
-units inside one. A milestone is a parent issue.
+units inside one. A milestone is a parent issue filed with
+`.github/ISSUE_TEMPLATE/milestone.md`, its items as sub-issues; it is not
+GitHub's Milestones feature.
 
 - Before code, write the milestone's verification steps (app actions, expected
   results, restart and cancel behavior) in its issue. They are its acceptance
